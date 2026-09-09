@@ -129,276 +129,456 @@
             </Grid.RenderTransform>
 
 
-            <!-- Shadow -->
-            <Ellipse Width="105"
-                     Height="15"
-                     Fill="#220F172A"
+            <!-- ============================= -->
+            <!-- SHADOW -->
+            <!-- ============================= -->
+
+            <Ellipse Width="96"
+                     Height="12"
+                     Fill="#240B1830"
                      VerticalAlignment="Bottom"
-                     Margin="0,0,0,5"/>
+                     Margin="0,0,0,4"/>
 
 
-            <!-- Tail -->
-            <Ellipse Width="29"
-                     Height="29"
-                     Fill="#F8FBFF"
-                     Stroke="#334155"
-                     StrokeThickness="3"
-                     HorizontalAlignment="Right"
-                     VerticalAlignment="Bottom"
-                     Margin="0,0,18,38"/>
+            <!-- ============================= -->
+            <!-- EARS -->
+            <!-- ============================= -->
+
+            <!-- Left ear -->
+            <Border Width="39"
+                    Height="94"
+                    Background="#FCFCFF"
+                    BorderBrush="#3A455B"
+                    BorderThickness="2.5"
+                    CornerRadius="22"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Margin="23,-2,0,0"
+                    RenderTransformOrigin="0.5,0.9">
+
+                <Border.RenderTransform>
+                    <RotateTransform x:Name="LeftEarRotate"
+                                     Angle="-24"/>
+                </Border.RenderTransform>
+
+                <Border Width="16"
+                        Height="67"
+                        Margin="0,10,0,5"
+                        Background="#BCEEFF"
+                        CornerRadius="10"/>
+
+            </Border>
 
 
-            <!-- Feet -->
+            <!-- Right ear -->
+            <Border Width="39"
+                    Height="98"
+                    Background="#FCFCFF"
+                    BorderBrush="#3A455B"
+                    BorderThickness="2.5"
+                    CornerRadius="22"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Margin="0,-4,20,0"
+                    RenderTransformOrigin="0.5,0.9">
 
-            <Ellipse Width="38"
-                     Height="25"
-                     Fill="#F8FBFF"
-                     Stroke="#334155"
-                     StrokeThickness="3"
+                <Border.RenderTransform>
+                    <RotateTransform x:Name="RightEarRotate"
+                                     Angle="27"/>
+                </Border.RenderTransform>
+
+                <Border Width="16"
+                        Height="70"
+                        Margin="0,10,0,5"
+                        Background="#BCEEFF"
+                        CornerRadius="10"/>
+
+            </Border>
+
+
+            <!-- ============================= -->
+            <!-- BODY -->
+            <!-- ============================= -->
+
+            <Border Width="75"
+                    Height="72"
+                    Background="#FCFCFF"
+                    BorderBrush="#3A455B"
+                    BorderThickness="2.5"
+                    CornerRadius="36"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,0,28"/>
+
+
+            <!-- ============================= -->
+            <!-- ARMS -->
+            <!-- ============================= -->
+
+            <Border Width="57"
+                    Height="25"
+                    Background="#FCFCFF"
+                    BorderBrush="#3A455B"
+                    BorderThickness="2.5"
+                    CornerRadius="15"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Bottom"
+                    Margin="17,0,0,62"
+                    RenderTransformOrigin="0.85,0.5">
+
+                <Border.RenderTransform>
+                    <RotateTransform x:Name="LeftArmRotate"
+                                     Angle="-18"/>
+                </Border.RenderTransform>
+
+            </Border>
+
+
+            <Border Width="57"
+                    Height="25"
+                    Background="#FCFCFF"
+                    BorderBrush="#3A455B"
+                    BorderThickness="2.5"
+                    CornerRadius="15"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,17,62"
+                    RenderTransformOrigin="0.15,0.5">
+
+                <Border.RenderTransform>
+                    <RotateTransform x:Name="RightArmRotate"
+                                     Angle="18"/>
+                </Border.RenderTransform>
+
+            </Border>
+
+
+            <!-- ============================= -->
+            <!-- FEET -->
+            <!-- ============================= -->
+
+            <Ellipse Width="31"
+                     Height="38"
+                     Fill="#FCFCFF"
+                     Stroke="#3A455B"
+                     StrokeThickness="2.5"
                      HorizontalAlignment="Left"
                      VerticalAlignment="Bottom"
-                     Margin="44,0,0,8"
-                     RenderTransformOrigin="0.5,0.2">
+                     Margin="50,0,0,7"
+                     RenderTransformOrigin="0.5,0.15">
 
                 <Ellipse.RenderTransform>
-                    <RotateTransform x:Name="LeftFootRotate"/>
+                    <RotateTransform x:Name="LeftFootRotate"
+                                     Angle="-8"/>
                 </Ellipse.RenderTransform>
 
             </Ellipse>
 
 
-            <Ellipse Width="38"
-                     Height="25"
-                     Fill="#F8FBFF"
-                     Stroke="#334155"
-                     StrokeThickness="3"
+            <Ellipse Width="31"
+                     Height="38"
+                     Fill="#FCFCFF"
+                     Stroke="#3A455B"
+                     StrokeThickness="2.5"
                      HorizontalAlignment="Right"
                      VerticalAlignment="Bottom"
-                     Margin="0,0,44,8"
-                     RenderTransformOrigin="0.5,0.2">
+                     Margin="0,0,50,7"
+                     RenderTransformOrigin="0.5,0.15">
 
                 <Ellipse.RenderTransform>
-                    <RotateTransform x:Name="RightFootRotate"/>
+                    <RotateTransform x:Name="RightFootRotate"
+                                     Angle="8"/>
                 </Ellipse.RenderTransform>
 
             </Ellipse>
 
 
-            <!-- Body -->
+            <!-- ============================= -->
+            <!-- CHEST EMBLEM -->
+            <!-- ============================= -->
 
-            <Border Width="103"
-                    Height="87"
-                    Background="#F8FBFF"
-                    BorderBrush="#334155"
-                    BorderThickness="3"
-                    CornerRadius="48"
-                    VerticalAlignment="Bottom"
-                    Margin="0,0,0,23"/>
-
-
-            <!-- Knight chest emblem -->
-
-            <Grid Width="22"
-                  Height="22"
+            <Grid Width="24"
+                  Height="24"
                   VerticalAlignment="Bottom"
-                  Margin="0,0,0,68">
+                  Margin="0,0,0,63">
 
-                <Polygon Points="11,1 20,11 11,21 2,11"
-                         Fill="#72B7F2"
-                         Stroke="#334155"
-                         StrokeThickness="2"/>
+                <Polygon Points="12,1 22,12 12,23 2,12"
+                         Fill="#70C9F4"
+                         Stroke="#40516A"
+                         StrokeThickness="1.8"/>
 
                 <Ellipse Width="5"
                          Height="5"
-                         Fill="#F8FBFF"/>
+                         Fill="White"/>
 
             </Grid>
 
 
-            <!-- LEFT EAR -->
-
-            <Border Width="34"
-                    Height="86"
-                    Background="#F8FBFF"
-                    BorderBrush="#334155"
-                    BorderThickness="3"
-                    CornerRadius="18"
-                    HorizontalAlignment="Left"
-                    VerticalAlignment="Top"
-                    Margin="35,8,0,0"
-                    RenderTransformOrigin="0.5,0.85">
-
-                <Border.RenderTransform>
-                    <RotateTransform Angle="-10"/>
-                </Border.RenderTransform>
-
-                <Border Width="15"
-                        Height="57"
-                        Background="#BFE3FF"
-                        CornerRadius="10"
-                        VerticalAlignment="Center"/>
-
-            </Border>
-
-
-            <!-- RIGHT EAR -->
-
-            <Border Width="34"
-                    Height="86"
-                    Background="#F8FBFF"
-                    BorderBrush="#334155"
-                    BorderThickness="3"
-                    CornerRadius="18"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Top"
-                    Margin="0,8,35,0"
-                    RenderTransformOrigin="0.5,0.85">
-
-                <Border.RenderTransform>
-                    <RotateTransform Angle="10"/>
-                </Border.RenderTransform>
-
-                <Border Width="15"
-                        Height="57"
-                        Background="#BFE3FF"
-                        CornerRadius="10"
-                        VerticalAlignment="Center"/>
-
-            </Border>
-
-
+            <!-- ============================= -->
             <!-- HEAD -->
+            <!-- ============================= -->
 
-            <Border Width="142"
-                    Height="116"
-                    Background="#F8FBFF"
-                    BorderBrush="#334155"
-                    BorderThickness="3"
-                    CornerRadius="58"
+            <Border Width="151"
+                    Height="124"
+                    Background="#FCFCFF"
+                    BorderBrush="#3A455B"
+                    BorderThickness="2.7"
+                    CornerRadius="64"
                     VerticalAlignment="Top"
-                    Margin="0,62,0,0"/>
+                    Margin="0,56,0,0">
 
 
-            <!-- Cheeks -->
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="7"
+                                      ShadowDepth="1"
+                                      Opacity="0.15"/>
+                </Border.Effect>
 
-            <Ellipse Width="20"
-                     Height="10"
-                     Fill="#D7ECFF"
-                     HorizontalAlignment="Left"
-                     VerticalAlignment="Top"
-                     Margin="35,129,0,0"/>
-
-            <Ellipse Width="20"
-                     Height="10"
-                     Fill="#D7ECFF"
-                     HorizontalAlignment="Right"
-                     VerticalAlignment="Top"
-                     Margin="0,129,35,0"/>
+            </Border>
 
 
-            <!-- Awake Eyes -->
+            <!-- ============================= -->
+            <!-- EYES -->
+            <!-- ============================= -->
 
             <Grid x:Name="AwakeEyes">
 
-                <Ellipse Width="10"
-                         Height="14"
-                         Fill="#263548"
+                <!-- LEFT CYAN EYE RIM -->
+
+                <Ellipse Width="52"
+                         Height="57"
+                         Fill="#AEEBF2"
                          HorizontalAlignment="Left"
                          VerticalAlignment="Top"
-                         Margin="49,105,0,0"/>
+                         Margin="25,82,0,0"/>
 
-                <Ellipse Width="10"
-                         Height="14"
-                         Fill="#263548"
+                <!-- LEFT BLACK EYE -->
+
+                <Ellipse Width="43"
+                         Height="50"
+                         Fill="#151923"
+                         HorizontalAlignment="Left"
+                         VerticalAlignment="Top"
+                         Margin="30,85,0,0"/>
+
+
+                <!-- RIGHT CYAN EYE RIM -->
+
+                <Ellipse Width="52"
+                         Height="57"
+                         Fill="#AEEBF2"
                          HorizontalAlignment="Right"
                          VerticalAlignment="Top"
-                         Margin="0,105,49,0"/>
+                         Margin="0,82,25,0"/>
 
-                <!-- eye highlights -->
+                <!-- RIGHT BLACK EYE -->
 
-                <Ellipse Width="3"
-                         Height="3"
+                <Ellipse Width="43"
+                         Height="50"
+                         Fill="#151923"
+                         HorizontalAlignment="Right"
+                         VerticalAlignment="Top"
+                         Margin="0,85,30,0"/>
+
+
+                <!-- Big eye highlights -->
+
+                <Ellipse Width="13"
+                         Height="17"
+                         Fill="#FFFFFF"
+                         HorizontalAlignment="Left"
+                         VerticalAlignment="Top"
+                         Margin="38,92,0,0"/>
+
+                <Ellipse Width="13"
+                         Height="17"
+                         Fill="#FFFFFF"
+                         HorizontalAlignment="Right"
+                         VerticalAlignment="Top"
+                         Margin="0,92,38,0"/>
+
+
+                <!-- Lu-Knight diamond pupils -->
+
+                <Polygon Points="7,0 14,7 7,14 0,7"
+                         Width="14"
+                         Height="14"
                          Fill="White"
                          HorizontalAlignment="Left"
                          VerticalAlignment="Top"
-                         Margin="52,107,0,0"/>
+                         Margin="49,108,0,0"/>
 
-                <Ellipse Width="3"
-                         Height="3"
+                <Polygon Points="7,0 14,7 7,14 0,7"
+                         Width="14"
+                         Height="14"
                          Fill="White"
                          HorizontalAlignment="Right"
                          VerticalAlignment="Top"
-                         Margin="0,107,52,0"/>
+                         Margin="0,108,49,0"/>
+
+
+                <!-- Tiny gloss -->
+
+                <Ellipse Width="5"
+                         Height="5"
+                         Fill="#DDF8FF"
+                         HorizontalAlignment="Left"
+                         VerticalAlignment="Top"
+                         Margin="56,96,0,0"/>
+
+                <Ellipse Width="5"
+                         Height="5"
+                         Fill="#DDF8FF"
+                         HorizontalAlignment="Right"
+                         VerticalAlignment="Top"
+                         Margin="0,96,56,0"/>
 
             </Grid>
 
 
-            <!-- Sleep Eyes -->
+            <!-- ============================= -->
+            <!-- SLEEP EYES -->
+            <!-- ============================= -->
 
             <Grid x:Name="SleepEyes"
                   Visibility="Collapsed">
 
-                <Border Width="18"
-                        Height="7"
-                        BorderBrush="#263548"
-                        BorderThickness="0,0,0,3"
-                        CornerRadius="10"
+                <Border Width="35"
+                        Height="10"
+                        BorderBrush="#293243"
+                        BorderThickness="0,0,0,4"
+                        CornerRadius="12"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"
-                        Margin="45,108,0,0"/>
+                        Margin="31,110,0,0"/>
 
-                <Border Width="18"
-                        Height="7"
-                        BorderBrush="#263548"
-                        BorderThickness="0,0,0,3"
-                        CornerRadius="10"
+                <Border Width="35"
+                        Height="10"
+                        BorderBrush="#293243"
+                        BorderThickness="0,0,0,4"
+                        CornerRadius="12"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Top"
-                        Margin="0,108,45,0"/>
+                        Margin="0,110,31,0"/>
 
             </Grid>
 
 
-            <!-- Nose -->
+            <!-- ============================= -->
+            <!-- CHEEKS -->
+            <!-- ============================= -->
 
-            <Ellipse Width="7"
-                     Height="5"
-                     Fill="#72B7F2"
+            <Ellipse Width="21"
+                     Height="9"
+                     Fill="#D4F2FF"
+                     HorizontalAlignment="Left"
                      VerticalAlignment="Top"
-                     Margin="0,127,0,0"/>
+                     Margin="20,139,0,0"/>
+
+            <Ellipse Width="21"
+                     Height="9"
+                     Fill="#D4F2FF"
+                     HorizontalAlignment="Right"
+                     VerticalAlignment="Top"
+                     Margin="0,139,20,0"/>
 
 
-            <!-- Mouth -->
+            <!-- ============================= -->
+            <!-- NOSE -->
+            <!-- ============================= -->
 
-            <TextBlock Text="ᴗ"
-                       Foreground="#334155"
-                       FontSize="17"
-                       FontWeight="Bold"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Top"
-                       Margin="0,128,0,0"/>
+            <Ellipse Width="12"
+                     Height="8"
+                     Fill="#E688B0"
+                     Stroke="#C96C97"
+                     StrokeThickness="1"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Top"
+                     Margin="0,136,0,0"/>
 
 
-            <!-- Small Lu mark -->
+            <!-- ============================= -->
+            <!-- MOUTH -->
+            <!-- ============================= -->
+
+            <Border Width="27"
+                    Height="22"
+                    Background="#22242C"
+                    CornerRadius="4,4,14,14"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Margin="0,146,0,0">
+
+                <Ellipse Width="13"
+                         Height="7"
+                         Fill="#F27C9D"
+                         VerticalAlignment="Bottom"
+                         Margin="0,0,0,3"/>
+
+            </Border>
+
+
+            <!-- ============================= -->
+            <!-- WHISKERS -->
+            <!-- ============================= -->
+
+            <Canvas>
+
+                <Line X1="12"
+                      Y1="139"
+                      X2="42"
+                      Y2="145"
+                      Stroke="#394255"
+                      StrokeThickness="2"/>
+
+                <Line X1="9"
+                      Y1="151"
+                      X2="41"
+                      Y2="151"
+                      Stroke="#394255"
+                      StrokeThickness="2"/>
+
+                <Line X1="128"
+                      Y1="145"
+                      X2="158"
+                      Y2="139"
+                      Stroke="#394255"
+                      StrokeThickness="2"/>
+
+                <Line X1="129"
+                      Y1="151"
+                      X2="161"
+                      Y2="151"
+                      Stroke="#394255"
+                      StrokeThickness="2"/>
+
+            </Canvas>
+
+
+            <!-- ============================= -->
+            <!-- LU-KNIGHT SPARKLE -->
+            <!-- ============================= -->
 
             <TextBlock Text="✦"
-                       FontSize="12"
-                       Foreground="#72B7F2"
+                       FontSize="14"
+                       Foreground="#61C4F3"
+                       FontWeight="Bold"
                        HorizontalAlignment="Right"
                        VerticalAlignment="Top"
-                       Margin="0,82,25,0"/>
+                       Margin="0,68,13,0"/>
 
 
-            <!-- Sleep indicator -->
+            <!-- ============================= -->
+            <!-- SLEEP -->
+            <!-- ============================= -->
 
             <TextBlock x:Name="SleepText"
                        Text="Zzz"
                        FontSize="20"
-                       FontWeight="SemiBold"
-                       Foreground="#72B7F2"
+                       FontWeight="Bold"
+                       Foreground="#6CCBF4"
                        HorizontalAlignment="Right"
                        VerticalAlignment="Top"
-                       Margin="0,35,2,0"
+                       Margin="0,35,1,0"
                        Opacity="0"
                        Visibility="Collapsed"/>
 
