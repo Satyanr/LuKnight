@@ -109,7 +109,7 @@
 
         <!-- Semua bagian karakter ada di dalam container ini -->
         <Grid x:Name="CharacterRoot"
-              RenderTransformOrigin="0.5,0.75">
+              RenderTransformOrigin="0.5,0.72">
 
             <Grid.RenderTransform>
                 <TransformGroup>
@@ -129,187 +129,280 @@
             </Grid.RenderTransform>
 
 
-            <!-- Bayangan -->
-            <Ellipse Width="115"
-                     Height="20"
-                     Fill="#25000000"
+            <!-- Shadow -->
+            <Ellipse Width="105"
+                     Height="15"
+                     Fill="#220F172A"
                      VerticalAlignment="Bottom"
-                     Margin="0,0,0,4"/>
+                     Margin="0,0,0,5"/>
 
 
-            <!-- Kaki kiri -->
-            <Ellipse Width="37"
-                     Height="55"
-                     Fill="#FFF0D2"
-                     Stroke="#5B5147"
-                     StrokeThickness="3"
-                     HorizontalAlignment="Left"
-                     VerticalAlignment="Bottom"
-                     Margin="45,0,0,8"
-                     RenderTransformOrigin="0.5,0.1">
-
-                <Ellipse.RenderTransform>
-                    <RotateTransform x:Name="LeftFootRotate"
-                                     Angle="0"/>
-                </Ellipse.RenderTransform>
-
-            </Ellipse>
-
-
-            <!-- Kaki kanan -->
-            <Ellipse Width="37"
-                     Height="55"
-                     Fill="#FFF0D2"
-                     Stroke="#5B5147"
+            <!-- Tail -->
+            <Ellipse Width="29"
+                     Height="29"
+                     Fill="#F8FBFF"
+                     Stroke="#334155"
                      StrokeThickness="3"
                      HorizontalAlignment="Right"
                      VerticalAlignment="Bottom"
-                     Margin="0,0,45,8"
-                     RenderTransformOrigin="0.5,0.1">
-
-                <Ellipse.RenderTransform>
-                    <RotateTransform x:Name="RightFootRotate"
-                                     Angle="0"/>
-                </Ellipse.RenderTransform>
-
-            </Ellipse>
+                     Margin="0,0,18,38"/>
 
 
-            <!-- Tubuh -->
-            <Ellipse Width="120"
-                     Height="125"
-                     Fill="#FFF0D2"
-                     Stroke="#5B5147"
-                     StrokeThickness="3"
-                     VerticalAlignment="Bottom"
-                     Margin="0,0,0,18"/>
+            <!-- Feet -->
 
-
-            <!-- Telinga kiri -->
-            <Ellipse Width="42"
-                     Height="72"
-                     Fill="#FFF0D2"
-                     Stroke="#5B5147"
+            <Ellipse Width="38"
+                     Height="25"
+                     Fill="#F8FBFF"
+                     Stroke="#334155"
                      StrokeThickness="3"
                      HorizontalAlignment="Left"
-                     VerticalAlignment="Top"
-                     Margin="24,15,0,0"
-                     RenderTransformOrigin="0.5,0.5">
+                     VerticalAlignment="Bottom"
+                     Margin="44,0,0,8"
+                     RenderTransformOrigin="0.5,0.2">
 
                 <Ellipse.RenderTransform>
-                    <RotateTransform Angle="-22"/>
+                    <RotateTransform x:Name="LeftFootRotate"/>
                 </Ellipse.RenderTransform>
 
             </Ellipse>
 
 
-            <!-- Telinga kanan -->
-            <Ellipse Width="42"
-                     Height="72"
-                     Fill="#FFF0D2"
-                     Stroke="#5B5147"
+            <Ellipse Width="38"
+                     Height="25"
+                     Fill="#F8FBFF"
+                     Stroke="#334155"
                      StrokeThickness="3"
                      HorizontalAlignment="Right"
-                     VerticalAlignment="Top"
-                     Margin="0,15,24,0"
-                     RenderTransformOrigin="0.5,0.5">
+                     VerticalAlignment="Bottom"
+                     Margin="0,0,44,8"
+                     RenderTransformOrigin="0.5,0.2">
 
                 <Ellipse.RenderTransform>
-                    <RotateTransform Angle="22"/>
+                    <RotateTransform x:Name="RightFootRotate"/>
                 </Ellipse.RenderTransform>
 
             </Ellipse>
 
 
-            <!-- Kepala -->
-            <Ellipse Width="145"
-                     Height="125"
-                     Fill="#FFF0D2"
-                     Stroke="#5B5147"
-                     StrokeThickness="3"
-                     VerticalAlignment="Top"
-                     Margin="0,43,0,0"/>
+            <!-- Body -->
+
+            <Border Width="103"
+                    Height="87"
+                    Background="#F8FBFF"
+                    BorderBrush="#334155"
+                    BorderThickness="3"
+                    CornerRadius="48"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,0,23"/>
 
 
-            <!-- Mata normal -->
-            <Grid x:Name="AwakeEyes">
+            <!-- Knight chest emblem -->
 
-                <Ellipse Width="12"
-                         Height="17"
-                         Fill="#433C36"
-                         HorizontalAlignment="Left"
-                         VerticalAlignment="Top"
-                         Margin="53,91,0,0"/>
+            <Grid Width="22"
+                  Height="22"
+                  VerticalAlignment="Bottom"
+                  Margin="0,0,0,68">
 
-                <Ellipse Width="12"
-                         Height="17"
-                         Fill="#433C36"
-                         HorizontalAlignment="Right"
-                         VerticalAlignment="Top"
-                         Margin="0,91,53,0"/>
+                <Polygon Points="11,1 20,11 11,21 2,11"
+                         Fill="#72B7F2"
+                         Stroke="#334155"
+                         StrokeThickness="2"/>
+
+                <Ellipse Width="5"
+                         Height="5"
+                         Fill="#F8FBFF"/>
 
             </Grid>
 
 
-            <!-- Mata tidur -->
+            <!-- LEFT EAR -->
+
+            <Border Width="34"
+                    Height="86"
+                    Background="#F8FBFF"
+                    BorderBrush="#334155"
+                    BorderThickness="3"
+                    CornerRadius="18"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Margin="35,8,0,0"
+                    RenderTransformOrigin="0.5,0.85">
+
+                <Border.RenderTransform>
+                    <RotateTransform Angle="-10"/>
+                </Border.RenderTransform>
+
+                <Border Width="15"
+                        Height="57"
+                        Background="#BFE3FF"
+                        CornerRadius="10"
+                        VerticalAlignment="Center"/>
+
+            </Border>
+
+
+            <!-- RIGHT EAR -->
+
+            <Border Width="34"
+                    Height="86"
+                    Background="#F8FBFF"
+                    BorderBrush="#334155"
+                    BorderThickness="3"
+                    CornerRadius="18"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Margin="0,8,35,0"
+                    RenderTransformOrigin="0.5,0.85">
+
+                <Border.RenderTransform>
+                    <RotateTransform Angle="10"/>
+                </Border.RenderTransform>
+
+                <Border Width="15"
+                        Height="57"
+                        Background="#BFE3FF"
+                        CornerRadius="10"
+                        VerticalAlignment="Center"/>
+
+            </Border>
+
+
+            <!-- HEAD -->
+
+            <Border Width="142"
+                    Height="116"
+                    Background="#F8FBFF"
+                    BorderBrush="#334155"
+                    BorderThickness="3"
+                    CornerRadius="58"
+                    VerticalAlignment="Top"
+                    Margin="0,62,0,0"/>
+
+
+            <!-- Cheeks -->
+
+            <Ellipse Width="20"
+                     Height="10"
+                     Fill="#D7ECFF"
+                     HorizontalAlignment="Left"
+                     VerticalAlignment="Top"
+                     Margin="35,129,0,0"/>
+
+            <Ellipse Width="20"
+                     Height="10"
+                     Fill="#D7ECFF"
+                     HorizontalAlignment="Right"
+                     VerticalAlignment="Top"
+                     Margin="0,129,35,0"/>
+
+
+            <!-- Awake Eyes -->
+
+            <Grid x:Name="AwakeEyes">
+
+                <Ellipse Width="10"
+                         Height="14"
+                         Fill="#263548"
+                         HorizontalAlignment="Left"
+                         VerticalAlignment="Top"
+                         Margin="49,105,0,0"/>
+
+                <Ellipse Width="10"
+                         Height="14"
+                         Fill="#263548"
+                         HorizontalAlignment="Right"
+                         VerticalAlignment="Top"
+                         Margin="0,105,49,0"/>
+
+                <!-- eye highlights -->
+
+                <Ellipse Width="3"
+                         Height="3"
+                         Fill="White"
+                         HorizontalAlignment="Left"
+                         VerticalAlignment="Top"
+                         Margin="52,107,0,0"/>
+
+                <Ellipse Width="3"
+                         Height="3"
+                         Fill="White"
+                         HorizontalAlignment="Right"
+                         VerticalAlignment="Top"
+                         Margin="0,107,52,0"/>
+
+            </Grid>
+
+
+            <!-- Sleep Eyes -->
+
             <Grid x:Name="SleepEyes"
                   Visibility="Collapsed">
 
-                <Border Width="22"
-                        Height="8"
-                        BorderBrush="#433C36"
+                <Border Width="18"
+                        Height="7"
+                        BorderBrush="#263548"
                         BorderThickness="0,0,0,3"
                         CornerRadius="10"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"
-                        Margin="45,92,0,0"/>
+                        Margin="45,108,0,0"/>
 
-                <Border Width="22"
-                        Height="8"
-                        BorderBrush="#433C36"
+                <Border Width="18"
+                        Height="7"
+                        BorderBrush="#263548"
                         BorderThickness="0,0,0,3"
                         CornerRadius="10"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Top"
-                        Margin="0,92,45,0"/>
+                        Margin="0,108,45,0"/>
 
             </Grid>
 
 
-            <!-- Hidung -->
-            <Ellipse Width="9"
-                     Height="7"
-                     Fill="#8B6557"
-                     HorizontalAlignment="Center"
+            <!-- Nose -->
+
+            <Ellipse Width="7"
+                     Height="5"
+                     Fill="#72B7F2"
                      VerticalAlignment="Top"
-                     Margin="0,116,0,0"/>
+                     Margin="0,127,0,0"/>
 
 
-            <!-- Mulut -->
-            <Border Width="23"
-                    Height="12"
-                    BorderBrush="#6A554A"
-                    BorderThickness="0,0,0,3"
-                    CornerRadius="10"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Top"
-                    Margin="0,121,0,0"/>
+            <!-- Mouth -->
+
+            <TextBlock Text="ᴗ"
+                       Foreground="#334155"
+                       FontSize="17"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Top"
+                       Margin="0,128,0,0"/>
 
 
-            <!-- Zzz -->
-            <TextBlock x:Name="SleepText"
-                       Text="Zzz"
-                       FontSize="22"
-                       FontWeight="SemiBold"
-                       Foreground="#6F6B88"
+            <!-- Small Lu mark -->
+
+            <TextBlock Text="✦"
+                       FontSize="12"
+                       Foreground="#72B7F2"
                        HorizontalAlignment="Right"
                        VerticalAlignment="Top"
-                       Margin="0,32,3,0"
+                       Margin="0,82,25,0"/>
+
+
+            <!-- Sleep indicator -->
+
+            <TextBlock x:Name="SleepText"
+                       Text="Zzz"
+                       FontSize="20"
+                       FontWeight="SemiBold"
+                       Foreground="#72B7F2"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Top"
+                       Margin="0,35,2,0"
                        Opacity="0"
                        Visibility="Collapsed"/>
 
         </Grid>
-
     </Grid>
 
 </UserControl>
