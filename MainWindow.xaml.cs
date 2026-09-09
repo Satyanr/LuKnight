@@ -72,7 +72,12 @@ public partial class MainWindow : Window
         MouseButtonEventArgs e)
     {
         _leftMouseDown = true;
-        _behaviorController?.Pause();
+
+        _behaviorController?
+            .NotifyUserInteraction();
+
+        _behaviorController?
+            .Pause();
         _dragStarted = false;
         _mouseDownPosition = e.GetPosition(this);
 
@@ -146,6 +151,9 @@ public partial class MainWindow : Window
 
     private void ToggleChat()
     {
+        _behaviorController?
+            .NotifyUserInteraction();
+
         ChatPopup.IsOpen =
             !ChatPopup.IsOpen;
 
@@ -168,6 +176,9 @@ public partial class MainWindow : Window
             return;
 
         _isSending = true;
+
+        _behaviorController?
+            .NotifyUserInteraction();
 
         using var requestCts = new CancellationTokenSource();
         _requestCts = requestCts;

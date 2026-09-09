@@ -1,7 +1,9 @@
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Animation;
+using System.Windows.Media;
 
 namespace LuKnight.Views;
 
@@ -32,6 +34,65 @@ public partial class CharacterView : UserControl
                 : 1;
     }
 
+    public void Blink()
+    {
+        if (CurrentState == CharacterState.Sleep)
+            return;
+
+        PlayTransientStoryboard("BlinkStoryboard");
+    }
+
+
+    public void TwitchEars()
+    {
+        if (CurrentState == CharacterState.Sleep)
+            return;
+
+        PlayTransientStoryboard("EarTwitchStoryboard");
+    }
+
+
+    public void LookSide(int direction)
+    {
+        if (CurrentState == CharacterState.Sleep)
+            return;
+
+        double targetX =
+            direction < 0
+                ? -4
+                : 4;
+
+        var animation =
+            new DoubleAnimation
+            {
+                From = 0,
+                To = targetX,
+                Duration =
+                    TimeSpan.FromMilliseconds(280),
+                AutoReverse = true,
+                FillBehavior = FillBehavior.Stop
+            };
+
+        EyeLookTranslate.BeginAnimation(
+            TranslateTransform.XProperty,
+            animation);
+    }
+
+
+    private void PlayTransientStoryboard(
+        string resourceName)
+    {
+        if (FindResource(resourceName)
+            is not Storyboard storyboard)
+        {
+            return;
+        }
+
+        storyboard.Begin(
+            this,
+            HandoffBehavior.Compose,
+            false);
+    }
     private void CharacterView_Loaded(
         object sender,
         RoutedEventArgs e)
@@ -93,6 +154,18 @@ public partial class CharacterView : UserControl
     {
         AwakeEyes.Visibility = Visibility.Visible;
         SleepEyes.Visibility = Visibility.Collapsed;
+
+        EyeBlinkScale.ScaleX = 1;
+        EyeBlinkScale.ScaleY = 1;
+
+        EyeLookTranslate.X = 0;
+        EyeLookTranslate.Y = 0;
+
+        LeftEarRotate.Angle = -24;
+        RightEarRotate.Angle = 27;
+
+        LeftArmRotate.Angle = -18;
+        RightArmRotate.Angle = 18;
 
         SleepText.Visibility = Visibility.Collapsed;
         SleepText.Opacity = 0;

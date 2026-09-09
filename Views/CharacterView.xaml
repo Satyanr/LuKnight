@@ -11,6 +11,46 @@
     <UserControl.Resources>
 
         <!-- ====================== -->
+        <!-- BLINK -->
+        <!-- ====================== -->
+        <Storyboard x:Key="BlinkStoryboard">
+
+            <DoubleAnimation
+                Storyboard.TargetName="EyeBlinkScale"
+                Storyboard.TargetProperty="ScaleY"
+                From="1"
+                To="0.08"
+                Duration="0:0:0.07"
+                AutoReverse="True"/>
+
+        </Storyboard>
+
+
+        <!-- ====================== -->
+        <!-- EAR TWITCH -->
+        <!-- ====================== -->
+        <Storyboard x:Key="EarTwitchStoryboard">
+
+            <DoubleAnimation
+                Storyboard.TargetName="LeftEarRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-24"
+                To="-12"
+                Duration="0:0:0.12"
+                AutoReverse="True"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="RightEarRotate"
+                Storyboard.TargetProperty="Angle"
+                From="27"
+                To="16"
+                Duration="0:0:0.12"
+                BeginTime="0:0:0.04"
+                AutoReverse="True"/>
+
+        </Storyboard>
+
+        <!-- ====================== -->
         <!-- IDLE ANIMATION -->
         <!-- ====================== -->
         <Storyboard x:Key="IdleStoryboard"
@@ -340,7 +380,22 @@
             <!-- EYES -->
             <!-- ============================= -->
 
-            <Grid x:Name="AwakeEyes">
+            <Grid x:Name="AwakeEyes"
+                  RenderTransformOrigin="0.5,0.5">
+
+                <Grid.RenderTransform>
+                    <TransformGroup>
+
+                        <ScaleTransform x:Name="EyeBlinkScale"
+                                        ScaleX="1"
+                                        ScaleY="1"/>
+
+                        <TranslateTransform x:Name="EyeLookTranslate"
+                                            X="0"
+                                            Y="0"/>
+
+                    </TransformGroup>
+                </Grid.RenderTransform>
 
                 <!-- LEFT CYAN EYE RIM -->
 
