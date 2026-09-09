@@ -384,20 +384,15 @@
                   RenderTransformOrigin="0.5,0.5">
 
                 <Grid.RenderTransform>
-                    <TransformGroup>
-
-                        <ScaleTransform x:Name="EyeBlinkScale"
-                                        ScaleX="1"
-                                        ScaleY="1"/>
-
-                        <TranslateTransform x:Name="EyeLookTranslate"
-                                            X="0"
-                                            Y="0"/>
-
-                    </TransformGroup>
+                    <ScaleTransform x:Name="EyeBlinkScale"
+                                    ScaleX="1"
+                                    ScaleY="1"/>
                 </Grid.RenderTransform>
 
-                <!-- LEFT CYAN EYE RIM -->
+
+                <!-- ========================= -->
+                <!-- STATIC EYE SOCKETS -->
+                <!-- ========================= -->
 
                 <Ellipse Width="52"
                          Height="57"
@@ -406,18 +401,6 @@
                          VerticalAlignment="Top"
                          Margin="25,82,0,0"/>
 
-                <!-- LEFT BLACK EYE -->
-
-                <Ellipse Width="43"
-                         Height="50"
-                         Fill="#151923"
-                         HorizontalAlignment="Left"
-                         VerticalAlignment="Top"
-                         Margin="30,85,0,0"/>
-
-
-                <!-- RIGHT CYAN EYE RIM -->
-
                 <Ellipse Width="52"
                          Height="57"
                          Fill="#AEEBF2"
@@ -425,70 +408,92 @@
                          VerticalAlignment="Top"
                          Margin="0,82,25,0"/>
 
-                <!-- RIGHT BLACK EYE -->
 
-                <Ellipse Width="43"
-                         Height="50"
-                         Fill="#151923"
-                         HorizontalAlignment="Right"
-                         VerticalAlignment="Top"
-                         Margin="0,85,30,0"/>
+                <!-- ========================= -->
+                <!-- MOVING EYEBALL LAYER -->
+                <!-- ========================= -->
 
+                <Grid x:Name="EyeLookLayer">
 
-                <!-- Big eye highlights -->
-
-                <Ellipse Width="13"
-                         Height="17"
-                         Fill="#FFFFFF"
-                         HorizontalAlignment="Left"
-                         VerticalAlignment="Top"
-                         Margin="38,92,0,0"/>
-
-                <Ellipse Width="13"
-                         Height="17"
-                         Fill="#FFFFFF"
-                         HorizontalAlignment="Right"
-                         VerticalAlignment="Top"
-                         Margin="0,92,38,0"/>
+                    <Grid.RenderTransform>
+                        <TranslateTransform x:Name="EyeLookTranslate"
+                                            X="0"
+                                            Y="0"/>
+                    </Grid.RenderTransform>
 
 
-                <!-- Lu-Knight diamond pupils -->
+                    <!-- Black eyes -->
 
-                <Polygon Points="7,0 14,7 7,14 0,7"
-                         Width="14"
-                         Height="14"
-                         Fill="White"
-                         HorizontalAlignment="Left"
-                         VerticalAlignment="Top"
-                         Margin="49,108,0,0"/>
+                    <Ellipse Width="43"
+                             Height="50"
+                             Fill="#151923"
+                             HorizontalAlignment="Left"
+                             VerticalAlignment="Top"
+                             Margin="30,85,0,0"/>
 
-                <Polygon Points="7,0 14,7 7,14 0,7"
-                         Width="14"
-                         Height="14"
-                         Fill="White"
-                         HorizontalAlignment="Right"
-                         VerticalAlignment="Top"
-                         Margin="0,108,49,0"/>
+                    <Ellipse Width="43"
+                             Height="50"
+                             Fill="#151923"
+                             HorizontalAlignment="Right"
+                             VerticalAlignment="Top"
+                             Margin="0,85,30,0"/>
 
 
-                <!-- Tiny gloss -->
+                    <!-- Big highlights -->
 
-                <Ellipse Width="5"
-                         Height="5"
-                         Fill="#DDF8FF"
-                         HorizontalAlignment="Left"
-                         VerticalAlignment="Top"
-                         Margin="56,96,0,0"/>
+                    <Ellipse Width="13"
+                             Height="17"
+                             Fill="White"
+                             HorizontalAlignment="Left"
+                             VerticalAlignment="Top"
+                             Margin="38,92,0,0"/>
 
-                <Ellipse Width="5"
-                         Height="5"
-                         Fill="#DDF8FF"
-                         HorizontalAlignment="Right"
-                         VerticalAlignment="Top"
-                         Margin="0,96,56,0"/>
+                    <Ellipse Width="13"
+                             Height="17"
+                             Fill="White"
+                             HorizontalAlignment="Right"
+                             VerticalAlignment="Top"
+                             Margin="0,92,38,0"/>
+
+
+                    <!-- Diamond pupils -->
+
+                    <Polygon Points="7,0 14,7 7,14 0,7"
+                             Width="14"
+                             Height="14"
+                             Fill="White"
+                             HorizontalAlignment="Left"
+                             VerticalAlignment="Top"
+                             Margin="49,108,0,0"/>
+
+                    <Polygon Points="7,0 14,7 7,14 0,7"
+                             Width="14"
+                             Height="14"
+                             Fill="White"
+                             HorizontalAlignment="Right"
+                             VerticalAlignment="Top"
+                             Margin="0,108,49,0"/>
+
+
+                    <!-- Tiny gloss -->
+
+                    <Ellipse Width="5"
+                             Height="5"
+                             Fill="#DDF8FF"
+                             HorizontalAlignment="Left"
+                             VerticalAlignment="Top"
+                             Margin="56,96,0,0"/>
+
+                    <Ellipse Width="5"
+                             Height="5"
+                             Fill="#DDF8FF"
+                             HorizontalAlignment="Right"
+                             VerticalAlignment="Top"
+                             Margin="0,96,56,0"/>
+
+                </Grid>
 
             </Grid>
-
 
             <!-- ============================= -->
             <!-- SLEEP EYES -->

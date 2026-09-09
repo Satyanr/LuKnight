@@ -192,14 +192,14 @@ public sealed class BehaviorController : IDisposable
             _random.NextDouble();
 
         // 50% jalan
-        if (decision < 0.50)
+        if (decision < 0.40)
         {
             StartWalking();
             return;
         }
 
         // 20% telinga bergerak
-        if (decision < 0.70)
+        if (decision < 0.60)
         {
             _character.TwitchEars();
 
@@ -247,6 +247,7 @@ public sealed class BehaviorController : IDisposable
             _random.Next(0, 2) == 0
                 ? -1
                 : 1;
+        _character.LookSide(_direction);
 
         _character.SetState(
             CharacterState.Walk);

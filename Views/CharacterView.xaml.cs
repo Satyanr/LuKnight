@@ -59,26 +59,47 @@ public partial class CharacterView : UserControl
 
         double targetX =
             direction < 0
-                ? -4
-                : 4;
+                ? -7
+                : 7;
 
         var animation =
-            new DoubleAnimation
+            new DoubleAnimationUsingKeyFrames
             {
-                From = 0,
-                To = targetX,
-                Duration =
-                    TimeSpan.FromMilliseconds(280),
-                AutoReverse = true,
                 FillBehavior = FillBehavior.Stop
             };
+
+        // posisi awal
+        animation.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                0,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.Zero)));
+
+        // melirik
+        animation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                targetX,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(140))));
+
+        // tahan pandangan
+        animation.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                targetX,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(750))));
+
+        // kembali tengah
+        animation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                0,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(950))));
 
         EyeLookTranslate.BeginAnimation(
             TranslateTransform.XProperty,
             animation);
     }
-
-
     private void PlayTransientStoryboard(
         string resourceName)
     {
