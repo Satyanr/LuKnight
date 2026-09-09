@@ -60,6 +60,7 @@ public sealed class BehaviorController : IDisposable
             return;
 
         _paused = true;
+        _walking = false;
 
         _character.SetState(CharacterState.Idle);
         _character.SetFacingDirection(_direction);
@@ -71,9 +72,8 @@ public sealed class BehaviorController : IDisposable
             return;
 
         _paused = false;
+        _walking = false;
 
-        // Phase pertama:
-        // setelah di-drag, Lu-Knight kembali ke "lantai".
         PlaceOnDesktopBottom();
 
         _character.SetState(CharacterState.Idle);

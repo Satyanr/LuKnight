@@ -110,24 +110,10 @@ public partial class CharacterView : UserControl
     }
 
     private void CharacterView_MouseRightButtonDown(
-        object sender,
-        MouseButtonEventArgs e)
+    object sender,
+    MouseButtonEventArgs e)
     {
-        switch (CurrentState)
-        {
-            case CharacterState.Idle:
-                SetState(CharacterState.Walk);
-                break;
-
-            case CharacterState.Walk:
-                SetState(CharacterState.Sleep);
-                break;
-
-            case CharacterState.Sleep:
-                SetState(CharacterState.Idle);
-                break;
-        }
-
+        // Reserved untuk context menu Lu-Knight.
         e.Handled = true;
     }
 }
