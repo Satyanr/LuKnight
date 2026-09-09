@@ -24,6 +24,14 @@ public partial class CharacterView : UserControl
         InitializeComponent();
     }
 
+    public void SetFacingDirection(int direction)
+    {
+        BodyScale.ScaleX =
+            direction < 0
+                ? -1
+                : 1;
+    }
+
     private void CharacterView_Loaded(
         object sender,
         RoutedEventArgs e)

@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using LuKnight.Services;
 using LuKnight.Views;
+using LuKnight.Behaviors;
 
 namespace LuKnight;
 
@@ -12,6 +13,8 @@ public partial class MainWindow : Window
     private readonly IChatService _chatService;
     private readonly bool _usesGemini;
 
+    private BehaviorController? _behaviorController;
+
     private CancellationTokenSource? _requestCts;
     private bool _isSending;
 
@@ -19,9 +22,22 @@ public partial class MainWindow : Window
     private bool _leftMouseDown;
     private bool _dragStarted;
 
+    private void MainWindow_Loaded(
+    object sender,
+    RoutedEventArgs e)
+    {
+        _behaviorController =
+            new BehaviorController(
+                this,
+                CharacterControl);
+
+        _behaviorController.Start();
+    }
+
     public MainWindow()
     {
         InitializeComponent();
+        Loaded += MainWindow_Loaded;
 
         string? geminiApiKey =
             Environment.GetEnvironmentVariable("GEMINI_API_KEY");
@@ -41,13 +57,13 @@ public partial class MainWindow : Window
                 ChatStatus.Ready);
 
             ChatPanelControl.AddAssistantMessage(
-                "Halo! Aku Mimo. Gemini sudah dikonfigurasi dan siap dipakai.");
+                "Halo! Aku Lu-Knight. Gemini sudah dikonfigurasi dan siap dipakai.");
         }
         else
         {
             ChatPanelControl.SetStatus("Local mode • GEMINI_API_KEY belum ada", ChatStatus.Local);
             ChatPanelControl.AddAssistantMessage(
-                "Halo! Aku Mimo. Aku sedang berjalan dalam local mode karena GEMINI_API_KEY belum terbaca.");
+                "Halo! Aku Lu-Knight. Aku sedang berjalan dalam local mode karena GEMINI_API_KEY belum terbaca.");
         }
     }
 
@@ -56,6 +72,7 @@ public partial class MainWindow : Window
         MouseButtonEventArgs e)
     {
         _leftMouseDown = true;
+        _behaviorController?.Pause();
         _dragStarted = false;
         _mouseDownPosition = e.GetPosition(this);
 
@@ -100,7 +117,12 @@ public partial class MainWindow : Window
         }
         catch (InvalidOperationException)
         {
-            // Mouse bisa terlepas tepat saat ambang drag tercapai.
+            // Mouse bisa terlepas tepat saat
+            // ambang drag tercapai.
+        }
+        finally
+        {
+            _behaviorController?.Resume();
         }
 
         e.Handled = true;
@@ -124,11 +146,19 @@ public partial class MainWindow : Window
 
     private void ToggleChat()
     {
-        ChatPopup.IsOpen = !ChatPopup.IsOpen;
+        ChatPopup.IsOpen =
+            !ChatPopup.IsOpen;
 
         if (ChatPopup.IsOpen)
         {
-            Dispatcher.BeginInvoke(ChatPanelControl.FocusInput);
+            _behaviorController?.Pause();
+
+            Dispatcher.BeginInvoke(
+                ChatPanelControl.FocusInput);
+        }
+        else
+        {
+            _behaviorController?.Resume();
         }
     }
 
@@ -147,7 +177,7 @@ public partial class MainWindow : Window
 
         if (_usesGemini)
         {
-            ChatPanelControl.SetStatus("Mimo sedang berpikir...", ChatStatus.Busy);
+            ChatPanelControl.SetStatus("Lu-Knight sedang berpikir...", ChatStatus.Busy);
         }
 
         try
@@ -194,6 +224,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _requestCts?.Cancel();
+        _behaviorController?.Dispose();
         base.OnClosed(e);
     }
 }

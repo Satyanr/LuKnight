@@ -28,7 +28,7 @@
             <StackPanel Grid.Row="0"
                         Margin="2,0,2,10">
 
-                <TextBlock Text="Mimo"
+                <TextBlock Text="Lu-Knight"
                            FontSize="18"
                            FontWeight="SemiBold"
                            Foreground="#403A34"/>
