@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Threading;
 using LuKnight.Views;
+using LuKnight.Services;
 
 namespace LuKnight.Behaviors;
 
@@ -30,6 +31,199 @@ public sealed class BehaviorController : IDisposable
     private int _direction = 1;
 
     private const double WalkSpeed = 55.0;
+
+    private bool _cursorNearby;
+    private bool _cursorVeryClose;
+
+    private DateTime _nextCursorReactionAt;
+
+    private const double CursorAttentionRadius = 320;
+    private const double CursorCuriousRadius = 140;
+    private const double CursorWakeRadius = 100;
+
+    private bool UpdateCursorAwareness(
+    DateTime now)
+    {
+        if (!DesktopCursorService.TryGetPosition(
+                out Point cursorScreen))
+        {
+            _character.RelaxCursorLook();
+            return false;
+        }
+
+        // GetCursorPos menggunakan screen pixels.
+        // WPF mengubahnya menjadi coordinate system
+        // window/DPI yang benar.
+        Point cursorInWindow;
+
+        try
+        {
+            cursorInWindow =
+                _window.PointFromScreen(
+                    cursorScreen);
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+
+        double characterWidth =
+            _character.ActualWidth;
+
+        double characterHeight =
+            _character.ActualHeight;
+
+        if (characterWidth <= 0 ||
+            characterHeight <= 0)
+        {
+            return false;
+        }
+
+        // Posisi kira-kira pusat wajah Lu-Knight.
+        Point faceCenter =
+            _character.TranslatePoint(
+                new Point(
+                    characterWidth * 0.50,
+                    characterHeight * 0.50),
+                _window);
+
+        double deltaX =
+            cursorInWindow.X -
+            faceCenter.X;
+
+        double deltaY =
+            cursorInWindow.Y -
+            faceCenter.Y;
+
+        double distance =
+            Math.Sqrt(
+                (deltaX * deltaX) +
+                (deltaY * deltaY));
+
+
+        // =========================
+        // SLEEPING
+        // =========================
+
+        if (_sleeping)
+        {
+            if (distance <= CursorWakeRadius)
+            {
+                _lastInteractionAt = now;
+
+                WakeUp();
+
+                _character.TwitchEars();
+            }
+
+            return false;
+        }
+
+
+        // =========================
+        // CURSOR FAR AWAY
+        // =========================
+
+        if (distance > CursorAttentionRadius)
+        {
+            if (_cursorNearby)
+            {
+                _cursorNearby = false;
+                _cursorVeryClose = false;
+
+                ScheduleNextDecision(
+                    0.8,
+                    1.8);
+            }
+
+            _character.RelaxCursorLook();
+
+            return false;
+        }
+
+
+        // =========================
+        // CURSOR ENTERED AREA
+        // =========================
+
+        if (!_cursorNearby)
+        {
+            _cursorNearby = true;
+
+            // Lu-Knight berhenti untuk melihat user.
+            _walking = false;
+
+            _character.SetState(
+                CharacterState.Idle);
+
+            _character.SetFacingDirection(
+                _direction);
+
+            _character.TwitchEars();
+
+            _nextCursorReactionAt =
+                now.AddSeconds(1.5);
+        }
+
+
+        // =========================
+        // EYE TRACKING
+        // =========================
+
+        double normalizedX =
+            Math.Clamp(
+                deltaX / 130.0,
+                -1,
+                1);
+
+        double normalizedY =
+            Math.Clamp(
+                deltaY / 100.0,
+                -1,
+                1);
+
+        _character.TrackCursor(
+            normalizedX,
+            normalizedY);
+
+
+        // =========================
+        // VERY CLOSE / CURIOUS
+        // =========================
+
+        if (distance <= CursorCuriousRadius)
+        {
+            _lastInteractionAt = now;
+
+            if (!_cursorVeryClose)
+            {
+                _cursorVeryClose = true;
+
+                _character.TwitchEars();
+            }
+
+            // Sesekali telinga bereaksi lagi
+            // jika cursor tetap dekat.
+            if (now >= _nextCursorReactionAt)
+            {
+                _character.TwitchEars();
+
+                _nextCursorReactionAt =
+                    now.AddSeconds(
+                        1.5 +
+                        (_random.NextDouble() * 2));
+            }
+        }
+        else if (distance >
+                 CursorCuriousRadius + 35)
+        {
+            // Hysteresis supaya status tidak
+            // berkedip-kedip di batas radius.
+            _cursorVeryClose = false;
+        }
+
+        return true;
+    }
 
     public BehaviorController(
         Window window,
@@ -136,6 +330,9 @@ public sealed class BehaviorController : IDisposable
                 0,
                 0.1);
 
+        bool cursorHasAttention =
+            UpdateCursorAwareness(now);
+
         // =========================
         // AUTO SLEEP
         // =========================
@@ -168,7 +365,8 @@ public sealed class BehaviorController : IDisposable
         // BEHAVIOUR
         // =========================
 
-        if (now >= _nextDecisionAt)
+        if (!cursorHasAttention &&
+            now >= _nextDecisionAt)
         {
             ChooseNextBehavior();
         }
@@ -247,12 +445,14 @@ public sealed class BehaviorController : IDisposable
             _random.Next(0, 2) == 0
                 ? -1
                 : 1;
-        _character.LookSide(_direction);
 
         _character.SetState(
             CharacterState.Walk);
 
         _character.SetFacingDirection(
+            _direction);
+
+        _character.LookSide(
             _direction);
 
         ScheduleNextDecision(

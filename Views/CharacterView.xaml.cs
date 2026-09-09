@@ -17,6 +17,12 @@ public enum CharacterState
 public partial class CharacterView : UserControl
 {
     private Storyboard? _currentStoryboard;
+    private int _facingDirection = 1;
+
+    private double _eyeOffsetX;
+    private double _eyeOffsetY;
+
+    private bool _cursorTracking;
 
     public CharacterState CurrentState { get; private set; }
         = CharacterState.Idle;
@@ -28,12 +34,14 @@ public partial class CharacterView : UserControl
 
     public void SetFacingDirection(int direction)
     {
-        BodyScale.ScaleX =
+        _facingDirection =
             direction < 0
                 ? -1
                 : 1;
-    }
 
+        BodyScale.ScaleX =
+            _facingDirection;
+    }
     public void Blink()
     {
         if (CurrentState == CharacterState.Sleep)
@@ -57,10 +65,19 @@ public partial class CharacterView : UserControl
         if (CurrentState == CharacterState.Sleep)
             return;
 
-        double targetX =
+        _cursorTracking = false;
+
+        _eyeOffsetX = 0;
+        _eyeOffsetY = 0;
+
+        double screenTargetX =
             direction < 0
                 ? -7
                 : 7;
+
+        double targetX =
+            screenTargetX *
+            _facingDirection;
 
         var animation =
             new DoubleAnimationUsingKeyFrames
@@ -100,6 +117,99 @@ public partial class CharacterView : UserControl
             TranslateTransform.XProperty,
             animation);
     }
+
+    public void TrackCursor(
+    double horizontal,
+    double vertical)
+    {
+        if (CurrentState == CharacterState.Sleep)
+            return;
+
+        _cursorTracking = true;
+
+        // Hentikan animasi LookSide jika sedang berjalan.
+        EyeLookTranslate.BeginAnimation(
+            TranslateTransform.XProperty,
+            null);
+
+        EyeLookTranslate.BeginAnimation(
+            TranslateTransform.YProperty,
+            null);
+
+        double screenTargetX =
+            Math.Clamp(
+                horizontal,
+                -1,
+                1) * 7;
+
+        double targetY =
+            Math.Clamp(
+                vertical,
+                -1,
+                1) * 5;
+
+        // Karena seluruh karakter bisa di-mirror,
+        // arah X lokal harus disesuaikan.
+        double localTargetX =
+            screenTargetX *
+            _facingDirection;
+
+        // Smooth following.
+        _eyeOffsetX +=
+            (localTargetX - _eyeOffsetX)
+            * 0.28;
+
+        _eyeOffsetY +=
+            (targetY - _eyeOffsetY)
+            * 0.28;
+
+        EyeLookTranslate.X =
+            _eyeOffsetX;
+
+        EyeLookTranslate.Y =
+            _eyeOffsetY;
+    }
+
+    public void RelaxCursorLook()
+    {
+        if (!_cursorTracking)
+            return;
+
+        if (CurrentState == CharacterState.Sleep)
+        {
+            _cursorTracking = false;
+            return;
+        }
+
+        EyeLookTranslate.BeginAnimation(
+            TranslateTransform.XProperty,
+            null);
+
+        EyeLookTranslate.BeginAnimation(
+            TranslateTransform.YProperty,
+            null);
+
+        _eyeOffsetX +=
+            (0 - _eyeOffsetX) * 0.20;
+
+        _eyeOffsetY +=
+            (0 - _eyeOffsetY) * 0.20;
+
+        if (Math.Abs(_eyeOffsetX) < 0.08 &&
+            Math.Abs(_eyeOffsetY) < 0.08)
+        {
+            _eyeOffsetX = 0;
+            _eyeOffsetY = 0;
+            _cursorTracking = false;
+        }
+
+        EyeLookTranslate.X =
+            _eyeOffsetX;
+
+        EyeLookTranslate.Y =
+            _eyeOffsetY;
+    }
+
     private void PlayTransientStoryboard(
         string resourceName)
     {
@@ -181,6 +291,10 @@ public partial class CharacterView : UserControl
 
         EyeLookTranslate.X = 0;
         EyeLookTranslate.Y = 0;
+
+        _eyeOffsetX = 0;
+        _eyeOffsetY = 0;
+        _cursorTracking = false;
 
         LeftEarRotate.Angle = -24;
         RightEarRotate.Angle = 27;
