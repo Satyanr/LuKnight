@@ -22,8 +22,13 @@ public sealed class BehaviorController : IDisposable
 
     private bool _sleeping;
 
-    private static readonly TimeSpan SleepAfter =
-        TimeSpan.FromSeconds(30);
+    private TimeSpan _sleepAfter = TimeSpan.FromSeconds(75);
+    private DateTime _sleepUntil = DateTime.MinValue;
+
+    private const double MinimumAwakeBeforeNapSeconds = 60.0;
+    private const double MaximumAwakeBeforeNapSeconds = 120.0;
+    private const double MinimumNapSeconds = 7.0;
+    private const double MaximumNapSeconds = 15.0;
 
     private bool _walking;
     private bool _paused;
@@ -239,8 +244,6 @@ public sealed class BehaviorController : IDisposable
                 _lastInteractionAt = now;
 
                 WakeUp();
-
-                _character.TwitchEars();
             }
 
             return false;
@@ -490,6 +493,8 @@ public sealed class BehaviorController : IDisposable
         _lastTickAt = now;
         _lastInteractionAt = now;
 
+        ScheduleNextSleepCycle();
+
         ScheduleNextDecision(
             1.5,
             3.5);
@@ -601,20 +606,32 @@ public sealed class BehaviorController : IDisposable
             UpdateCursorAwareness(now);
 
         // =========================
-        // AUTO SLEEP
+        // AUTO WAKE
         // =========================
 
-        if (!_sleeping &&
-            now - _lastInteractionAt
-                >= SleepAfter)
+        if (_sleeping)
+        {
+            if (now >= _sleepUntil)
+            {
+                WakeUp();
+            }
+            else
+            {
+                return;
+            }
+        }
+
+        // =========================
+        // AUTO NAP
+        // =========================
+
+        if (!_thinking &&
+            !_surfaceController.IsBusy &&
+            now - _lastInteractionAt >= _sleepAfter)
         {
             EnterSleep();
             return;
         }
-
-        if (_sleeping)
-            return;
-
 
         // =========================
         // AUTO BLINK
@@ -932,21 +949,36 @@ public sealed class BehaviorController : IDisposable
         _timer.Tick -= OnTick;
     }
 
+    private void ScheduleNextSleepCycle()
+    {
+        double seconds =
+            MinimumAwakeBeforeNapSeconds +
+            (_random.NextDouble() *
+             (MaximumAwakeBeforeNapSeconds - MinimumAwakeBeforeNapSeconds));
+
+        _sleepAfter = TimeSpan.FromSeconds(seconds);
+    }
+
     private void EnterSleep()
     {
+        if (_sleeping || _thinking || _surfaceController.IsBusy)
+        {
+            return;
+        }
+
         _walking = false;
         _sleeping = true;
 
-        _character.SetMood(
-    CharacterMood.Neutral);
+        double napSeconds =
+            MinimumNapSeconds +
+            (_random.NextDouble() * (MaximumNapSeconds - MinimumNapSeconds));
 
-        _character.SetState(
-            CharacterState.Sleep);
+        _sleepUntil = DateTime.UtcNow.AddSeconds(napSeconds);
 
-        _character.SetFacingDirection(
-            _direction);
+        _character.SetMood(CharacterMood.Neutral);
+        _character.SetState(CharacterState.Sleep);
+        _character.SetFacingDirection(_direction);
     }
-
 
     private void WakeUp()
     {
@@ -954,17 +986,18 @@ public sealed class BehaviorController : IDisposable
             return;
 
         _sleeping = false;
+        _sleepUntil = DateTime.MinValue;
 
-        _character.SetState(
-            CharacterState.Idle);
+        // Bangun memulai siklus aktif baru.
+        DateTime now = DateTime.UtcNow;
+        _lastInteractionAt = now;
+        ScheduleNextSleepCycle();
 
-        _character.SetFacingDirection(
-            _direction);
+        _character.SetState(CharacterState.Idle);
+        _character.SetFacingDirection(_direction);
+        _character.TwitchEars();
 
-        ScheduleNextDecision(
-            0.8,
-            2.0);
-
+        ScheduleNextDecision(0.8, 2.0);
         ScheduleNextBlink();
     }
 

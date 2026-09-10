@@ -639,7 +639,10 @@ public sealed class SurfaceBehaviorController
         DateTime now)
     {
         if (_supportWindowHandle ==
-            nint.Zero)
+                nint.Zero ||
+            !DesktopWindowService.TryGetWindow(
+                _supportWindowHandle,
+                out DesktopWindowInfo support))
         {
             return false;
         }
@@ -652,7 +655,12 @@ public sealed class SurfaceBehaviorController
         if (!SurfaceNavigationService
             .TryPlanJump(
                 _supportWindowHandle,
-                characterBounds,
+                // JumpPreparing memakai anchor sisi, termasuk jump dari edge.
+                new Rect(
+                    GetHangingLeft(support.Bounds, characterBounds.Width),
+                    support.Bounds.Top + _sideGripOffsetY - HangGripOffsetY,
+                    characterBounds.Width,
+                    characterBounds.Height),
                 _surfaceEdgeDirection,
                 out SurfaceJumpPlan plan))
         {
@@ -714,27 +722,34 @@ public sealed class SurfaceBehaviorController
                 }
 
 
+                // Coba langsung melompat jika ada window tujuan yang sesuai.
+                if (_random.NextDouble() < 0.35 &&
+                    BeginTargetJump(now))
+                {
+                    return true;
+                }
+
                 double choice =
                     _random.NextDouble();
 
 
-                // 55% balik
-                if (choice < 0.55)
+                // 45% balik
+                if (choice < 0.45)
                 {
                     TurnBackFromEdge(thinking);
                     return true;
                 }
 
 
-                // 30% mengintip
-                if (choice < 0.85)
+                // 35% mengintip
+                if (choice < 0.80)
                 {
                     BeginPeeking(now);
                     return true;
                 }
 
 
-                // 15% bergantung
+                // 20% bergantung
                 BeginHanging(now);
 
                 return true;
@@ -777,8 +792,8 @@ public sealed class SurfaceBehaviorController
                     _random.NextDouble();
 
 
-                // 45% naik kembali
-                if (hangChoice < 0.45)
+                // 40% naik kembali
+                if (hangChoice < 0.40)
                 {
                     BeginClimbingUp(now);
 
@@ -786,8 +801,8 @@ public sealed class SurfaceBehaviorController
                 }
 
 
-                // 25% turun sisi
-                if (hangChoice < 0.70)
+                // 20% turun sisi
+                if (hangChoice < 0.60)
                 {
                     BeginSideClimbDown(now);
 
@@ -795,7 +810,7 @@ public sealed class SurfaceBehaviorController
                 }
 
 
-                // 20% coba lompat ke window lain
+                // 30% coba lompat ke window lain
                 if (hangChoice < 0.90)
                 {
                     if (BeginTargetJump(now))

@@ -14,16 +14,16 @@ public static class SurfaceNavigationService
         1850.0;
 
     private const double MinimumJumpX =
-        90.0;
+        60.0;
 
     private const double MaximumJumpX =
-        680.0;
+        1100.0;
 
     private const double MaximumTargetAbove =
-        170.0;
+        320.0;
 
     private const double MaximumTargetBelow =
-        520.0;
+        700.0;
 
 
     public static bool TryPlanJump(
@@ -181,12 +181,12 @@ public static class SurfaceNavigationService
             }
 
 
-            // Masih jauh di bawah kemampuan
+            // Masih di bawah kemampuan
             // MaximumThrowSpeed = 1450.
             if (Math.Abs(velocityX) >
-                    1050 ||
+                    1350 ||
                 Math.Abs(velocityY) >
-                    1200)
+                    1400)
             {
                 continue;
             }
