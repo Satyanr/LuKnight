@@ -465,14 +465,14 @@ public sealed class BehaviorController : IDisposable
 
     private int _ambientRepeatCount;
 
-    private AmbientAction SelectAmbientAction()
+    private AmbientAction SelectAmbientAction(
+     AmbientContext context,
+     bool userActive)
     {
         AmbientAction selected =
             AmbientAction.Idle;
 
 
-        // Maksimal reroll beberapa kali
-        // supaya tidak terlalu sering mengulang.
         for (int attempt = 0;
              attempt < 3;
              attempt++)
@@ -481,35 +481,119 @@ public sealed class BehaviorController : IDisposable
                 _random.NextDouble();
 
 
-            if (roll < 0.32)
+            // =================================
+            // USER SEDANG AKTIF BEKERJA
+            // =================================
+
+            if (userActive)
             {
-                selected =
-                    AmbientAction.Walk;
+                if (roll < 0.18)
+                {
+                    selected =
+                        AmbientAction.Walk;
+                }
+                else if (roll < 0.45)
+                {
+                    selected =
+                        AmbientAction.Look;
+                }
+                else if (roll < 0.60)
+                {
+                    selected =
+                        AmbientAction.Twitch;
+                }
+                else if (roll < 0.76)
+                {
+                    selected =
+                        AmbientAction.CuriousPause;
+                }
+                else if (roll < 0.82)
+                {
+                    selected =
+                        AmbientAction.HappyPause;
+                }
+                else
+                {
+                    selected =
+                        AmbientAction.Idle;
+                }
             }
-            else if (roll < 0.58)
+
+            // =================================
+            // BERDIRI DI ATAS APP WINDOW
+            // =================================
+
+            else if (context ==
+                     AmbientContext.ApplicationWindow)
             {
-                selected =
-                    AmbientAction.Look;
+                if (roll < 0.24)
+                {
+                    selected =
+                        AmbientAction.Walk;
+                }
+                else if (roll < 0.52)
+                {
+                    selected =
+                        AmbientAction.Look;
+                }
+                else if (roll < 0.65)
+                {
+                    selected =
+                        AmbientAction.Twitch;
+                }
+                else if (roll < 0.83)
+                {
+                    selected =
+                        AmbientAction.CuriousPause;
+                }
+                else if (roll < 0.90)
+                {
+                    selected =
+                        AmbientAction.HappyPause;
+                }
+                else
+                {
+                    selected =
+                        AmbientAction.Idle;
+                }
             }
-            else if (roll < 0.72)
-            {
-                selected =
-                    AmbientAction.Twitch;
-            }
-            else if (roll < 0.84)
-            {
-                selected =
-                    AmbientAction.CuriousPause;
-            }
-            else if (roll < 0.92)
-            {
-                selected =
-                    AmbientAction.HappyPause;
-            }
+
+            // =================================
+            // DESKTOP NORMAL
+            // =================================
+
             else
             {
-                selected =
-                    AmbientAction.Idle;
+                if (roll < 0.32)
+                {
+                    selected =
+                        AmbientAction.Walk;
+                }
+                else if (roll < 0.58)
+                {
+                    selected =
+                        AmbientAction.Look;
+                }
+                else if (roll < 0.72)
+                {
+                    selected =
+                        AmbientAction.Twitch;
+                }
+                else if (roll < 0.84)
+                {
+                    selected =
+                        AmbientAction.CuriousPause;
+                }
+                else if (roll < 0.92)
+                {
+                    selected =
+                        AmbientAction.HappyPause;
+                }
+                else
+                {
+                    selected =
+                        AmbientAction.Idle;
+                }
             }
 
 
@@ -519,9 +603,6 @@ public sealed class BehaviorController : IDisposable
                 break;
             }
 
-
-            // Masih boleh mengulang,
-            // tetapi probabilitasnya kecil.
             if (_random.NextDouble() <
                 0.22)
             {
@@ -551,6 +632,18 @@ public sealed class BehaviorController : IDisposable
             action;
     }
 
+    private enum AmbientContext
+    {
+        Desktop,
+        ApplicationWindow
+    }
+
+    private AmbientContext GetAmbientContext()
+    {
+        return _surfaceController.HasSupport
+            ? AmbientContext.ApplicationWindow
+            : AmbientContext.Desktop;
+    }
     public BehaviorController(
         Window window,
         CharacterView character)
@@ -779,8 +872,20 @@ public sealed class BehaviorController : IDisposable
             DateTime.UtcNow;
 
 
+        AmbientContext context =
+            GetAmbientContext();
+
+
+        bool userActive =
+            DesktopActivityService
+                .IsUserActive(
+                    thresholdSeconds: 8);
+
+
         AmbientAction action =
-            SelectAmbientAction();
+            SelectAmbientAction(
+                context,
+                userActive);
 
 
         RememberAmbientAction(
@@ -971,8 +1076,19 @@ public sealed class BehaviorController : IDisposable
         _character.LookSide(
             _direction);
 
+        if (_surfaceController.HasSupport)
+        {
+            // Di atas application window
+            // lebih hati-hati dan jalan pendek.
+            ScheduleNextDecision(
+                0.7,
+                2.2);
+
+            return;
+        }
+
         double walkStyle =
-    _random.NextDouble();
+         _random.NextDouble();
 
 
         if (walkStyle < 0.25)
@@ -1028,9 +1144,19 @@ public sealed class BehaviorController : IDisposable
                 0.65);
         }
 
-        ScheduleNextDecision(
-            minSeconds: 1.0,
-            maxSeconds: 4.0);
+        if (DesktopActivityService
+            .IsUserActive(8))
+        {
+            ScheduleNextDecision(
+                2.0,
+                5.0);
+        }
+        else
+        {
+            ScheduleNextDecision(
+                1.0,
+                4.0);
+        }
     }
 
     private void MoveCharacter(
