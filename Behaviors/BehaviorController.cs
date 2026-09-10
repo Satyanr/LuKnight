@@ -447,6 +447,110 @@ public sealed class BehaviorController : IDisposable
                 CharacterMood.Neutral);
         }
     }
+
+    private enum AmbientAction
+    {
+        Idle,
+        Walk,
+        Look,
+        Twitch,
+        CuriousPause,
+        HappyPause
+    }
+
+
+    private AmbientAction _lastAmbientAction =
+        AmbientAction.Idle;
+
+
+    private int _ambientRepeatCount;
+
+    private AmbientAction SelectAmbientAction()
+    {
+        AmbientAction selected =
+            AmbientAction.Idle;
+
+
+        // Maksimal reroll beberapa kali
+        // supaya tidak terlalu sering mengulang.
+        for (int attempt = 0;
+             attempt < 3;
+             attempt++)
+        {
+            double roll =
+                _random.NextDouble();
+
+
+            if (roll < 0.32)
+            {
+                selected =
+                    AmbientAction.Walk;
+            }
+            else if (roll < 0.58)
+            {
+                selected =
+                    AmbientAction.Look;
+            }
+            else if (roll < 0.72)
+            {
+                selected =
+                    AmbientAction.Twitch;
+            }
+            else if (roll < 0.84)
+            {
+                selected =
+                    AmbientAction.CuriousPause;
+            }
+            else if (roll < 0.92)
+            {
+                selected =
+                    AmbientAction.HappyPause;
+            }
+            else
+            {
+                selected =
+                    AmbientAction.Idle;
+            }
+
+
+            if (selected !=
+                _lastAmbientAction)
+            {
+                break;
+            }
+
+
+            // Masih boleh mengulang,
+            // tetapi probabilitasnya kecil.
+            if (_random.NextDouble() <
+                0.22)
+            {
+                break;
+            }
+        }
+
+
+        return selected;
+    }
+
+    private void RememberAmbientAction(
+    AmbientAction action)
+    {
+        if (action ==
+            _lastAmbientAction)
+        {
+            _ambientRepeatCount++;
+        }
+        else
+        {
+            _ambientRepeatCount = 0;
+        }
+
+
+        _lastAmbientAction =
+            action;
+    }
+
     public BehaviorController(
         Window window,
         CharacterView character)
@@ -670,61 +774,193 @@ public sealed class BehaviorController : IDisposable
             return;
         }
 
-        double decision =
-            _random.NextDouble();
 
-        if (decision < 0.40)
+        DateTime now =
+            DateTime.UtcNow;
+
+
+        AmbientAction action =
+            SelectAmbientAction();
+
+
+        RememberAmbientAction(
+            action);
+
+
+        switch (action)
         {
-            StartWalking();
-            return;
+            // =========================
+            // WALK
+            // =========================
+
+            case AmbientAction.Walk:
+
+                StartWalking();
+
+                break;
+
+
+            // =========================
+            // LOOK AROUND
+            // =========================
+
+            case AmbientAction.Look:
+                {
+                    _character.SetState(
+                        CharacterState.Idle);
+
+
+                    int lookDirection =
+                        _random.Next(0, 2) == 0
+                            ? -1
+                            : 1;
+
+
+                    _character.SetFacingDirection(
+                        _direction);
+
+
+                    _character.LookSide(
+                        lookDirection);
+
+
+                    if (_random.NextDouble() <
+                        0.22)
+                    {
+                        _character.TwitchEars();
+                    }
+
+
+                    ScheduleNextDecision(
+                        1.4,
+                        3.0);
+
+                    break;
+                }
+
+
+            // =========================
+            // EAR TWITCH
+            // =========================
+
+            case AmbientAction.Twitch:
+
+                _character.SetState(
+                    CharacterState.Idle);
+
+
+                _character.TwitchEars();
+
+
+                ScheduleNextDecision(
+                    1.0,
+                    2.4);
+
+                break;
+
+
+            // =========================
+            // CURIOUS
+            // =========================
+
+            case AmbientAction.CuriousPause:
+                {
+                    _character.SetState(
+                        CharacterState.Idle);
+
+
+                    SetTemporaryMood(
+                        CharacterMood.Curious,
+                        1.2);
+
+
+                    int direction =
+                        _random.Next(0, 2) == 0
+                            ? -1
+                            : 1;
+
+
+                    _character.LookSide(
+                        direction);
+
+
+                    if (_random.NextDouble() <
+                        0.45)
+                    {
+                        _character.TwitchEars();
+                    }
+
+
+                    ScheduleNextDecision(
+                        1.6,
+                        3.2);
+
+                    break;
+                }
+
+
+            // =========================
+            // HAPPY
+            // =========================
+
+            case AmbientAction.HappyPause:
+
+                _character.SetState(
+                    CharacterState.Idle);
+
+
+                SetTemporaryMood(
+                    CharacterMood.Happy,
+                    0.75);
+
+
+                if (_random.NextDouble() <
+                    0.35)
+                {
+                    _character.TwitchEars();
+                }
+
+
+                ScheduleNextDecision(
+                    1.6,
+                    3.0);
+
+                break;
+
+
+            // =========================
+            // DO NOTHING
+            // =========================
+
+            default:
+
+                _character.SetState(
+                    CharacterState.Idle);
+
+
+                _character.SetFacingDirection(
+                    _direction);
+
+
+                ScheduleNextDecision(
+                    2.0,
+                    4.5);
+
+                break;
         }
-
-        if (decision < 0.60)
-        {
-            _character.TwitchEars();
-
-            ScheduleNextDecision(
-                1.0,
-                2.5);
-
-            return;
-        }
-
-        if (decision < 0.90)
-        {
-            int lookDirection =
-                _random.Next(0, 2) == 0
-                    ? -1
-                    : 1;
-
-            _character.LookSide(
-                lookDirection);
-
-            ScheduleNextDecision(
-                1.0,
-                2.5);
-
-            return;
-        }
-
-        _character.SetState(
-            CharacterState.Idle);
-
-        _character.SetFacingDirection(
-            _direction);
-
-        ScheduleNextDecision(
-            1.0,
-            3.0);
     }
+
     private void StartWalking()
     {
         _walking = true;
 
-        _direction =
-            _random.Next(0, 2) == 0
-                ? -1
-                : 1;
+        // Lebih sering lanjut ke arah sebelumnya.
+        // Kadang baru berubah pikiran.
+        if (_random.NextDouble() <
+            0.35)
+        {
+            _direction *= -1;
+        }
 
         _character.SetState(
             CharacterState.Walk);
@@ -735,9 +971,31 @@ public sealed class BehaviorController : IDisposable
         _character.LookSide(
             _direction);
 
-        ScheduleNextDecision(
-            minSeconds: 2.0,
-            maxSeconds: 5.0);
+        double walkStyle =
+    _random.NextDouble();
+
+
+        if (walkStyle < 0.25)
+        {
+            // Jalan pendek / seperti pindah posisi.
+            ScheduleNextDecision(
+                0.8,
+                1.6);
+        }
+        else if (walkStyle < 0.85)
+        {
+            // Jalan normal.
+            ScheduleNextDecision(
+                1.8,
+                3.8);
+        }
+        else
+        {
+            // Sesekali jalan agak jauh.
+            ScheduleNextDecision(
+                3.8,
+                5.8);
+        }
     }
 
     private void StopWalking()
@@ -749,6 +1007,26 @@ public sealed class BehaviorController : IDisposable
 
         _character.SetFacingDirection(
             _direction);
+
+        double reaction =
+            _random.NextDouble();
+
+
+        if (reaction < 0.18)
+        {
+            _character.TwitchEars();
+        }
+        else if (reaction < 0.30)
+        {
+            _character.LookSide(
+                _direction);
+        }
+        else if (reaction < 0.36)
+        {
+            SetTemporaryMood(
+                CharacterMood.Happy,
+                0.65);
+        }
 
         ScheduleNextDecision(
             minSeconds: 1.0,
