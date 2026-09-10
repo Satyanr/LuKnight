@@ -7,6 +7,20 @@ using System.Diagnostics;
 
 namespace LuKnight.Behaviors;
 
+[Flags]
+public enum BehaviorPauseReason
+{
+    None = 0,
+
+    Chat = 1 << 0,
+    UserDrag = 1 << 1,
+    Physics = 1 << 2,
+
+    // Untuk menjaga compatibility
+    // kalau masih ada caller lama.
+    Manual = 1 << 3
+}
+
 public sealed class BehaviorController : IDisposable
 {
     private readonly Window _window;
@@ -32,7 +46,14 @@ public sealed class BehaviorController : IDisposable
     private const double MaximumNapSeconds = 15.0;
 
     private bool _walking;
-    private bool _paused;
+    private BehaviorPauseReason
+    _pauseReasons =
+        BehaviorPauseReason.None;
+
+
+    public bool IsPaused =>
+        _pauseReasons !=
+        BehaviorPauseReason.None;
 
     private int _direction = 1;
 
@@ -117,25 +138,35 @@ public sealed class BehaviorController : IDisposable
     private void SurfaceController_SupportLost()
     {
         CancelPendingApplicationArrival();
+
         _walking = false;
-        _paused = true;
+
+        Pause(
+            BehaviorPauseReason.Physics);
+
+
         SupportLost?.Invoke();
     }
 
     private void SurfaceController_SurfaceLaunchRequested(
-        double velocityX,
-        double velocityY,
-        nint targetWindowHandle)
+    double velocityX,
+    double velocityY,
+    nint targetWindowHandle)
     {
         CancelPendingApplicationArrival();
+
         _walking = false;
-        _paused = true;
+
+
+        Pause(
+            BehaviorPauseReason.Physics);
+
+
         SurfaceLaunchRequested?.Invoke(
             velocityX,
             velocityY,
             targetWindowHandle);
     }
-
     private void SurfaceController_DirectionChanged(int direction)
     {
         _direction = direction < 0 ? -1 : 1;
@@ -170,7 +201,9 @@ public sealed class BehaviorController : IDisposable
         Debug.WriteLine($"[Lu-Knight] Arrival queued: {application.ProcessName} ({application.Kind})");
     }
 
-    private void UpdatePendingApplicationArrival(DateTime now)
+    private void UpdatePendingApplicationArrival(
+    DateTime now,
+    bool cursorHasAttention)
     {
         if (_pendingArrivalApplication is not DesktopApplicationContext application ||
             now < _pendingArrivalAt)
@@ -183,9 +216,15 @@ public sealed class BehaviorController : IDisposable
             return;
         }
 
-        if (_paused || _thinking || _sleeping ||
-            _surfaceController.IsBusy || HasTemporaryMood(now))
+        if (IsPaused ||
+            _thinking ||
+            _sleeping ||
+            cursorHasAttention ||
+            _surfaceController.IsBusy ||
+            HasTemporaryMood(now))
+        {
             return;
+        }
 
         CancelPendingApplicationArrival();
         PlayApplicationArrivalReaction(application);
@@ -268,25 +307,37 @@ public sealed class BehaviorController : IDisposable
 
 
     private void SetTemporaryMood(
-        CharacterMood mood,
-        double seconds)
+    CharacterMood mood,
+    double seconds,
+    bool allowDuringThinking = false)
     {
+        if (_thinking &&
+            !allowDuringThinking)
+        {
+            return;
+        }
+
+
         _temporaryMoodUntil =
             DateTime.UtcNow
-                .AddSeconds(seconds);
+                .AddSeconds(
+                    seconds);
 
-        _character.SetMood(mood);
+
+        _character.SetMood(
+            mood);
     }
 
 
     private void UpdateMood(
-        DateTime now)
+    DateTime now)
     {
-        if (_thinking)
+        if (now <
+            _temporaryMoodUntil)
+        {
             return;
+        }
 
-        if (now < _temporaryMoodUntil)
-            return;
 
         if (_temporaryMoodUntil !=
             DateTime.MinValue)
@@ -294,26 +345,34 @@ public sealed class BehaviorController : IDisposable
             _temporaryMoodUntil =
                 DateTime.MinValue;
 
-            if (_cursorVeryClose)
+
+            if (_thinking)
             {
                 _character.SetMood(
-                    CharacterMood.Happy);
+                    CharacterMood.Thinking);
+
+                return;
             }
-            else if (_cursorNearby)
-            {
-                _character.SetMood(
-                    CharacterMood.Curious);
-            }
-            else
-            {
-                _character.SetMood(
-                    CharacterMood.Neutral);
-            }
+
+
+            RestoreContextMood();
+
+            return;
+        }
+
+
+        // Misalnya physics sempat
+        // mengubah mood menjadi Surprised.
+        if (_thinking &&
+            _character.CurrentMood !=
+                CharacterMood.Thinking)
+        {
+            _character.SetMood(
+                CharacterMood.Thinking);
         }
     }
-
     private bool UpdateCursorAwareness(
-    DateTime now)
+        DateTime now)
     {
         if (!DesktopCursorService.TryGetPosition(
                 out Point cursorScreen))
@@ -408,8 +467,8 @@ public sealed class BehaviorController : IDisposable
             _character.RelaxCursorLook();
 
             SetAmbientMood(
-    CharacterMood.Neutral,
-    now);
+                CharacterMood.Neutral,
+                now);
 
             return false;
         }
@@ -522,6 +581,25 @@ public sealed class BehaviorController : IDisposable
         return true;
     }
 
+    private void RestoreContextMood()
+    {
+        if (_cursorVeryClose)
+        {
+            _character.SetMood(
+                CharacterMood.Happy);
+        }
+        else if (_cursorNearby)
+        {
+            _character.SetMood(
+                CharacterMood.Curious);
+        }
+        else
+        {
+            _character.SetMood(
+                CharacterMood.Neutral);
+        }
+    }
+
     public void ReactToClick()
     {
         NotifyUserInteraction();
@@ -543,7 +621,8 @@ public sealed class BehaviorController : IDisposable
     {
         SetTemporaryMood(
             CharacterMood.Dizzy,
-            2.20);
+            2.20,
+            allowDuringThinking: true);
     }
 
 
@@ -551,40 +630,51 @@ public sealed class BehaviorController : IDisposable
     {
         SetTemporaryMood(
             CharacterMood.Confused,
-            1.20);
+            1.20,
+            allowDuringThinking: true);
     }
 
 
-    public void SetThinking(bool thinking)
+    public void SetThinking(
+    bool thinking)
     {
-        _thinking = thinking;
+        _thinking =
+            thinking;
 
-        _temporaryMoodUntil =
-            DateTime.MinValue;
 
         if (thinking)
         {
+            _walking = false;
+
+            _temporaryMoodUntil =
+                DateTime.MinValue;
+
+
+            if (_character.CurrentState ==
+                CharacterState.Walk)
+            {
+                _character.SetState(
+                    CharacterState.Idle);
+            }
+
+
             _character.SetMood(
                 CharacterMood.Thinking);
 
             return;
         }
 
-        if (_cursorVeryClose)
+
+        // Kalau masih ada physical reaction
+        // seperti Dizzy, biarkan selesai.
+        if (HasTemporaryMood(
+                DateTime.UtcNow))
         {
-            _character.SetMood(
-                CharacterMood.Happy);
+            return;
         }
-        else if (_cursorNearby)
-        {
-            _character.SetMood(
-                CharacterMood.Curious);
-        }
-        else
-        {
-            _character.SetMood(
-                CharacterMood.Neutral);
-        }
+
+
+        RestoreContextMood();
     }
 
     private enum AmbientAction
@@ -1023,27 +1113,89 @@ public sealed class BehaviorController : IDisposable
 
     public void Pause()
     {
-        if (_paused)
-            return;
+        Pause(
+            BehaviorPauseReason.Manual);
+    }
 
-        _paused = true;
+
+    public void Pause(
+        BehaviorPauseReason reason)
+    {
+        if (reason ==
+            BehaviorPauseReason.None)
+        {
+            return;
+        }
+
+
+        _pauseReasons |=
+            reason;
+
+
         _walking = false;
 
-        _character.SetState(CharacterState.Idle);
-        _character.SetFacingDirection(_direction);
+
+        // Jangan sekali-kali mengubah
+        // Grabbed / Falling / Hanging /
+        // Climbing menjadi Idle.
+        if (_character.CurrentState ==
+            CharacterState.Walk)
+        {
+            _character.SetState(
+                CharacterState.Idle);
+
+            _character.SetFacingDirection(
+                _direction);
+        }
+
+
+        Debug.WriteLine(
+            $"[Lu-Knight] Pause +{reason} " +
+            $"=> {_pauseReasons}");
     }
+
 
     public void Resume()
     {
-        if (!_paused)
-            return;
+        Resume(
+            BehaviorPauseReason.Manual);
+    }
 
-        _paused = false;
+
+    public void Resume(
+        BehaviorPauseReason reason)
+    {
+        if (reason ==
+            BehaviorPauseReason.None)
+        {
+            return;
+        }
+
+
+        _pauseReasons &=
+            ~reason;
+
+
+        Debug.WriteLine(
+            $"[Lu-Knight] Pause -{reason} " +
+            $"=> {_pauseReasons}");
+
+
+        // Masih ada subsystem lain
+        // yang menahan behavior.
+        if (IsPaused)
+        {
+            return;
+        }
+
+
         _walking = false;
+
 
         if (_surfaceController.HasSupport)
         {
-            if (!_surfaceController.UpdateSupportWindow())
+            if (!_surfaceController
+                .UpdateSupportWindow())
             {
                 return;
             }
@@ -1053,15 +1205,20 @@ public sealed class BehaviorController : IDisposable
             PlaceOnDesktopBottom();
         }
 
-        _surfaceController.RestoreCharacterState(_direction);
 
-        _lastTickAt = DateTime.UtcNow;
+        _surfaceController
+            .RestoreCharacterState(
+                _direction);
+
+
+        _lastTickAt =
+            DateTime.UtcNow;
+
 
         ScheduleNextDecision(
-            minSeconds: 0.8,
-            maxSeconds: 2.0);
+            0.8,
+            2.0);
     }
-
     public void NotifyUserInteraction()
     {
         _lastInteractionAt =
@@ -1096,7 +1253,7 @@ public sealed class BehaviorController : IDisposable
         }
 
 
-        if (_paused)
+        if (IsPaused)
             return;
 
         deltaSeconds =
@@ -1117,11 +1274,18 @@ public sealed class BehaviorController : IDisposable
             return;
         }
 
-        UpdateMood(now);
-        UpdatePendingApplicationArrival(now);
+        UpdateMood(
+                now);
+
 
         bool cursorHasAttention =
-            UpdateCursorAwareness(now);
+            UpdateCursorAwareness(
+                now);
+
+
+        UpdatePendingApplicationArrival(
+            now,
+            cursorHasAttention);
 
         // =========================
         // AUTO WAKE
@@ -1145,9 +1309,12 @@ public sealed class BehaviorController : IDisposable
 
         if (!_thinking &&
             !_surfaceController.IsBusy &&
-            now - _lastInteractionAt >= _sleepAfter)
+            _pendingArrivalApplication is null &&
+            now - _lastInteractionAt >=
+                _sleepAfter)
         {
             EnterSleep();
+
             return;
         }
 
@@ -1167,7 +1334,9 @@ public sealed class BehaviorController : IDisposable
         // BEHAVIOUR
         // =========================
 
-        if (!cursorHasAttention &&
+        if (!_thinking &&
+            _pendingArrivalApplication is null &&
+            !cursorHasAttention &&
             now >= _nextDecisionAt)
         {
             ChooseNextBehavior();

@@ -36,7 +36,8 @@ public partial class MainWindow : Window
                 supportWindow);
 
         _behaviorController?
-            .Resume();
+            .Resume(
+                BehaviorPauseReason.Physics);
 
 
         CharacterControl
@@ -86,8 +87,8 @@ public partial class MainWindow : Window
 
     private void PhysicsController_Shaken()
     {
-        CharacterControl.SetMood(
-            CharacterMood.Dizzy);
+        _behaviorController?
+            .ReactDizzy();
     }
 
     private void MainWindow_Loaded(
@@ -161,7 +162,8 @@ public partial class MainWindow : Window
             .NotifyUserInteraction();
 
         _behaviorController?
-            .Pause();
+            .Pause(
+        BehaviorPauseReason.UserDrag);
 
         _mouseDownPosition =
             e.GetPosition(this);
@@ -212,7 +214,16 @@ public partial class MainWindow : Window
             if (!movedEnough)
                 return;
 
-            ChatPopup.IsOpen = false;
+            if (ChatPopup.IsOpen)
+            {
+                ChatPopup.IsOpen =
+                    false;
+
+
+                _behaviorController?
+                    .Resume(
+                        BehaviorPauseReason.Chat);
+            }
 
             bool grabStarted =
                 _physicsController?
@@ -253,15 +264,35 @@ public partial class MainWindow : Window
 
         if (_dragStarted)
         {
+            // Setelah tangan user lepas,
+            // ownership pindah dari UserDrag
+            // ke Physics.
+            _behaviorController?
+                .Pause(
+                    BehaviorPauseReason.Physics);
+
+
+            _behaviorController?
+                .Resume(
+                    BehaviorPauseReason.UserDrag);
+
+
             _physicsController?
                 .EndGrab();
+
 
             _dragStarted = false;
         }
         else
         {
             _behaviorController?
+                .Resume(
+                    BehaviorPauseReason.UserDrag);
+
+
+            _behaviorController?
                 .ReactToClick();
+
 
             ToggleChat();
         }
@@ -278,14 +309,19 @@ public partial class MainWindow : Window
 
         if (ChatPopup.IsOpen)
         {
-            _behaviorController?.Pause();
+            _behaviorController?
+                .Pause(
+                    BehaviorPauseReason.Chat);
+
 
             Dispatcher.BeginInvoke(
                 ChatPanelControl.FocusInput);
         }
         else
         {
-            _behaviorController?.Resume();
+            _behaviorController?
+                .Resume(
+                    BehaviorPauseReason.Chat);
         }
     }
 
