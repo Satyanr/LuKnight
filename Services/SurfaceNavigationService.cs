@@ -32,7 +32,23 @@ public static class SurfaceNavigationService
         int preferredDirection,
         out SurfaceJumpPlan plan)
     {
+        return TryPlanJump(
+            currentSupportHandle,
+            characterBounds,
+            preferredDirection,
+            environmentMemory: null,
+            out plan);
+    }
+
+    public static bool TryPlanJump(
+        nint currentSupportHandle,
+        Rect characterBounds,
+        int preferredDirection,
+        DesktopEnvironmentMemory? environmentMemory,
+        out SurfaceJumpPlan plan)
+    {
         plan = default;
+        DateTime now = DateTime.UtcNow;
 
 
         DesktopWindowInfo bestTarget =
@@ -194,10 +210,15 @@ public static class SurfaceNavigationService
 
             // Prefer window dekat dan
             // yang relatif berada di depan.
-            double score =
+            double baseScore =
                 absoluteX +
                 (Math.Abs(deltaY) * 0.30) +
                 (candidate.ZOrder * 3.0);
+
+            double memoryAdjustment =
+                environmentMemory?.GetNavigationScoreAdjustment(candidate, now) ?? 0;
+
+            double score = baseScore + memoryAdjustment;
 
 
             if (score >= bestScore)

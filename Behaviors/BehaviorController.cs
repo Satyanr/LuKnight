@@ -99,6 +99,8 @@ public sealed class BehaviorController : IDisposable
             CancelPendingApplicationArrival();
             return;
         }
+        _environmentMemory.RememberWindow(currentHandle, DateTime.UtcNow);
+
         if (currentHandle == previousHandle)
             return;
 
@@ -159,7 +161,7 @@ public sealed class BehaviorController : IDisposable
             return;
 
         DateTime now = DateTime.UtcNow;
-        if (!_environmentMemory.ShouldReactToArrival(application, now))
+        if (!_environmentMemory.CanReactToArrival(application, now))
             return;
 
         _pendingArrivalApplication = application;
@@ -191,6 +193,7 @@ public sealed class BehaviorController : IDisposable
 
     private void PlayApplicationArrivalReaction(DesktopApplicationContext application)
     {
+        _environmentMemory.MarkArrivalReactionPlayed(application, DateTime.UtcNow);
         _walking = false;
         _character.SetState(CharacterState.Idle);
         int lookDirection = _random.Next(0, 2) == 0 ? -1 : 1;
@@ -969,7 +972,7 @@ public sealed class BehaviorController : IDisposable
         _character = character;
 
         _surfaceController =
-            new SurfaceBehaviorController(window, character, _random);
+            new SurfaceBehaviorController(window, character, _random, _environmentMemory);
 
         _surfaceController.SupportLost +=
             SurfaceController_SupportLost;

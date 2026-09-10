@@ -10,6 +10,7 @@ public sealed class SurfaceBehaviorController
     private readonly Window _window;
     private readonly CharacterView _character;
     private readonly Random _random;
+    private readonly DesktopEnvironmentMemory _environmentMemory;
 
 
     private nint _supportWindowHandle =
@@ -115,11 +116,13 @@ public sealed class SurfaceBehaviorController
     public SurfaceBehaviorController(
         Window window,
         CharacterView character,
-        Random random)
+        Random random,
+        DesktopEnvironmentMemory environmentMemory)
     {
         _window = window;
         _character = character;
         _random = random;
+        _environmentMemory = environmentMemory;
     }
 
     public void SetSupportWindow(
@@ -665,6 +668,7 @@ public sealed class SurfaceBehaviorController
                     characterBounds.Width,
                     characterBounds.Height),
                 _surfaceEdgeDirection,
+                _environmentMemory,
                 out SurfaceJumpPlan plan))
         {
             return false;
