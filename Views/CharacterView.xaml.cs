@@ -97,12 +97,18 @@ public partial class CharacterView : UserControl
             CharacterRenderMode.Sprite);
     }
 
-    public void PlayLandingReaction()
+    public void PlayLandingReaction(
+        double impactSpeed = 0)
     {
-        if (_renderMode == CharacterRenderMode.Sprite)
+        if (_renderMode ==
+            CharacterRenderMode.Sprite)
         {
+            PlaySpriteLandingReaction(
+                impactSpeed);
+
             return;
         }
+
 
         PlayTransientStoryboard(
             "LandingReactionStoryboard");
@@ -595,6 +601,7 @@ public partial class CharacterView : UserControl
         StopSpriteMotion();
         StopSpriteExpression();
         ResetSpriteAttention();
+        ResetSpriteImpact();
         CurrentState = state;
 
         if (_preferredRenderMode == CharacterRenderMode.Sprite &&

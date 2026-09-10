@@ -370,6 +370,238 @@ public partial class CharacterView
                 rotateAnimation);
     }
 
+    private void StopSpriteImpactAnimations()
+    {
+        SpriteImpactScale
+            .BeginAnimation(
+                ScaleTransform.ScaleXProperty,
+                null);
+
+        SpriteImpactScale
+            .BeginAnimation(
+                ScaleTransform.ScaleYProperty,
+                null);
+
+
+        SpriteImpactTranslate
+            .BeginAnimation(
+                TranslateTransform.YProperty,
+                null);
+
+
+        SpriteImpactRotate
+            .BeginAnimation(
+                RotateTransform.AngleProperty,
+                null);
+    }
+
+    private void ResetSpriteImpact()
+    {
+        StopSpriteImpactAnimations();
+
+
+        SpriteImpactScale.ScaleX = 1;
+        SpriteImpactScale.ScaleY = 1;
+
+        SpriteImpactTranslate.X = 0;
+        SpriteImpactTranslate.Y = 0;
+
+        SpriteImpactRotate.Angle = 0;
+    }
+
+    private void PlaySpriteLandingReaction(
+    double impactSpeed)
+    {
+        if (_renderMode !=
+            CharacterRenderMode.Sprite)
+        {
+            return;
+        }
+
+
+        ResetSpriteImpact();
+
+
+        double strength =
+            Math.Clamp(
+                (impactSpeed - 120.0) /
+                900.0,
+                0.15,
+                1.0);
+
+
+        double squashY =
+            0.94 -
+            (0.14 * strength);
+
+
+        double stretchX =
+            1.03 +
+            (0.09 * strength);
+
+
+        double reboundY =
+            1.02 +
+            (0.04 * strength);
+
+
+        double dropY =
+            2.0 +
+            (4.0 * strength);
+
+
+        double reboundOffsetY =
+            -1.5 -
+            (3.5 * strength);
+
+
+        // =========================
+        // SCALE Y
+        // =========================
+
+        var scaleY =
+            new DoubleAnimationUsingKeyFrames
+            {
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        scaleY.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                1,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.Zero)));
+
+
+        scaleY.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                squashY,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        70))));
+
+
+        scaleY.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                reboundY,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        180))));
+
+
+        scaleY.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                1,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        380))));
+
+
+        SpriteImpactScale
+            .BeginAnimation(
+                ScaleTransform.ScaleYProperty,
+                scaleY);
+
+
+        // =========================
+        // SCALE X
+        // =========================
+
+        var scaleX =
+            new DoubleAnimationUsingKeyFrames
+            {
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        scaleX.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                1,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.Zero)));
+
+
+        scaleX.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                stretchX,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        70))));
+
+
+        scaleX.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                0.98,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        180))));
+
+
+        scaleX.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                1,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        380))));
+
+
+        SpriteImpactScale
+            .BeginAnimation(
+                ScaleTransform.ScaleXProperty,
+                scaleX);
+
+
+        // =========================
+        // BOUNCE Y
+        // =========================
+
+        var translateY =
+            new DoubleAnimationUsingKeyFrames
+            {
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        translateY.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                0,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.Zero)));
+
+
+        translateY.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                dropY,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        70))));
+
+
+        translateY.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                reboundOffsetY,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        180))));
+
+
+        translateY.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                0,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        380))));
+
+
+        SpriteImpactTranslate
+            .BeginAnimation(
+                TranslateTransform.YProperty,
+                translateY);
+    }
+
     private void PlaySpriteTwitch()
     {
         var animation =
@@ -580,6 +812,7 @@ public partial class CharacterView
     {
         StopSpriteMotion();
         StopSpriteExpression();
+        ResetSpriteImpact();
         if (_spriteExpressionTimer is not null)
         {
             _spriteExpressionTimer.Tick -= SpriteExpressionTimer_Tick;

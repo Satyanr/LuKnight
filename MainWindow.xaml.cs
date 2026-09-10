@@ -40,7 +40,8 @@ public partial class MainWindow : Window
 
 
         CharacterControl
-            .PlayLandingReaction();
+    .PlayLandingReaction(
+        impactSpeed);
 
 
         if (wasShaken)

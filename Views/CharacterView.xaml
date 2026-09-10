@@ -17,18 +17,18 @@
             <DoubleAnimation Storyboard.TargetName="SpriteScale"
                              Storyboard.TargetProperty="ScaleY"
                              From="1"
-                    To="1.018"
-                    Duration="0:0:1.6"/>
+                             To="1.018"
+                             Duration="0:0:1.6"/>
             <DoubleAnimation Storyboard.TargetName="SpriteTranslate"
                              Storyboard.TargetProperty="Y"
                              From="0"
-                    To="-1.8"
-                    Duration="0:0:1.6"/>
+                             To="-1.8"
+                             Duration="0:0:1.6"/>
             <DoubleAnimation Storyboard.TargetName="SpriteRotate"
                              Storyboard.TargetProperty="Angle"
                              From="-0.7"
-                    To="0.7"
-                    Duration="0:0:2.2"/>
+                             To="0.7"
+                             Duration="0:0:2.2"/>
         </Storyboard>
 
         <!-- ====================== -->
@@ -526,35 +526,76 @@
         <Grid x:Name="SpriteLayer"
               Visibility="Collapsed"
               IsHitTestVisible="False">
-            <Image x:Name="SpriteImage"
-                   Stretch="Uniform"
-                   HorizontalAlignment="Stretch"
-                   VerticalAlignment="Stretch"
-                   RenderTransformOrigin="0.5,0.88"
-                   RenderOptions.BitmapScalingMode="HighQuality">
-                <Image.RenderTransform>
+
+            <Grid x:Name="SpriteImpactRoot"
+                  RenderTransformOrigin="0.5,0.88">
+
+                <Grid.RenderTransform>
+
                     <TransformGroup>
-                        <ScaleTransform x:Name="SpriteScale"
-                                ScaleX="1"
-                                ScaleY="1"/>
-                        <RotateTransform x:Name="SpriteRotate"
-                                Angle="0"/>
-                        <TranslateTransform x:Name="SpriteTranslate"
-                                X="0"
-                                Y="0"/>
+
+                        <ScaleTransform
+                            x:Name="SpriteImpactScale"
+                            ScaleX="1"
+                            ScaleY="1"/>
+
                         <RotateTransform
-                            x:Name="SpriteAttentionRotate"
+                            x:Name="SpriteImpactRotate"
                             Angle="0"/>
 
                         <TranslateTransform
-                            x:Name="SpriteAttentionTranslate"
+                            x:Name="SpriteImpactTranslate"
                             X="0"
                             Y="0"/>
-                    </TransformGroup>
-                </Image.RenderTransform>
-            </Image>
-        </Grid>
 
+                    </TransformGroup>
+
+                </Grid.RenderTransform>
+
+
+                <Image x:Name="SpriteImage"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Stretch"
+                       VerticalAlignment="Stretch"
+                       RenderTransformOrigin="0.5,0.88"
+                       RenderOptions.BitmapScalingMode="HighQuality">
+
+                    <Image.RenderTransform>
+
+                        <TransformGroup>
+
+                            <ScaleTransform
+                                x:Name="SpriteScale"
+                                ScaleX="1"
+                                ScaleY="1"/>
+
+                            <RotateTransform
+                                x:Name="SpriteRotate"
+                                Angle="0"/>
+
+                            <TranslateTransform
+                                x:Name="SpriteTranslate"
+                                X="0"
+                                Y="0"/>
+
+                            <RotateTransform
+                                x:Name="SpriteAttentionRotate"
+                                Angle="0"/>
+
+                            <TranslateTransform
+                                x:Name="SpriteAttentionTranslate"
+                                X="0"
+                                Y="0"/>
+
+                        </TransformGroup>
+
+                    </Image.RenderTransform>
+
+                </Image>
+
+            </Grid>
+
+        </Grid>
         <!-- CURRENT VECTOR RENDERER -->
         <Grid x:Name="VectorLayer">
             <Grid x:Name="CharacterRoot"
