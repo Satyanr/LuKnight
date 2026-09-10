@@ -832,10 +832,16 @@ public sealed class BehaviorController : IDisposable
 
 
         if (_surfaceAction ==
-            SurfaceAction.ClimbingUp)
+                SurfaceAction.ClimbingUp
+            ||
+            _surfaceAction ==
+                SurfaceAction.SideClimbingDown
+            ||
+            _surfaceAction ==
+                SurfaceAction.SideClimbingUp)
         {
             // Posisi selama climbing dikontrol
-            // UpdateClimbingUp().
+            // oleh update animasi climbing.
             return true;
         }
 
@@ -891,13 +897,21 @@ public sealed class BehaviorController : IDisposable
         }
 
 
-        double top =
-    isSideAttached
-        ? support.Bounds.Top +
-          _sideGripOffsetY -
-          HangGripOffsetY
-        : support.Bounds.Top -
-          characterBounds.Height;
+                bool isSideAttached =
+                        _surfaceAction ==
+                                SurfaceAction.Hanging
+                        ||
+                        _surfaceAction ==
+                                SurfaceAction.SideHolding;
+
+
+                double top =
+                        isSideAttached
+                                ? support.Bounds.Top +
+                                    _sideGripOffsetY -
+                                    HangGripOffsetY
+                                : support.Bounds.Top -
+                                    characterBounds.Height;
 
 
         DesktopMonitorService
@@ -1406,26 +1420,26 @@ public sealed class BehaviorController : IDisposable
             PlaceOnDesktopBottom();
         }
 
-        bool isSideAttached =
-            _surfaceAction ==
+        if (_surfaceAction ==
                 SurfaceAction.Hanging
             ||
             _surfaceAction ==
-                SurfaceAction.SideClimbingDown
-            ||
-            _surfaceAction ==
-                SurfaceAction.SideHolding
-            ||
-            _surfaceAction ==
-                SurfaceAction.SideClimbingUp;
-
-
-        if (isSideAttached)
+                SurfaceAction.SideHolding)
         {
-            left =
-                GetHangingLeft(
-                    support.Bounds,
-                    characterBounds.Width);
+            _character.SetState(
+                CharacterState.Hanging);
+        }
+        else if (_surfaceAction ==
+                     SurfaceAction.ClimbingUp
+                 ||
+                 _surfaceAction ==
+                     SurfaceAction.SideClimbingDown
+                 ||
+                 _surfaceAction ==
+                     SurfaceAction.SideClimbingUp)
+        {
+            _character.SetState(
+                CharacterState.Climbing);
         }
         else
         {
