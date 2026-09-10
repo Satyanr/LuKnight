@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using LuKnight.Visuals;
+using System.Windows.Media;
 
 namespace LuKnight.Views;
 
@@ -15,6 +16,406 @@ public partial class CharacterView
     private Storyboard? _spriteMotionStoryboard;
     private readonly Dictionary<CharacterState, SpriteAnimationClip> _spriteStateClips = new();
     private SpriteAnimationPlayer? _spritePlayer;
+
+    private double _spriteLookX;
+    private double _spriteLookY;
+
+    private bool _spriteCursorTracking;
+
+    private void StopSpriteAttentionAnimations()
+    {
+        SpriteAttentionTranslate
+            .BeginAnimation(
+                TranslateTransform.XProperty,
+                null);
+
+        SpriteAttentionTranslate
+            .BeginAnimation(
+                TranslateTransform.YProperty,
+                null);
+
+        SpriteAttentionRotate
+            .BeginAnimation(
+                RotateTransform.AngleProperty,
+                null);
+    }
+
+    private void ResetSpriteAttention()
+    {
+        StopSpriteAttentionAnimations();
+
+
+        _spriteLookX = 0;
+        _spriteLookY = 0;
+
+        _spriteCursorTracking = false;
+
+
+        SpriteAttentionTranslate.X = 0;
+        SpriteAttentionTranslate.Y = 0;
+
+        SpriteAttentionRotate.Angle = 0;
+    }
+
+    private void TrackSpriteCursor(
+    double horizontal,
+    double vertical)
+    {
+        StopSpriteAttentionAnimations();
+
+
+        _spriteCursorTracking = true;
+
+
+        double targetX =
+            Math.Clamp(
+                horizontal,
+                -1,
+                1) * 3.2;
+
+
+        double targetY =
+            Math.Clamp(
+                vertical,
+                -1,
+                1) * 2.2;
+
+
+        _spriteLookX +=
+            (targetX -
+             _spriteLookX) * 0.22;
+
+
+        _spriteLookY +=
+            (targetY -
+             _spriteLookY) * 0.22;
+
+
+        SpriteAttentionTranslate.X =
+            _spriteLookX;
+
+        SpriteAttentionTranslate.Y =
+            _spriteLookY;
+
+
+        SpriteAttentionRotate.Angle =
+            Math.Clamp(
+                horizontal,
+                -1,
+                1) * 1.1;
+    }
+
+    private void RelaxSpriteCursor()
+    {
+        if (!_spriteCursorTracking)
+            return;
+
+
+        StopSpriteAttentionAnimations();
+
+
+        _spriteLookX +=
+            (0 - _spriteLookX) *
+            0.18;
+
+
+        _spriteLookY +=
+            (0 - _spriteLookY) *
+            0.18;
+
+
+        SpriteAttentionTranslate.X =
+            _spriteLookX;
+
+        SpriteAttentionTranslate.Y =
+            _spriteLookY;
+
+
+        SpriteAttentionRotate.Angle *=
+            0.82;
+
+
+        if (Math.Abs(
+                _spriteLookX) < 0.05 &&
+            Math.Abs(
+                _spriteLookY) < 0.05 &&
+            Math.Abs(
+                SpriteAttentionRotate.Angle)
+                < 0.05)
+        {
+            ResetSpriteAttention();
+        }
+    }
+
+    private void PlaySpriteLookSide(
+        int direction)
+    {
+        ResetSpriteAttention();
+
+
+        double targetX =
+            direction < 0
+                ? -3.5
+                : 3.5;
+
+
+        double targetAngle =
+            direction < 0
+                ? -1.4
+                : 1.4;
+
+
+        var move =
+            new DoubleAnimationUsingKeyFrames
+            {
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        move.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                0,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.Zero)));
+
+
+        move.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                targetX,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        150))));
+
+
+        move.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                targetX,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        700))));
+
+
+        move.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                0,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        900))));
+
+
+        SpriteAttentionTranslate
+            .BeginAnimation(
+                TranslateTransform.XProperty,
+                move);
+
+
+        var rotate =
+            new DoubleAnimation
+            {
+                From = 0,
+                To = targetAngle,
+
+                Duration =
+                    TimeSpan.FromMilliseconds(
+                        180),
+
+                AutoReverse = true,
+
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        SpriteAttentionRotate
+            .BeginAnimation(
+                RotateTransform.AngleProperty,
+                rotate);
+    }
+
+    private void PlaySpriteLookDown()
+    {
+        ResetSpriteAttention();
+
+
+        var animation =
+            new DoubleAnimationUsingKeyFrames
+            {
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        animation.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                0,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.Zero)));
+
+
+        animation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                2.8,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        160))));
+
+
+        animation.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                2.8,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        700))));
+
+
+        animation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                0,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        900))));
+
+
+        SpriteAttentionTranslate
+            .BeginAnimation(
+                TranslateTransform.YProperty,
+                animation);
+    }
+
+    private void PlaySpriteEdgePeek(
+        int direction)
+    {
+        ResetSpriteAttention();
+
+
+        double targetX =
+            direction < 0
+                ? -4.5
+                : 4.5;
+
+
+        double targetAngle =
+            direction < 0
+                ? -2.0
+                : 2.0;
+
+
+        var xAnimation =
+            new DoubleAnimation
+            {
+                From = 0,
+                To = targetX,
+
+                Duration =
+                    TimeSpan.FromMilliseconds(
+                        240),
+
+                AutoReverse = true,
+
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        SpriteAttentionTranslate
+            .BeginAnimation(
+                TranslateTransform.XProperty,
+                xAnimation);
+
+
+        var yAnimation =
+            new DoubleAnimation
+            {
+                From = 0,
+                To = 2.2,
+
+                Duration =
+                    TimeSpan.FromMilliseconds(
+                        240),
+
+                AutoReverse = true,
+
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        SpriteAttentionTranslate
+            .BeginAnimation(
+                TranslateTransform.YProperty,
+                yAnimation);
+
+
+        var rotateAnimation =
+            new DoubleAnimation
+            {
+                From = 0,
+                To = targetAngle,
+
+                Duration =
+                    TimeSpan.FromMilliseconds(
+                        240),
+
+                AutoReverse = true,
+
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        SpriteAttentionRotate
+            .BeginAnimation(
+                RotateTransform.AngleProperty,
+                rotateAnimation);
+    }
+
+    private void PlaySpriteTwitch()
+    {
+        var animation =
+            new DoubleAnimationUsingKeyFrames
+            {
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        animation.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                0,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.Zero)));
+
+
+        animation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                -1.4,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        70))));
+
+
+        animation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                1.1,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        145))));
+
+
+        animation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                0,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        230))));
+
+
+        SpriteAttentionRotate
+            .BeginAnimation(
+                RotateTransform.AngleProperty,
+                animation);
+    }
 
     public CharacterRenderMode RenderMode => _renderMode;
 

@@ -142,8 +142,11 @@ public partial class CharacterView : UserControl
 
     public void TwitchEars()
     {
-        if (_renderMode == CharacterRenderMode.Sprite)
+        if (_renderMode ==
+    CharacterRenderMode.Sprite)
         {
+            PlaySpriteTwitch();
+
             return;
         }
 
@@ -156,8 +159,12 @@ public partial class CharacterView : UserControl
 
     public void LookSide(int direction)
     {
-        if (_renderMode == CharacterRenderMode.Sprite)
+        if (_renderMode ==
+    CharacterRenderMode.Sprite)
         {
+            PlaySpriteLookSide(
+                direction);
+
             return;
         }
 
@@ -221,8 +228,13 @@ public partial class CharacterView : UserControl
     double horizontal,
     double vertical)
     {
-        if (_renderMode == CharacterRenderMode.Sprite)
+        if (_renderMode ==
+    CharacterRenderMode.Sprite)
         {
+            TrackSpriteCursor(
+                horizontal,
+                vertical);
+
             return;
         }
 
@@ -276,8 +288,11 @@ public partial class CharacterView : UserControl
 
     public void RelaxCursorLook()
     {
-        if (_renderMode == CharacterRenderMode.Sprite)
+        if (_renderMode ==
+    CharacterRenderMode.Sprite)
         {
+            RelaxSpriteCursor();
+
             return;
         }
 
@@ -579,6 +594,7 @@ public partial class CharacterView : UserControl
         StopCurrentAnimation();
         StopSpriteMotion();
         StopSpriteExpression();
+        ResetSpriteAttention();
         CurrentState = state;
 
         if (_preferredRenderMode == CharacterRenderMode.Sprite &&
@@ -655,8 +671,11 @@ public partial class CharacterView : UserControl
 
     public void LookDown()
     {
-        if (_renderMode == CharacterRenderMode.Sprite)
+        if (_renderMode ==
+            CharacterRenderMode.Sprite)
         {
+            PlaySpriteLookDown();
+
             return;
         }
 
@@ -729,8 +748,12 @@ public partial class CharacterView : UserControl
     public void PlayEdgePeek(
         int direction)
     {
-        if (_renderMode == CharacterRenderMode.Sprite)
+        if (_renderMode ==
+            CharacterRenderMode.Sprite)
         {
+            PlaySpriteEdgePeek(
+                direction);
+
             return;
         }
 
