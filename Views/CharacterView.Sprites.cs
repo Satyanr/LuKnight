@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
@@ -16,7 +17,6 @@ public partial class CharacterView
     private Storyboard? _spriteMotionStoryboard;
     private readonly Dictionary<CharacterState, SpriteAnimationClip> _spriteStateClips = new();
     private SpriteAnimationPlayer? _spritePlayer;
-    private CharacterModel3DPlayer? _modelPlayer;
 
     private double _spriteLookX;
     private double _spriteLookY;
@@ -351,11 +351,6 @@ public partial class CharacterView
         double velocityX,
         double velocityY)
     {
-        if (_renderMode == CharacterRenderMode.Model3D)
-        {
-            _modelPlayer?.SetVelocity(velocityX, velocityY);
-            return;
-        }
         UpdateSpriteAirMotion(
             velocityX,
             velocityY);
@@ -375,8 +370,7 @@ public partial class CharacterView
 
             case CharacterState.Walk:
 
-                StartSpriteMotion(
-                    "SpriteWalkStoryboard");
+                StopSpriteMotion();
 
                 break;
 
@@ -415,8 +409,7 @@ public partial class CharacterView
 
             case CharacterState.Climbing:
 
-                StartSpriteMotion(
-                    "SpriteClimbingStoryboard");
+                StopSpriteMotion();
 
                 break;
 
@@ -427,46 +420,6 @@ public partial class CharacterView
 
                 break;
         }
-    }
-
-    private void PlaySpriteStateEntrance()
-    {
-        if (_renderMode !=
-            CharacterRenderMode.Sprite)
-        {
-            return;
-        }
-
-
-        SpriteImpactRoot
-            .BeginAnimation(
-                UIElement.OpacityProperty,
-                null);
-
-
-        SpriteImpactRoot.Opacity =
-            0.72;
-
-
-        var animation =
-            new DoubleAnimation
-            {
-                From = 0.72,
-                To = 1.0,
-
-                Duration =
-                    TimeSpan.FromMilliseconds(
-                        110),
-
-                FillBehavior =
-                    FillBehavior.Stop
-            };
-
-
-        SpriteImpactRoot
-            .BeginAnimation(
-                UIElement.OpacityProperty,
-                animation);
     }
 
     private void RelaxSpriteCursor()
@@ -978,6 +931,12 @@ public partial class CharacterView
 
     private void PlaySpriteTwitch()
     {
+        if (CurrentState == CharacterState.Sleep) return;
+        if (CurrentState == CharacterState.Idle && _spriteTwitchClip is not null)
+        {
+            PlaySpriteTransient(_spriteTwitchClip, 440);
+            return;
+        }
         var animation =
             new DoubleAnimationUsingKeyFrames
             {
@@ -1031,38 +990,37 @@ public partial class CharacterView
     string relativeFolder,
     double framesPerSecond)
     {
-        SpriteAnimationClip? clip =
-            SpriteClipFactory.FromFolder(
-                name,
-                relativeFolder,
-                framesPerSecond,
-                loop: true);
-
-
-        if (clip is null)
+        // Explicit pack membership prevents stale files in an older build from joining a clip.
+        int count = 8;
+        string[] frames = Enumerable.Range(0, count)
+            .Select(i => $"{relativeFolder}/{name}_{i:000}.png").ToArray();
+        if (frames.Any(path => !File.Exists(Path.Combine(AppContext.BaseDirectory, path)))) return;
+        SpritePuppetMotion? motion = state switch
         {
-            return;
+            CharacterState.Walk => SpritePuppetMotion.Walk,
+            CharacterState.Climbing => SpritePuppetMotion.Climb,
+            _ => null
+        };
+        if (state == CharacterState.Idle)
+        {
+            _spriteBlinkClip = new SpriteAnimationClip("blink-both-eyes", new[] { frames[2], frames[3], frames[4] }, 18, false);
+            _spriteTwitchClip = new SpriteAnimationClip("ear-twitch", new[] { frames[0], frames[5], frames[6], frames[7], frames[0] }, 12, false);
+            frames = new[] { 0, 1, 4, 5, 6, 7, 6, 5, 4, 1 }.Select(i => frames[i]).ToArray();
         }
-
-
-        RegisterSpriteClip(
-            state,
-            clip);
+        RegisterSpriteClip(state, new SpriteAnimationClip(name, frames, framesPerSecond, true, motion));
     }
 
     private void RegisterDefaultSpriteClips()
     {
-        // Fallback frames are exported from the 3D rig at one fixed scale/camera.
-        double breathingFps = 16 * 2.2 / (2 * Math.PI);
-        RegisterSpriteFolder(CharacterState.Idle, "idle", "Assets/Characters/LuKnight/Idle", breathingFps);
-        RegisterSpriteFolder(CharacterState.Walk, "walk", "Assets/Characters/LuKnight/Walk", 25.6);
-        RegisterSpriteFolder(CharacterState.Sleep, "sleep", "Assets/Characters/LuKnight/Sleep", breathingFps);
-        // A stable grab pose: movement comes from the transform, not mismatched body frames.
-        RegisterSpriteClip(CharacterState.Grabbed, new SpriteAnimationClip("grabbed-dangling",
-            new[] { "Assets/Characters/LuKnight/Grabbed/grabbed_000.png" }, 1, true));
-        RegisterSpriteFolder(CharacterState.Falling, "falling", "Assets/Characters/LuKnight/Falling", breathingFps);
-        RegisterSpriteFolder(CharacterState.Hanging, "hanging", "Assets/Characters/LuKnight/Hanging", breathingFps);
-        RegisterSpriteFolder(CharacterState.Climbing, "climbing", "Assets/Characters/LuKnight/Climbing", 16 * 8 / (2 * Math.PI));
+        // Anatomical head scale, baseline and canvas are calibrated at import.
+        // Walk and Climb use independently articulated PNG limbs; other states use acting sequences.
+        RegisterSpriteFolder(CharacterState.Idle, "idle", "Assets/Characters/LuKnight/Idle", 2.5);
+        RegisterSpriteFolder(CharacterState.Walk, "walk", "Assets/Characters/LuKnight/Walk", 10);
+        RegisterSpriteFolder(CharacterState.Sleep, "sleep", "Assets/Characters/LuKnight/Sleep", 1.6);
+        RegisterSpriteFolder(CharacterState.Grabbed, "grabbed", "Assets/Characters/LuKnight/Grabbed", 6);
+        RegisterSpriteFolder(CharacterState.Falling, "falling", "Assets/Characters/LuKnight/Falling", 8);
+        RegisterSpriteFolder(CharacterState.Hanging, "hanging", "Assets/Characters/LuKnight/Hanging", 4);
+        RegisterSpriteFolder(CharacterState.Climbing, "climbing", "Assets/Characters/LuKnight/Climbing", 8);
     }
 
     private void EnsureSpritePlayer()
@@ -1070,7 +1028,7 @@ public partial class CharacterView
         if (_spritePlayer is not null)
             return;
 
-        _spritePlayer = new SpriteAnimationPlayer(SpriteImage);
+        _spritePlayer = new SpriteAnimationPlayer(SpriteImage, SpritePreviousImage);
         _spritePlayer.FrameLoadFailed += SpritePlayer_FrameLoadFailed;
     }
 
@@ -1094,24 +1052,7 @@ public partial class CharacterView
 
         SpriteLayer.Visibility = useSprite ? Visibility.Visible : Visibility.Collapsed;
         VectorLayer.Visibility = mode == CharacterRenderMode.Vector ? Visibility.Visible : Visibility.Collapsed;
-        ModelViewport.Visibility = mode == CharacterRenderMode.Model3D ? Visibility.Visible : Visibility.Collapsed;
 
-        if (mode == CharacterRenderMode.Model3D)
-        {
-            _modelPlayer ??= new CharacterModel3DPlayer(ModelViewport);
-            if (changed)
-            {
-                _spritePlayer?.Stop();
-                StopSpriteMotion();
-                StopSpriteExpression();
-                StopCurrentAnimation();
-                StopMoodStoryboard();
-            }
-            _modelPlayer.SetFacingDirection(_facingDirection);
-            if (IsLoaded) _modelPlayer.Start();
-            return;
-        }
-        _modelPlayer?.Stop();
 
         if (!useSprite)
         {
@@ -1166,8 +1107,6 @@ public partial class CharacterView
 
     private void CharacterView_Unloaded(object sender, RoutedEventArgs e)
     {
-        _modelPlayer?.Dispose();
-        _modelPlayer = null;
         StopCurrentAnimation();
         StopMoodStoryboard();
         StopSpriteMotion();
@@ -1233,25 +1172,26 @@ public partial class CharacterView
         }
     }
 
-    private void PlaySpriteWink()
-    {
-        if (CurrentState != CharacterState.Idle ||
-            !_spriteMoodClips.TryGetValue(CharacterMood.Wink, out var clip))
-            return;
+    private SpriteAnimationClip? _spriteBlinkClip;
+    private SpriteAnimationClip? _spriteTwitchClip;
 
+    private void PlaySpriteBlink()
+    {
+        if (CurrentState != CharacterState.Idle || _spriteBlinkClip is null) return;
+        PlaySpriteTransient(_spriteBlinkClip, 190);
+    }
+
+    private void PlaySpriteTransient(SpriteAnimationClip clip, double milliseconds)
+    {
         StopSpriteExpression();
         _spritePlayer?.Play(clip);
-        if (_renderMode != CharacterRenderMode.Sprite)
-            return;
-
+        if (_renderMode != CharacterRenderMode.Sprite) return;
         if (_spriteExpressionTimer is null)
         {
-            _spriteExpressionTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(180)
-            };
+            _spriteExpressionTimer = new DispatcherTimer();
             _spriteExpressionTimer.Tick += SpriteExpressionTimer_Tick;
         }
+        _spriteExpressionTimer.Interval = TimeSpan.FromMilliseconds(milliseconds);
         _spriteExpressionTimer.Start();
     }
 

@@ -1,194 +1,168 @@
-using System;
 using System.IO;
-using System.Collections.Generic;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Threading;
 
 namespace LuKnight.Visuals;
 
-public sealed class SpriteAnimationPlayer :
-    IDisposable
+/// <summary>Preloaded frames, a display-synchronized clock, and fixed-canvas pose transitions.</summary>
+public sealed class SpriteAnimationPlayer : IDisposable
 {
     private readonly Image _image;
-
-    private readonly DispatcherTimer _timer;
-
-
+    private readonly Image? _previous;
+    private readonly Dictionary<string, BitmapSource> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<BitmapSource, byte[]> _pixels = new();
+    private WriteableBitmap? _interpolated;
+    private byte[] _blendPixels = [];
     private SpriteAnimationClip? _clip;
-
+    private SpritePuppet? _puppet;
+    private BitmapSource[] _frames = [];
+    private TimeSpan? _lastRender;
+    private double _elapsed;
+    private double _transition;
     private int _frameIndex;
-    private readonly Dictionary<string, (long Length, DateTime Modified, BitmapImage Bitmap)>
-        _frameCache = new(StringComparer.OrdinalIgnoreCase);
-
+    private bool _subscribed;
+    private const double BlendDuration = .10;
+    public bool IsPlaying => _clip is not null;
     public event Action? FrameLoadFailed;
 
-
-    public SpriteAnimationPlayer(
-        Image image)
+    public SpriteAnimationPlayer(Image image, Image? previous = null)
     {
         _image = image;
-
-
-        _timer =
-            new DispatcherTimer
-            {
-                Interval =
-                    TimeSpan.FromMilliseconds(
-                        1000.0 / 12.0)
-            };
-
-
-        _timer.Tick +=
-            Timer_Tick;
+        _previous = previous;
     }
 
-
-    public void Play(
-        SpriteAnimationClip clip)
+    public void Play(SpriteAnimationClip clip)
     {
-        if (ReferenceEquals(_clip, clip))
-        {
-            return;
-        }
-
-
-        _clip = clip;
-
-        _frameIndex = 0;
-
-
-        _timer.Interval =
-            TimeSpan.FromSeconds(
-                1.0 /
-                clip.FramesPerSecond);
-
-
-        ShowCurrentFrame();
-
-        // Fallback dapat memanggil Stop() saat frame pertama gagal dimuat.
-        if (!ReferenceEquals(_clip, clip))
-            return;
-
-        if (clip.Frames.Count > 1)
-        {
-            _timer.Start();
-        }
-        else
-        {
-            _timer.Stop();
-        }
-    }
-
-
-    public void Stop()
-    {
-        _timer.Stop();
-
-        _clip = null;
-
-        _frameIndex = 0;
-    }
-
-
-    private void Timer_Tick(
-        object? sender,
-        EventArgs e)
-    {
-        if (_clip is null ||
-            _clip.Frames.Count == 0)
-        {
-            return;
-        }
-
-
-        _frameIndex++;
-
-
-        if (_frameIndex >=
-            _clip.Frames.Count)
-        {
-            if (_clip.Loop)
-            {
-                _frameIndex = 0;
-            }
-            else
-            {
-                _frameIndex =
-                    _clip.Frames.Count - 1;
-
-                _timer.Stop();
-            }
-        }
-
-
-        ShowCurrentFrame();
-    }
-
-
-    private void ShowCurrentFrame()
-    {
-        if (_clip is null)
-            return;
-
-        if (_clip.Frames.Count == 0)
-        {
-            FailFrameLoad();
-            return;
-        }
-
+        if (ReferenceEquals(_clip, clip)) return;
         try
         {
-            string resolvedPath = _clip.Frames[_frameIndex];
-            if (!Path.IsPathRooted(resolvedPath))
+            if (clip.Frames.Count == 0) throw new InvalidDataException("Empty sprite clip.");
+            // Decode before starting playback: no filesystem work during rendering.
+            var frames = clip.Frames.Select(Load).ToArray();
+            if (frames.Any(f => f.PixelWidth != 510 || f.PixelHeight != 660))
+                throw new InvalidDataException("Sprites must use the shared 510 x 660 canvas.");
+            if (_previous is not null)
             {
-                resolvedPath = Path.Combine(AppContext.BaseDirectory, resolvedPath);
+                _previous.Source = _image.Source;
+                _previous.Opacity = _image.Source is null ? 0 : 1;
             }
-
-            if (!File.Exists(resolvedPath))
+            _puppet = clip.PuppetMotion is { } motion ? new SpritePuppet(motion) : null;
+            _clip = clip;
+            _frames = frames;
+            _interpolated = _puppet is null && frames.Length > 1 ? new WriteableBitmap(510, 660, 96, 96, PixelFormats.Pbgra32, null) : null;
+            _blendPixels = _puppet is null && frames.Length > 1 ? new byte[510 * 660 * 4] : [];
+            foreach (var frame in frames)
             {
-                FailFrameLoad();
-                return;
+                if (_puppet is not null || _pixels.ContainsKey(frame)) continue;
+                var converted = new FormatConvertedBitmap(frame, PixelFormats.Pbgra32, null, 0);
+                var pixels = new byte[510 * 660 * 4];
+                converted.CopyPixels(pixels, 510 * 4, 0);
+                _pixels[frame] = pixels;
             }
-
-            var info = new FileInfo(resolvedPath);
-            if (_frameCache.TryGetValue(resolvedPath, out var cached) &&
-                cached.Length == info.Length && cached.Modified == info.LastWriteTimeUtc)
+            _elapsed = 0;
+            _frameIndex = 0;
+            _transition = _image.Source is null || _previous is null ? BlendDuration : 0;
+            _image.Source = _puppet is null ? frames[0] : _puppet.Image;
+            _image.Opacity = _transition == 0 ? 0 : 1;
+            _lastRender = null;
+            if (!_subscribed)
             {
-                _image.Source = cached.Bitmap;
-                return;
+                CompositionTarget.Rendering += OnRendering;
+                _subscribed = true;
             }
-
-            var bitmap = new BitmapImage();
-            bitmap.BeginInit();
-            bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
-            bitmap.UriSource = new Uri(resolvedPath, UriKind.Absolute);
-            bitmap.EndInit();
-            bitmap.Freeze();
-            _frameCache[resolvedPath] = (info.Length, info.LastWriteTimeUtc, bitmap);
-            _image.Source = bitmap;
         }
         catch
         {
-            FailFrameLoad();
+            Stop();
+            _image.Source = null;
+            FrameLoadFailed?.Invoke();
         }
     }
 
-    private void FailFrameLoad()
+    private BitmapSource Load(string path)
     {
-        _image.Source = null;
-        Stop();
-        FrameLoadFailed?.Invoke();
+        path = Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(AppContext.BaseDirectory, path));
+        if (_cache.TryGetValue(path, out var cached)) return cached;
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+        bitmap.UriSource = new Uri(path);
+        bitmap.EndInit();
+        bitmap.Freeze();
+        _cache[path] = bitmap;
+        return bitmap;
     }
 
+    private void OnRendering(object? sender, EventArgs args)
+    {
+        if (args is not RenderingEventArgs render || _clip is null) return;
+        if (_lastRender == render.RenderingTime) return;
+        if (_lastRender is { } last)
+            Advance(Math.Clamp((render.RenderingTime - last).TotalSeconds, 0, .05));
+        _lastRender = render.RenderingTime;
+    }
+
+    private void Advance(double delta)
+    {
+        if (_clip is null) return;
+        _elapsed += delta;
+        _transition = Math.Min(BlendDuration, _transition + delta);
+        double blend = _transition / BlendDuration;
+        blend = blend * blend * (3 - 2 * blend);
+        _image.Opacity = blend;
+        if (_previous is not null)
+        {
+            _previous.Opacity = 1 - blend;
+            if (blend == 1) _previous.Source = null;
+        }
+        double frameTime = _elapsed * _clip.FramesPerSecond;
+        int absoluteIndex = (int)Math.Floor(frameTime + 1e-8);
+        int index = absoluteIndex;
+        index = _clip.Loop ? index % _frames.Length : Math.Min(index, _frames.Length - 1);
+        _frameIndex = index;
+        if (_puppet is not null)
+        {
+            _puppet.Advance(_elapsed);
+            _image.Source = _puppet.Image;
+            return;
+        }
+        if (_interpolated is not null)
+        {
+            // Interpolate premultiplied RGBA, not two translucent Image layers:
+            // overlapping white fur must not dim at every half-frame.
+            int next = _clip.Loop ? (index + 1) % _frames.Length : Math.Min(index + 1, _frames.Length - 1);
+            int weight = (int)(Math.Clamp(frameTime - absoluteIndex, 0, 1) * 256);
+            var from = _pixels[_frames[index]];
+            var to = _pixels[_frames[next]];
+            for (int i = 0; i < _blendPixels.Length; i++)
+                _blendPixels[i] = (byte)((from[i] * (256 - weight) + to[i] * weight + 128) >> 8);
+            _interpolated.WritePixels(new Int32Rect(0, 0, 510, 660), _blendPixels, 510 * 4, 0);
+            _image.Source = _interpolated;
+        }
+        else _image.Source = _frames[index];
+    }
+
+    public void Stop()
+    {
+        if (_subscribed) CompositionTarget.Rendering -= OnRendering;
+        _subscribed = false;
+        _clip = null;
+        _puppet = null;
+        _frames = [];
+        _interpolated = null;
+        _blendPixels = [];
+        _lastRender = null;
+        _image.Opacity = 1;
+        if (_previous is not null) { _previous.Source = null; _previous.Opacity = 0; }
+    }
 
     public void Dispose()
     {
         Stop();
-        _frameCache.Clear();
-
-        _timer.Tick -=
-            Timer_Tick;
+        _cache.Clear();
+        _pixels.Clear();
     }
 }

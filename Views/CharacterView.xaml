@@ -18,17 +18,17 @@
                              Storyboard.TargetProperty="ScaleY"
                              From="1"
                              To="1.018"
-                             Duration="0:0:1.6"/>
+                             Duration="0:0:1.6" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
             <DoubleAnimation Storyboard.TargetName="SpriteTranslate"
                              Storyboard.TargetProperty="Y"
                              From="0"
                              To="-1.8"
-                             Duration="0:0:1.6"/>
+                             Duration="0:0:1.6" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
             <DoubleAnimation Storyboard.TargetName="SpriteRotate"
                              Storyboard.TargetProperty="Angle"
                              From="-0.7"
                              To="0.7"
-                             Duration="0:0:2.2"/>
+                             Duration="0:0:2.2" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
         </Storyboard>
 
         <Storyboard x:Key="SpriteGrabbedStoryboard"
@@ -41,7 +41,7 @@
                 Storyboard.TargetProperty="Y"
                 From="1"
                 To="4"
-                Duration="0:0:0.55"/>
+                Duration="0:0:0.55" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
 
             <!-- sway ketika dipegang -->
@@ -50,7 +50,7 @@
                 Storyboard.TargetProperty="Angle"
                 From="-2.5"
                 To="2.5"
-                Duration="0:0:0.65"/>
+                Duration="0:0:0.65" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
         </Storyboard>
 
@@ -63,7 +63,7 @@
                 Storyboard.TargetProperty="Angle"
                 From="-3"
                 To="3"
-                Duration="0:0:0.28"/>
+                Duration="0:0:0.28" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
 
             <DoubleAnimation
@@ -71,7 +71,7 @@
                 Storyboard.TargetProperty="ScaleY"
                 From="1"
                 To="1.035"
-                Duration="0:0:0.28"/>
+                Duration="0:0:0.28" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
         </Storyboard>
 
@@ -84,21 +84,21 @@
                 Storyboard.TargetProperty="Y"
                 From="0"
                 To="-2.5"
-                Duration="0:0:0.18"/>
+                Duration="0:0:0.18" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
             <DoubleAnimation
                 Storyboard.TargetName="SpriteRotate"
                 Storyboard.TargetProperty="Angle"
                 From="-1.2"
                 To="1.2"
-                Duration="0:0:0.18"/>
+                Duration="0:0:0.18" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
             <DoubleAnimation
                 Storyboard.TargetName="SpriteScale"
                 Storyboard.TargetProperty="ScaleY"
                 From="0.99"
                 To="1.015"
-                Duration="0:0:0.18"/>
+                Duration="0:0:0.18" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
         </Storyboard>
 
@@ -112,21 +112,21 @@
                 Storyboard.TargetProperty="ScaleY"
                 From="0.985"
                 To="1.012"
-                Duration="0:0:2.4"/>
+                Duration="0:0:2.4" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
             <DoubleAnimation
                 Storyboard.TargetName="SpriteTranslate"
                 Storyboard.TargetProperty="Y"
                 From="1"
                 To="2.2"
-                Duration="0:0:2.4"/>
+                Duration="0:0:2.4" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
             <DoubleAnimation
                 Storyboard.TargetName="SpriteRotate"
                 Storyboard.TargetProperty="Angle"
                 From="-0.35"
                 To="0.35"
-                Duration="0:0:3.2"/>
+                Duration="0:0:3.2" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
         </Storyboard>
 
@@ -140,14 +140,14 @@
                 Storyboard.TargetProperty="Angle"
                 From="-2.2"
                 To="2.2"
-                Duration="0:0:0.62"/>
+                Duration="0:0:0.62" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
             <DoubleAnimation
                 Storyboard.TargetName="SpriteTranslate"
                 Storyboard.TargetProperty="Y"
                 From="0"
                 To="2.4"
-                Duration="0:0:0.62"/>
+                Duration="0:0:0.62" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
         </Storyboard>
 
@@ -161,21 +161,21 @@
                 Storyboard.TargetProperty="Y"
                 From="2"
                 To="-3"
-                Duration="0:0:0.23"/>
+                Duration="0:0:0.23" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
             <DoubleAnimation
                 Storyboard.TargetName="SpriteRotate"
                 Storyboard.TargetProperty="Angle"
                 From="-1.5"
                 To="1.5"
-                Duration="0:0:0.23"/>
+                Duration="0:0:0.23" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
             <DoubleAnimation
                 Storyboard.TargetName="SpriteScale"
                 Storyboard.TargetProperty="ScaleY"
                 From="0.99"
                 To="1.025"
-                Duration="0:0:0.23"/>
+                Duration="0:0:0.23" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
 
         </Storyboard>
 
@@ -668,13 +668,8 @@
 
 
     <Grid Background="Transparent">
-        <Viewport3D x:Name="ModelViewport"
-                    Visibility="Collapsed"
-                    IsHitTestVisible="False"
-                    ClipToBounds="False"/>
-
-        <!-- Semua bagian karakter ada di dalam container ini -->
-        <!-- SPRITE / SOFT-3D RENDERER -->
+<!-- Semua bagian karakter ada di dalam container ini -->
+        <!-- REFERENCE SPRITE RENDERER -->
         <Grid x:Name="SpriteLayer"
               Visibility="Collapsed"
               IsHitTestVisible="False">
@@ -732,7 +727,7 @@
 
             <Grid x:Name="SpriteImpactRoot"
                   Panel.ZIndex="1"
-                  RenderTransformOrigin="0.5,0.88">
+                  RenderTransformOrigin="0.5,0.968">
 
                 <Grid.RenderTransform>
 
@@ -766,14 +761,13 @@
                 </Grid.RenderTransform>
 
 
-                <Image x:Name="SpriteImage"
-                       Stretch="Uniform"
+                <Grid x:Name="SpritePoseRoot"
                        HorizontalAlignment="Stretch"
                        VerticalAlignment="Stretch"
-                       RenderTransformOrigin="0.5,0.88"
+                       RenderTransformOrigin="0.5,0.968"
                        RenderOptions.BitmapScalingMode="HighQuality">
 
-                    <Image.RenderTransform>
+                    <Grid.RenderTransform>
 
                         <TransformGroup>
 
@@ -802,9 +796,11 @@
 
                         </TransformGroup>
 
-                    </Image.RenderTransform>
+                    </Grid.RenderTransform>
 
-                </Image>
+                    <Image x:Name="SpritePreviousImage" Stretch="Uniform" Opacity="0"/>
+                    <Image x:Name="SpriteImage" Stretch="Uniform"/>
+                </Grid>
 
             </Grid>
 

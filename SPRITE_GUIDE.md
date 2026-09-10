@@ -1,56 +1,59 @@
-# Rendering Lu-Knight: model 3D dan sprite cadangan
+﻿# LuKnight: sprite hidup sesuai Reference
 
-Renderer default sekarang `CharacterRenderMode.Sprite`. Mode 3D tetap tersedia melalui `SetRenderMode(CharacterRenderMode.Model3D)`. Pada mode 3D, Lu-Knight memakai mesh 3D WPF dengan kamera orthographic, material, pencahayaan, dan sendi untuk kepala, telinga, lengan, serta kaki. Ini model prosedural dalam kode, bukan file Blender/GLB atau sprite yang diberi efek perspektif. Tidak ada package tambahan.
+Renderer utama tetap `CharacterRenderMode.Sprite`; model 3D tidak digunakan. Referensi identitas adalah `Assets/Characters/LuKnight/Reference/LuKnightReference.png`.
 
-## Ukuran dan animasi
+## Jalan dan memanjat
 
-Satu geometri dipakai untuk Idle, Walk, Sleep, Grabbed, Falling, Hanging, dan Climbing. Kamera serta skala tubuh tetap; perubahan pose berasal dari rotasi/translasi sendi. Pergantian state dan mood mempertahankan pose saat ini, lalu interpolasi berjalan berdasarkan waktu. Mood mengubah wajah, bukan mengganti gambar seluruh tubuh.
+`Visuals/SpritePuppet.cs` merakit lima bagian PNG: kepala/tubuh, lengan dekat/jauh, dan kaki dekat/jauh. Semua adalah gambar 2D. Wajah dan badan memakai tampak samping kanan; transform mirror memberikan arah kiri.
 
-Animasi, sampling cursor saat drag, gerak jatuh, jalan, serta climb mengikuti `CompositionTarget.Rendering`. Callback duplikat untuk frame yang sama diabaikan. Delta animasi dibatasi saat render tersendat. Posisi drag mengikuti cursor langsung; goyangan visual dibatasi di sekitar kepala. Smoothing kecepatan lempar berbasis waktu. Jarak pecahan piksel saat berjalan dipertahankan agar kecepatan tidak berubah pada layar 30/60/120/144 Hz.
+Kedua kaki bergerak berlawanan fase, dengan kaki ayun terangkat bergantian. Kedua lengan berayun berlawanan dengan kaki. Siklus jalan 0.8 detik; memanjat 1.1 detik dengan pergantian tangan dan kaki. Bagian jauh sedikit lebih gelap sehingga kedua kaki dapat dibedakan. Pangkal kaki berada di belakang badan, dan bagian bulat sambungan dipangkas saat import supaya tidak terlihat seperti sendi terpisah.
 
-Keputusan behavior tetap memakai timer 33 ms. Gravity, target jump, dan terrain collision tetap ditangani controller physics/navigation. Manual grab tetap membersihkan target autonomous.
+Rig memakai kanvas transparan tetap 510 x 660. Pergantian sudut sendi tidak mengubah ukuran ImageSource maupun membuat WPF menyesuaikan ulang skala. Motion berjalan pada render clock yang sama dengan sprite player; tidak ditumpuk dengan storyboard bob/squash jalan lama. Tidak ada decode gambar atau blending piksel dalam update rig.
 
-## Struktur kode
+## Pose dan ekspresi lainnya
 
-- `Visuals/Model3DGeometry.cs`: mesh dan material yang dibuat sekali lalu dibekukan.
-- `Visuals/CharacterModel3DPlayer.cs`: rig, ekspresi, blending pose, render clock, serta lifecycle.
-- `Views/CharacterView.xaml.cs`: API state/mood dan dispatch ke renderer aktif.
-- `Views/CharacterView.Sprites.cs`: pemilihan renderer, registry sprite cadangan, dan cleanup.
-- `Behaviors/BehaviorController.cs`: keputusan aktivitas/mood dan penjadwalan gerak saat render.
-- `Behaviors/SurfaceBehaviorController.cs`: support, edge, hang, climb, dan persiapan jump.
-- `Physics/CharacterPhysicsController.cs`: cursor/grab, lempar, falling, collision, dan landing.
-- `MainWindow.xaml.cs`: mouse capture dan penghubung behavior, physics, serta chat.
+Paket runtime berisi 68 PNG: 56 frame state (8 untuk setiap state), 7 ekspresi, dan 5 bagian rig. Rangkaian Walk/Climbing disimpan sebagai sumber pose; runtime memakai rig agar kaki/tangan bergerak secara independen dan kontinu.
 
-`SetRenderMode(Vector)` dan `SetRenderMode(Sprite)` masih tersedia. Renderer yang tidak aktif dihentikan; unload melepas subscription render, timer, dan scene. Model tidak membaca PNG selama animasi.
+- Idle: napas, perubahan posisi kepala yang kecil, dan telinga bergerak.
+- Blink: kedua mata menutup lalu membuka, terpisah dari ekspresi wink. Mengikuti jadwal behavior yang sudah ada.
+- Twitch: rangkaian gerak telinga, kembali ke idle setelah selesai.
+- Sleep: napas pelan, mata tertutup, telinga turun.
+- Grabbed: kaki bergerak bergantian saat tubuh tergantung.
+- Falling: reaksi wajah, kaki di udara dan telinga bergerak.
+- Hanging: kedua tangan di atas kepala, badan dan kaki bereaksi.
 
-## Aset PNG cadangan
+Full-body PNG memakai kanvas 510 x 660 dan landmark kepala/titik pijak yang dikalibrasi per atlas. Tampak samping mempunyai ukuran proyeksi dan pusatnya sendiri. Pose tidak diperbesar berdasarkan batas siluet per frame. Ekspresi tubuh hanya dipakai saat Idle agar tidak mengganti pose fisik yang sedang aktif.
 
-112 frame state, tujuh ekspresi, dan master kini dirender ulang dari model 3D yang sama pada kanvas transparan 510 x 660, dengan kamera tetap. Tidak ada crop atau resize per siluet. Ukuran kepala/tubuh tetap konsisten; tinggi siluet boleh berubah secara alami saat duduk atau mengangkat kaki.
+`SpriteAnimationPlayer` memuat cache sebelum playback, memakai `CompositionTarget.Rendering`, mengabaikan callback duplikat, dan membatasi delta sesudah stall ke 50 ms. Rangkaian bitmap memakai interpolasi premultiplied RGBA; pergantian clip memakai blend 100 ms. State yang sama tidak me-reset phase. Unload menghentikan playback dan melepas cache/subscription. Vector tetap menjadi fallback apabila aset gagal dibaca.
 
-Setiap folder state berisi 16 frame. Mode Sprite memakai satu frame Grabbed agar pose tetap stabil saat drag; gerak visualnya berasal dari transform. FPS Walk 25.6, Climbing sekitar 20.37, dan pose bernapas sekitar 5.60, sesuai periode ekspor. Mode 3D tidak dibatasi oleh FPS sprite tersebut.
+## Import dan preview
 
-Untuk regenerasi dan pemeriksaan:
+Sumber ImageGen terbaru dan prompt: `output/imagegen/alive-sprites/`. Importer menggunakan `tools/ReferenceSpriteImport.cs` untuk alpha/chroma key, membuang speck terpisah, lalu menempatkan aset pada kanvas tetap. Output disiapkan di staging sebelum mengganti paket runtime.
 
 ```powershell
-./tools/Export-ModelSprites.ps1
+powershell -NoProfile -File tools/Import-SpriteSheets.ps1
+powershell -NoProfile -File tools/Import-SpriteSheets.ps1 -RigOnly
+powershell -NoProfile -File tools/Build-SpritePreview.ps1
+dotnet run --project tests/LuKnight.RenderChecks/LuKnight.RenderChecks.csproj -c Release
+dotnet build LuKnight.csproj
 ```
 
-Script menjalankan pemeriksaan WPF dan mengekspor model, lalu membuat contact sheet. `Import-SpriteSheets.ps1` serta `output/imagegen/sprite-sources` hanya menyimpan pipeline/sumber AI sebelumnya; importer lama melakukan fit per siluet dan tidak dipakai untuk paket baru.
+Preview runtime:
 
-Preview model: `output/model3d/preview.png`.
-Preview semua PNG: `Assets/Characters/LuKnight/Reference/sprite_pack_preview.png`.
+- `output/sprites/walk-directions.gif`: animasi jalan ke kiri dan kanan.
+- `output/sprites/climb-directions.gif`: animasi memanjat dua arah.
+- `output/sprites/directional-motion.png`: sampel empat fase kedua arah.
+- `output/sprites/preview.png`: semua state dirender lewat WPF.
+- `output/sprites/sprite_pack_preview.png`: seluruh rangkaian PNG sumber.
 
 ## Verifikasi
 
+284 pemeriksaan renderer lolos: state/mood, arah, lifecycle, cadence 30/60/120/144 Hz, callback duplikat, stall, blend, phase boundary, alpha bounds, kedipan dua mata, runtime memakai rig, dan kedua kaki bergerak berlawanan pada fase yang berbeda. Kanvas rig diuji sepanjang 24 sampel siklus untuk kedua arah, tanpa clipping. 63 full-body PNG lolos validasi kanvas/transparansi. Kepala Idle/Expressions terukur 241-249 px, pusat X 249.5-253.5 px.
+
+Update sendi rig terukur sekitar 0.02 ms untuk Walk dan 0.008 ms untuk Climb dalam benchmark offscreen pada sesi pengembangan. Angka ini bukan pengukuran FPS desktop.
+
+Tes cursor/drag dan native window memerlukan Windows interaktif dan belum dijalankan di sesi tool ini:
+
 ```powershell
-dotnet run --project tests/LuKnight.RenderChecks/LuKnight.RenderChecks.csproj
-dotnet clean LuKnight.csproj
-dotnet build LuKnight.csproj
-dotnet run --project LuKnight.csproj --no-build
+dotnet run --project tests/LuKnight.RenderChecks/LuKnight.RenderChecks.csproj -c Release -- --desktop
 ```
-
-Harness memeriksa semua state/mood, geometri tetap, transparansi tepi, kedua arah hadap, transisi tanpa reset, skala saat grab, reset target autonomous, release ke Falling, cadence 30/60/120/144 Hz, callback duplikat, fractional walking, pause saat drag, dan unload/reload. Uji cursor/native window memerlukan akses desktop Windows. Benchmark transform offscreen bukan pengukuran FPS layar.
-
-API yang digunakan: [WPF 3D overview](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/graphics-multimedia/3-d-graphics-overview) dan [CompositionTarget.Rendering](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/graphics-multimedia/how-to-render-on-a-per-frame-interval-using-compositiontarget).
-
-Verifikasi terakhir: 203 pemeriksaan logic/render dan 119 pemeriksaan aset lolos; clean/build berhasil tanpa warning/error. Verifikasi tersebut dilakukan saat default masih Model3D; default kini Sprite sesuai pilihan pengguna. Pemeriksaan visual drag melalui computer-use belum selesai karena koneksi native pipe tidak tersedia; hasil benchmark offscreen tidak menjamin FPS desktop.

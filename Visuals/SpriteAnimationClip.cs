@@ -13,12 +13,15 @@ public sealed class SpriteAnimationClip
 
     public bool Loop { get; }
 
+    public SpritePuppetMotion? PuppetMotion { get; }
+
 
     public SpriteAnimationClip(
         string name,
         IReadOnlyList<string> frames,
         double framesPerSecond,
-        bool loop)
+        bool loop,
+        SpritePuppetMotion? puppetMotion = null)
     {
         Name = name;
 
@@ -30,5 +33,6 @@ public sealed class SpriteAnimationClip
                 framesPerSecond);
 
         Loop = loop;
+        PuppetMotion = puppetMotion;
     }
 }
