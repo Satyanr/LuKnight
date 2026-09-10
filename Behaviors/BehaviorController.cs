@@ -54,11 +54,46 @@ public sealed class BehaviorController : IDisposable
     private Rect _lastSupportWindowBounds =
         Rect.Empty;
 
+    private enum SurfaceAction
+    {
+        None,
+        EdgePause,
+        Peeking,
+        Hanging,
+        ClimbingUp
+    }
+
+    private SurfaceAction _surfaceAction =
+    SurfaceAction.None;
+
+    private int _surfaceEdgeDirection = 1;
+
+    private DateTime _surfaceActionUntil =
+        DateTime.MinValue;
+
+    private DateTime _climbStartedAt =
+        DateTime.MinValue;
+
+
+    private const double HangGripOffsetY =
+        90.0;
+
+
+    private static readonly TimeSpan
+        ClimbDuration =
+            TimeSpan.FromMilliseconds(650);
+
     public event Action? SupportLost;
 
     public void SetSupportWindow(
     nint? windowHandle)
     {
+        _surfaceAction =
+            SurfaceAction.None;
+
+        _surfaceActionUntil =
+            DateTime.MinValue;
+
         _supportWindowHandle =
             windowHandle ??
             nint.Zero;
@@ -86,11 +121,396 @@ public sealed class BehaviorController : IDisposable
 
     public void ClearSupportWindow()
     {
+        _surfaceAction =
+            SurfaceAction.None;
+
+        _surfaceActionUntil =
+            DateTime.MinValue;
+
         _supportWindowHandle =
             nint.Zero;
 
         _lastSupportWindowBounds =
             Rect.Empty;
+    }
+
+    private double GetHangingLeft(
+    Rect supportBounds,
+    double characterWidth)
+    {
+        const double overhang = 18;
+
+
+        if (_surfaceEdgeDirection < 0)
+        {
+            return supportBounds.Left -
+                   overhang;
+        }
+
+
+        return supportBounds.Right -
+               characterWidth +
+               overhang;
+    }
+
+    private void BeginEdgePause(
+    int edgeDirection)
+    {
+        _walking = false;
+
+        _surfaceEdgeDirection =
+            edgeDirection < 0
+                ? -1
+                : 1;
+
+
+        _surfaceAction =
+            SurfaceAction.EdgePause;
+
+
+        _surfaceActionUntil =
+            DateTime.UtcNow
+                .AddMilliseconds(550);
+
+
+        _character.SetState(
+            CharacterState.Idle);
+
+
+        _character.SetFacingDirection(
+            _surfaceEdgeDirection);
+
+
+        _character.SetMood(
+            CharacterMood.Curious);
+
+
+        _character.LookDown();
+    }
+
+    private void BeginPeeking(
+    DateTime now)
+    {
+        _surfaceAction =
+            SurfaceAction.Peeking;
+
+
+        _surfaceActionUntil =
+            now.AddMilliseconds(950);
+
+
+        _character.SetState(
+            CharacterState.Idle);
+
+
+        _character.SetMood(
+            CharacterMood.Curious);
+
+
+        _character.PlayEdgePeek(
+            _surfaceEdgeDirection);
+    }
+
+    private void BeginHanging(
+    DateTime now)
+    {
+        _walking = false;
+
+
+        _surfaceAction =
+            SurfaceAction.Hanging;
+
+
+        _surfaceActionUntil =
+            now.AddSeconds(
+                1.5 +
+                (_random.NextDouble() *
+                 1.8));
+
+
+        _character.SetState(
+            CharacterState.Hanging);
+
+
+        _character.SetMood(
+            CharacterMood.Curious);
+
+
+        UpdateSupportWindow();
+    }
+
+    private void BeginClimbingUp(
+    DateTime now)
+    {
+        _surfaceAction =
+            SurfaceAction.ClimbingUp;
+
+
+        _climbStartedAt = now;
+
+
+        _character.SetState(
+            CharacterState.Climbing);
+
+
+        _character.SetMood(
+            CharacterMood.Curious);
+    }
+
+    private void UpdateClimbingUp(
+    DateTime now)
+    {
+        if (!DesktopWindowService.TryGetWindow(
+                _supportWindowHandle,
+                out DesktopWindowInfo support))
+        {
+            LoseWindowSupport();
+            return;
+        }
+
+
+        Rect characterBounds =
+            DesktopMonitorService
+                .GetWindowBounds(
+                    _window);
+
+
+        double progress =
+            (now - _climbStartedAt)
+            .TotalMilliseconds /
+            ClimbDuration.TotalMilliseconds;
+
+
+        progress =
+            Math.Clamp(
+                progress,
+                0,
+                1);
+
+
+        // ease-out
+        double eased =
+            1 -
+            Math.Pow(
+                1 - progress,
+                3);
+
+
+        double hangingLeft =
+            GetHangingLeft(
+                support.Bounds,
+                characterBounds.Width);
+
+
+        double standingLeft =
+            _surfaceEdgeDirection < 0
+                ? support.Bounds.Left
+                : support.Bounds.Right -
+                  characterBounds.Width;
+
+
+        double hangingTop =
+            support.Bounds.Top -
+            HangGripOffsetY;
+
+
+        double standingTop =
+            support.Bounds.Top -
+            characterBounds.Height;
+
+
+        double left =
+            Lerp(
+                hangingLeft,
+                standingLeft,
+                eased);
+
+
+        double top =
+            Lerp(
+                hangingTop,
+                standingTop,
+                eased);
+
+
+        DesktopMonitorService
+            .SetWindowPosition(
+                _window,
+                left,
+                top);
+
+
+        _lastSupportWindowBounds =
+            support.Bounds;
+
+
+        if (progress < 1)
+            return;
+
+
+        _surfaceAction =
+            SurfaceAction.None;
+
+
+        // setelah naik, menghadap ke dalam
+        _direction =
+            -_surfaceEdgeDirection;
+
+
+        _character.SetState(
+            CharacterState.Idle);
+
+
+        _character.SetFacingDirection(
+            _direction);
+
+
+        if (!_thinking)
+        {
+            _character.SetMood(
+                CharacterMood.Neutral);
+        }
+
+
+        ScheduleNextDecision(
+            0.6,
+            1.4);
+    }
+
+    private static double Lerp(
+    double from,
+    double to,
+    double amount)
+    {
+        return from +
+               ((to - from) *
+                amount);
+    }
+
+    private bool UpdateSurfaceAction(
+    DateTime now)
+    {
+        switch (_surfaceAction)
+        {
+            case SurfaceAction.None:
+
+                return false;
+
+
+            case SurfaceAction.EdgePause:
+
+                if (now <
+                    _surfaceActionUntil)
+                {
+                    return true;
+                }
+
+
+                double choice =
+                    _random.NextDouble();
+
+
+                // 55% balik
+                if (choice < 0.55)
+                {
+                    TurnBackFromEdge();
+                    return true;
+                }
+
+
+                // 30% mengintip
+                if (choice < 0.85)
+                {
+                    BeginPeeking(now);
+                    return true;
+                }
+
+
+                // 15% bergantung
+                BeginHanging(now);
+
+                return true;
+
+
+            case SurfaceAction.Peeking:
+
+                if (now <
+                    _surfaceActionUntil)
+                {
+                    return true;
+                }
+
+
+                // Setelah peek masih ada
+                // kemungkinan nekat hanging.
+                if (_random.NextDouble() <
+                    0.25)
+                {
+                    BeginHanging(now);
+                }
+                else
+                {
+                    TurnBackFromEdge();
+                }
+
+                return true;
+
+
+            case SurfaceAction.Hanging:
+
+                if (now <
+                    _surfaceActionUntil)
+                {
+                    return true;
+                }
+
+
+                BeginClimbingUp(now);
+
+                return true;
+
+
+            case SurfaceAction.ClimbingUp:
+
+                UpdateClimbingUp(now);
+
+                return true;
+
+
+            default:
+
+                return false;
+        }
+    }
+
+    private void TurnBackFromEdge()
+    {
+        _surfaceAction =
+            SurfaceAction.None;
+
+
+        _direction =
+            -_surfaceEdgeDirection;
+
+
+        _character.SetState(
+            CharacterState.Idle);
+
+
+        _character.SetFacingDirection(
+            _direction);
+
+
+        if (!_thinking)
+        {
+            _character.SetMood(
+                CharacterMood.Neutral);
+        }
+
+
+        ScheduleNextDecision(
+            0.4,
+            1.0);
     }
 
     private bool UpdateSupportWindow()
@@ -111,48 +531,73 @@ public sealed class BehaviorController : IDisposable
         }
 
 
+        if (_surfaceAction ==
+            SurfaceAction.ClimbingUp)
+        {
+            // Posisi selama climbing dikontrol
+            // UpdateClimbingUp().
+            return true;
+        }
+
         Rect characterBounds =
             DesktopMonitorService
                 .GetWindowBounds(
                     _window);
 
+        double left;
 
-        double deltaX = 0;
 
-
-        if (!_lastSupportWindowBounds.IsEmpty)
+        if (_surfaceAction ==
+            SurfaceAction.Hanging)
         {
-            deltaX =
-                support.Bounds.Left -
-                _lastSupportWindowBounds.Left;
+            left =
+                GetHangingLeft(
+                    support.Bounds,
+                    characterBounds.Width);
+        }
+        else
+        {
+            double deltaX = 0;
+
+
+            if (!_lastSupportWindowBounds.IsEmpty)
+            {
+                deltaX =
+                    support.Bounds.Left -
+                    _lastSupportWindowBounds.Left;
+            }
+
+
+            left =
+                characterBounds.Left +
+                deltaX;
+
+
+            double minimumLeft =
+                support.Bounds.Left;
+
+            double maximumLeft =
+                Math.Max(
+                    minimumLeft,
+                    support.Bounds.Right -
+                    characterBounds.Width);
+
+
+            left =
+                Math.Clamp(
+                    left,
+                    minimumLeft,
+                    maximumLeft);
         }
 
 
-        double left =
-            characterBounds.Left +
-            deltaX;
-
-
-        double minimumLeft =
-            support.Bounds.Left;
-
-        double maximumLeft =
-            Math.Max(
-                minimumLeft,
-                support.Bounds.Right -
-                characterBounds.Width);
-
-
-        left =
-            Math.Clamp(
-                left,
-                minimumLeft,
-                maximumLeft);
-
-
         double top =
-            support.Bounds.Top -
-            characterBounds.Height;
+            _surfaceAction ==
+                SurfaceAction.Hanging
+                ? support.Bounds.Top -
+                  HangGripOffsetY
+                : support.Bounds.Top -
+                  characterBounds.Height;
 
 
         DesktopMonitorService
@@ -170,6 +615,11 @@ public sealed class BehaviorController : IDisposable
 
     private void LoseWindowSupport()
     {
+        _surfaceAction =
+            SurfaceAction.None;
+
+        _surfaceActionUntil =
+            DateTime.MinValue;
         if (_supportWindowHandle ==
             nint.Zero)
         {
@@ -607,8 +1057,24 @@ public sealed class BehaviorController : IDisposable
             PlaceOnDesktopBottom();
         }
 
-        _character.SetState(
-            CharacterState.Idle);
+        if (_surfaceAction ==
+    SurfaceAction.Hanging)
+        {
+            _character.SetState(
+                CharacterState.Hanging);
+        }
+        else if (_surfaceAction ==
+                 SurfaceAction.ClimbingUp)
+        {
+            _character.SetState(
+                CharacterState.Climbing);
+        }
+        else
+        {
+            _character.SetState(
+                CharacterState.Idle);
+        }
+
         _character.SetFacingDirection(_direction);
 
         _lastTickAt = DateTime.UtcNow;
@@ -661,6 +1127,18 @@ public sealed class BehaviorController : IDisposable
                 deltaSeconds,
                 0,
                 0.1);
+
+        if (UpdateSurfaceAction(now))
+        {
+            if (now >= _nextBlinkAt)
+            {
+                _character.Blink();
+
+                ScheduleNextBlink();
+            }
+
+            return;
+        }
 
         UpdateMood(now);
 
@@ -808,6 +1286,12 @@ public sealed class BehaviorController : IDisposable
     private void MoveOnSupportWindow(
     double deltaSeconds)
     {
+        if (_surfaceAction !=
+            SurfaceAction.None)
+        {
+            return;
+        }
+
         if (!DesktopWindowService.TryGetWindow(
                 _supportWindowHandle,
                 out DesktopWindowInfo support))
@@ -839,6 +1323,10 @@ public sealed class BehaviorController : IDisposable
              WalkSpeed *
              deltaSeconds);
 
+        double supportTop =
+            support.Bounds.Top -
+            characterBounds.Height;
+
 
         // Phase 3D-A:
         // sementara Lu-Knight berbalik
@@ -848,36 +1336,41 @@ public sealed class BehaviorController : IDisposable
             newLeft =
                 minimumLeft;
 
-            _direction = 1;
 
-            _character
-                .SetFacingDirection(
-                    _direction);
+            DesktopMonitorService
+                .SetWindowPosition(
+                    _window,
+                    newLeft,
+                    supportTop);
+
+
+            BeginEdgePause(-1);
+
+            return;
         }
-        else if (newLeft >=
-                 maximumLeft)
+        else if (newLeft >= maximumLeft)
         {
             newLeft =
                 maximumLeft;
 
-            _direction = -1;
 
-            _character
-                .SetFacingDirection(
-                    _direction);
+            DesktopMonitorService
+                .SetWindowPosition(
+                    _window,
+                    newLeft,
+                    supportTop);
+
+
+            BeginEdgePause(1);
+
+            return;
         }
-
-
-        double top =
-            support.Bounds.Top -
-            characterBounds.Height;
-
 
         DesktopMonitorService
             .SetWindowPosition(
                 _window,
                 newLeft,
-                top);
+                supportTop);
 
 
         _lastSupportWindowBounds =

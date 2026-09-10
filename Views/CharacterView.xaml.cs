@@ -14,7 +14,10 @@ public enum CharacterState
     Sleep,
 
     Grabbed,
-    Falling
+    Falling,
+
+    Hanging,
+    Climbing
 }
 
 public enum CharacterMood
@@ -538,7 +541,133 @@ public partial class CharacterView : UserControl
                     "FallingStoryboard");
 
                 break;
+
+            case CharacterState.Hanging:
+
+                StartStoryboard(
+                    "HangingStoryboard");
+
+                break;
+
+
+            case CharacterState.Climbing:
+
+                StartStoryboard(
+                    "ClimbingStoryboard");
+
+                break;
         }
+    }
+
+    public void LookDown()
+    {
+        if (CurrentState ==
+            CharacterState.Sleep)
+        {
+            return;
+        }
+
+
+        _cursorTracking = false;
+
+        _eyeOffsetX = 0;
+        _eyeOffsetY = 0;
+
+
+        EyeLookTranslate.BeginAnimation(
+            TranslateTransform.XProperty,
+            null);
+
+        EyeLookTranslate.BeginAnimation(
+            TranslateTransform.YProperty,
+            null);
+
+
+        var animation =
+            new DoubleAnimationUsingKeyFrames
+            {
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        animation.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                0,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.Zero)));
+
+
+        animation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                5,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        160))));
+
+
+        animation.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                5,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        700))));
+
+
+        animation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                0,
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        900))));
+
+
+        EyeLookTranslate.BeginAnimation(
+            TranslateTransform.YProperty,
+            animation);
+    }
+
+    public void PlayEdgePeek(
+        int direction)
+    {
+        if (CurrentState ==
+            CharacterState.Sleep)
+        {
+            return;
+        }
+
+
+        LookDown();
+
+        TwitchEars();
+
+
+        double targetX =
+            direction < 0
+                ? -5
+                : 5;
+
+
+        var animation =
+            new DoubleAnimation
+            {
+                From = 0,
+                To = targetX,
+
+                Duration =
+                    TimeSpan.FromMilliseconds(
+                        220),
+
+                AutoReverse = true,
+
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        BodyTranslate.BeginAnimation(
+            TranslateTransform.XProperty,
+            animation);
     }
 
     private void StartStoryboard(string resourceName)

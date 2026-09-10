@@ -373,6 +373,128 @@
 
         </Storyboard>
 
+        <!-- ====================== -->
+        <!-- HANGING -->
+        <!-- ====================== -->
+
+        <Storyboard x:Key="HangingStoryboard"
+                    RepeatBehavior="Forever"
+                    AutoReverse="True">
+
+            <!-- badan bergoyang -->
+            <DoubleAnimation
+                Storyboard.TargetName="BodyRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-2"
+                To="2"
+                Duration="0:0:0.55"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="BodyTranslate"
+                Storyboard.TargetProperty="Y"
+                From="0"
+                To="3"
+                Duration="0:0:0.55"/>
+
+
+            <!-- tangan menggapai ke atas -->
+
+            <DoubleAnimation
+                Storyboard.TargetName="LeftArmRotate"
+                Storyboard.TargetProperty="Angle"
+                From="88"
+                To="96"
+                Duration="0:0:0.42"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="RightArmRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-88"
+                To="-96"
+                Duration="0:0:0.42"/>
+
+
+            <!-- kaki menggantung -->
+
+            <DoubleAnimation
+                Storyboard.TargetName="LeftFootRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-18"
+                To="8"
+                Duration="0:0:0.48"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="RightFootRotate"
+                Storyboard.TargetProperty="Angle"
+                From="18"
+                To="-8"
+                Duration="0:0:0.48"/>
+
+
+            <!-- telinga turun -->
+
+            <DoubleAnimation
+                Storyboard.TargetName="LeftEarRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-8"
+                To="-2"
+                Duration="0:0:0.65"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="RightEarRotate"
+                Storyboard.TargetProperty="Angle"
+                From="8"
+                To="2"
+                Duration="0:0:0.65"/>
+
+        </Storyboard>
+
+
+        <!-- ====================== -->
+        <!-- CLIMBING -->
+        <!-- ====================== -->
+
+        <Storyboard x:Key="ClimbingStoryboard"
+                    RepeatBehavior="Forever"
+                    AutoReverse="True">
+
+            <DoubleAnimation
+                Storyboard.TargetName="BodyTranslate"
+                Storyboard.TargetProperty="Y"
+                From="4"
+                To="-8"
+                Duration="0:0:0.22"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="LeftArmRotate"
+                Storyboard.TargetProperty="Angle"
+                From="95"
+                To="70"
+                Duration="0:0:0.22"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="RightArmRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-70"
+                To="-95"
+                Duration="0:0:0.22"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="LeftFootRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-18"
+                To="18"
+                Duration="0:0:0.22"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="RightFootRotate"
+                Storyboard.TargetProperty="Angle"
+                From="18"
+                To="-18"
+                Duration="0:0:0.22"/>
+
+        </Storyboard>
+
     </UserControl.Resources>
 
 
