@@ -161,12 +161,21 @@ double impactSpeed)
             if (!movedEnough)
                 return;
 
-            _dragStarted = true;
-
             ChatPopup.IsOpen = false;
 
-            _physicsController?
-                .BeginGrab();
+            bool grabStarted =
+                _physicsController?
+                    .BeginGrab() == true;
+
+            if (!grabStarted)
+            {
+                _behaviorController?
+                    .Resume();
+
+                return;
+            }
+
+            _dragStarted = true;
         }
 
 

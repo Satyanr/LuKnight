@@ -25,7 +25,7 @@ public sealed class GeminiChatService : IChatService
 
     private static readonly HttpClient HttpClient = new()
     {
-        Timeout = TimeSpan.FromSeconds(30)
+        Timeout = TimeSpan.FromSeconds(60)
     };
 
     private readonly List<ChatTurn> _history = new();
@@ -60,8 +60,9 @@ public sealed class GeminiChatService : IChatService
                     {
                         new { text = SystemInstruction }
                     }
-                },
-                contents = requestHistory
+                            },
+
+                            contents = requestHistory
                     .Select(turn => new
                     {
                         role = turn.Role,
@@ -70,7 +71,15 @@ public sealed class GeminiChatService : IChatService
                             new { text = turn.Text }
                         }
                     })
-                    .ToArray()
+                .ToArray(),
+
+                generationConfig = new
+                {
+                    thinkingConfig = new
+                    {
+                        thinkingLevel = "low"
+                    }
+                }
             };
 
             string json = JsonSerializer.Serialize(payload);

@@ -552,14 +552,12 @@ public sealed class BehaviorController : IDisposable
         double decision =
             _random.NextDouble();
 
-        // 50% jalan
         if (decision < 0.40)
         {
             StartWalking();
             return;
         }
 
-        // 20% telinga bergerak
         if (decision < 0.60)
         {
             _character.TwitchEars();
@@ -571,7 +569,6 @@ public sealed class BehaviorController : IDisposable
             return;
         }
 
-        // 20% lihat kanan / kiri
         if (decision < 0.90)
         {
             int lookDirection =
@@ -589,7 +586,6 @@ public sealed class BehaviorController : IDisposable
             return;
         }
 
-        // 10% cuma diam
         _character.SetState(
             CharacterState.Idle);
 

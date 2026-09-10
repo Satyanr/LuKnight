@@ -37,6 +37,8 @@ public sealed class CharacterPhysicsController : IDisposable
 
     private const double GroundFriction = 0.62;
 
+    private double _maximumImpactSpeed;
+
     public bool IsGrabbed => _isGrabbed;
     public bool IsFalling => _isFalling;
 
@@ -74,6 +76,7 @@ public sealed class CharacterPhysicsController : IDisposable
         _isFalling = false;
 
         _bounceCount = 0;
+        _maximumImpactSpeed = 0;
 
         _velocityX = 0;
         _velocityY = 0;
@@ -168,6 +171,7 @@ public sealed class CharacterPhysicsController : IDisposable
         _isFalling = true;
 
         _bounceCount = 0;
+        _maximumImpactSpeed = 0;
 
         _character.SetState(
             CharacterState.Falling);
@@ -268,6 +272,10 @@ public sealed class CharacterPhysicsController : IDisposable
         {
             double impactSpeed =
                 Math.Abs(_velocityY);
+            _maximumImpactSpeed =
+                Math.Max(
+                    _maximumImpactSpeed,
+                    impactSpeed);
 
             nextTop = floor;
 
@@ -292,7 +300,7 @@ public sealed class CharacterPhysicsController : IDisposable
                     floor;
 
                 Settle(
-                    impactSpeed);
+                    _maximumImpactSpeed);
 
                 return;
             }
@@ -306,7 +314,7 @@ public sealed class CharacterPhysicsController : IDisposable
     }
 
     private void Settle(
-        double impactSpeed)
+    double impactSpeed)
     {
         _isFalling = false;
 
@@ -320,8 +328,10 @@ public sealed class CharacterPhysicsController : IDisposable
 
         Landed?.Invoke(
             impactSpeed);
-    }
 
+        _maximumImpactSpeed = 0;
+    }
+    
     private bool TryGetCursor(
         out Point position)
     {
