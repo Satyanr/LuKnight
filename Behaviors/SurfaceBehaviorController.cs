@@ -642,6 +642,131 @@ public sealed class SurfaceBehaviorController
                 amount);
     }
 
+    private SurfaceNavigationIntent
+        SelectNavigationIntent()
+    {
+        DesktopApplicationKind currentKind =
+            DesktopApplicationKind.Unknown;
+
+
+        if (_supportWindowHandle !=
+                nint.Zero &&
+            DesktopApplicationService
+                .TryGetApplication(
+                    _supportWindowHandle,
+                    out DesktopApplicationContext
+                        currentApplication))
+        {
+            currentKind =
+                currentApplication.Kind;
+        }
+
+
+        double roll =
+            _random.NextDouble();
+
+
+        switch (currentKind)
+        {
+            // Browser / Explorer:
+            // lebih senang eksplor.
+            case DesktopApplicationKind.Browser:
+            case DesktopApplicationKind.FileManager:
+
+                if (roll < 0.45)
+                {
+                    return
+                        SurfaceNavigationIntent.Explore;
+                }
+
+                if (roll < 0.65)
+                {
+                    return
+                        SurfaceNavigationIntent.Familiar;
+                }
+
+                return
+                    SurfaceNavigationIntent.Balanced;
+
+
+            // Coding / Office:
+            // lebih suka tempat familiar.
+            case DesktopApplicationKind.CodeEditor:
+            case DesktopApplicationKind.Office:
+
+                if (roll < 0.20)
+                {
+                    return
+                        SurfaceNavigationIntent.Explore;
+                }
+
+                if (roll < 0.55)
+                {
+                    return
+                        SurfaceNavigationIntent.Familiar;
+                }
+
+                return
+                    SurfaceNavigationIntent.Balanced;
+
+
+            // Creative:
+            // cukup seimbang.
+            case DesktopApplicationKind.Creative:
+
+                if (roll < 0.30)
+                {
+                    return
+                        SurfaceNavigationIntent.Explore;
+                }
+
+                if (roll < 0.60)
+                {
+                    return
+                        SurfaceNavigationIntent.Familiar;
+                }
+
+                return
+                    SurfaceNavigationIntent.Balanced;
+
+
+            case DesktopApplicationKind.Communication:
+
+                if (roll < 0.35)
+                {
+                    return
+                        SurfaceNavigationIntent.Explore;
+                }
+
+                if (roll < 0.65)
+                {
+                    return
+                        SurfaceNavigationIntent.Familiar;
+                }
+
+                return
+                    SurfaceNavigationIntent.Balanced;
+
+
+            default:
+
+                if (roll < 0.32)
+                {
+                    return
+                        SurfaceNavigationIntent.Explore;
+                }
+
+                if (roll < 0.60)
+                {
+                    return
+                        SurfaceNavigationIntent.Familiar;
+                }
+
+                return
+                    SurfaceNavigationIntent.Balanced;
+        }
+    }
+
     private bool BeginTargetJump(
         DateTime now)
     {
@@ -659,6 +784,8 @@ public sealed class SurfaceBehaviorController
                 .GetWindowBounds(
                     _window);
 
+        SurfaceNavigationIntent navigationIntent = SelectNavigationIntent();
+
         if (!SurfaceNavigationService
             .TryPlanJump(
                 _supportWindowHandle,
@@ -670,15 +797,35 @@ public sealed class SurfaceBehaviorController
                     characterBounds.Height),
                 _surfaceEdgeDirection,
                 _environmentMemory,
+                navigationIntent,
                 out SurfaceJumpPlan plan))
         {
-            Debug.WriteLine($"[Lu-Knight] No valid jump target. Direction={_surfaceEdgeDirection}");
+            Debug.WriteLine($"[Lu-Knight] No valid jump target. Direction={_surfaceEdgeDirection}, Intent={navigationIntent}");
             return false;
         }
 
-        Debug.WriteLine(
-            $"[Lu-Knight] Jump target found HWND={plan.Target.Handle}, " +
-            $"X={plan.VelocityX:0}, Y={plan.VelocityY:0}, Bounds={plan.Target.Bounds}");
+    string destination =
+        "Unknown";
+
+
+    if (DesktopApplicationService
+        .TryGetApplication(
+            plan.Target.Handle,
+            out DesktopApplicationContext
+                destinationApplication))
+    {
+        destination =
+            $"{destinationApplication.ProcessName}" +
+            $" / {destinationApplication.Kind}";
+    }
+
+
+    Debug.WriteLine(
+        $"[Lu-Knight] Jump target found " +
+        $"Intent={navigationIntent}, " +
+        $"Target={destination}, " +
+        $"X={plan.VelocityX:0}, " +
+        $"Y={plan.VelocityY:0}");
 
         _pendingJumpVelocityX =
             plan.VelocityX;

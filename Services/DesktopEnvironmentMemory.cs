@@ -211,18 +211,28 @@ public sealed class DesktopEnvironmentMemory
     // NAVIGATION BIAS
     // ===================================
 
-    public double
-        GetNavigationScoreAdjustment(
-            DesktopWindowInfo candidate,
-            DateTime now)
+    public double GetNavigationScoreAdjustment(
+        DesktopWindowInfo candidate,
+        DateTime now)
+    {
+        return GetNavigationScoreAdjustment(
+            candidate,
+            now,
+            SurfaceNavigationIntent.Balanced);
+    }
+
+    public double GetNavigationScoreAdjustment(
+        DesktopWindowInfo candidate,
+        DateTime now,
+        SurfaceNavigationIntent intent)
     {
         if (!_windowVisits
             .TryGetValue(
                 candidate.Handle,
-                out DesktopWindowMemory
-                    memory))
+                out DesktopWindowMemory memory))
         {
-            return 0;
+            return GetUnknownWindowAdjustment(
+                intent);
         }
 
 
@@ -234,22 +244,21 @@ public sealed class DesktopEnvironmentMemory
         if (age >
             WindowMemoryLifetime)
         {
-            return 0;
+            return GetUnknownWindowAdjustment(
+                intent);
         }
 
 
-        // Baru saja meninggalkan window ini.
-        // Hindari ping-pong langsung.
+        // Jangan balik ke window yang
+        // baru saja ditinggalkan.
         if (age <
-            TimeSpan.FromSeconds(
-                8))
+            TimeSpan.FromSeconds(8))
         {
-            return 180;
+            return 220;
         }
 
 
-        // Pastikan HWND belum dipakai ulang
-        // oleh process yang berbeda.
+        // HWND Windows bisa dipakai ulang.
         if (memory.ProcessId != 0)
         {
             if (!DesktopApplicationService
@@ -258,60 +267,23 @@ public sealed class DesktopEnvironmentMemory
                     out DesktopApplicationContext
                         currentApplication))
             {
-                return 0;
+                return GetUnknownWindowAdjustment(
+                    intent);
             }
 
 
             if (currentApplication.ProcessId !=
                 memory.ProcessId)
             {
-                return 0;
+                return GetUnknownWindowAdjustment(
+                    intent);
             }
         }
 
 
-        double recencyBonus;
-
-
-        if (age <
-            TimeSpan.FromMinutes(
-                2))
-        {
-            recencyBonus =
-                -160;
-        }
-        else if (age <
-                 TimeSpan.FromMinutes(
-                     5))
-        {
-            recencyBonus =
-                -110;
-        }
-        else
-        {
-            recencyBonus =
-                -60;
-        }
-
-
-        // Window yang sering dikunjungi
-        // makin terasa familiar.
-        double visitBonus =
-            -Math.Min(
-                60,
-                Math.Max(
-                    0,
-                    memory.VisitCount - 1) *
-                12);
-
-
-        // Kita juga mengingat posisi terakhir.
-        // Kalau window berpindah jauh,
-        // familiarity bonus dikurangi sedikit.
         double oldCenterX =
             memory.LastBounds.Left +
             (memory.LastBounds.Width / 2);
-
 
         double oldCenterY =
             memory.LastBounds.Top +
@@ -322,7 +294,6 @@ public sealed class DesktopEnvironmentMemory
             candidate.Bounds.Left +
             (candidate.Bounds.Width / 2);
 
-
         double currentCenterY =
             candidate.Bounds.Top +
             (candidate.Bounds.Height / 2);
@@ -331,7 +302,6 @@ public sealed class DesktopEnvironmentMemory
         double movedX =
             currentCenterX -
             oldCenterX;
-
 
         double movedY =
             currentCenterY -
@@ -347,8 +317,87 @@ public sealed class DesktopEnvironmentMemory
         double movementPenalty =
             Math.Min(
                 90,
-                movedDistance *
-                0.08);
+                movedDistance * 0.08);
+
+
+        // =================================
+        // EXPLORE
+        // =================================
+
+        if (intent ==
+            SurfaceNavigationIntent.Explore)
+        {
+            double visitPenalty =
+                Math.Min(
+                    120,
+                    memory.VisitCount *
+                    18);
+
+
+            double recencyPenalty =
+                age <
+                    TimeSpan.FromMinutes(2)
+                    ? 70
+                    : age <
+                      TimeSpan.FromMinutes(5)
+                        ? 35
+                        : 10;
+
+
+            return
+                25 +
+                visitPenalty +
+                recencyPenalty +
+                Math.Min(
+                    30,
+                    movementPenalty * 0.25);
+        }
+
+
+        // =================================
+        // BALANCED / FAMILIAR
+        // =================================
+
+        double recencyBonus;
+
+
+        if (age <
+            TimeSpan.FromMinutes(2))
+        {
+            recencyBonus =
+                -160;
+        }
+        else if (age <
+                 TimeSpan.FromMinutes(5))
+        {
+            recencyBonus =
+                -110;
+        }
+        else
+        {
+            recencyBonus =
+                -60;
+        }
+
+
+        double visitBonus =
+            -Math.Min(
+                60,
+                Math.Max(
+                    0,
+                    memory.VisitCount - 1) *
+                12);
+
+
+        if (intent ==
+            SurfaceNavigationIntent.Familiar)
+        {
+            recencyBonus *=
+                1.20;
+
+            visitBonus *=
+                1.45;
+        }
 
 
         return
@@ -357,6 +406,21 @@ public sealed class DesktopEnvironmentMemory
             movementPenalty;
     }
 
+    private static double
+        GetUnknownWindowAdjustment(
+            SurfaceNavigationIntent intent)
+    {
+        return intent switch
+        {
+            SurfaceNavigationIntent.Explore
+                => -180,
+
+            SurfaceNavigationIntent.Familiar
+                => 65,
+
+            _ => 0
+        };
+    }
 
     private static string
         GetApplicationKey(

@@ -8,6 +8,13 @@ public readonly record struct SurfaceJumpPlan(
     double VelocityX,
     double VelocityY);
 
+public enum SurfaceNavigationIntent
+{
+    Balanced,
+    Familiar,
+    Explore
+}
+
 public static class SurfaceNavigationService
 {
     private const double Gravity =
@@ -45,6 +52,23 @@ public static class SurfaceNavigationService
         Rect characterBounds,
         int preferredDirection,
         DesktopEnvironmentMemory? environmentMemory,
+        out SurfaceJumpPlan plan)
+    {
+        return TryPlanJump(
+            currentSupportHandle,
+            characterBounds,
+            preferredDirection,
+            environmentMemory,
+            SurfaceNavigationIntent.Balanced,
+            out plan);
+    }
+
+    public static bool TryPlanJump(
+        nint currentSupportHandle,
+        Rect characterBounds,
+        int preferredDirection,
+        DesktopEnvironmentMemory? environmentMemory,
+        SurfaceNavigationIntent intent,
         out SurfaceJumpPlan plan)
     {
         plan = default;
@@ -202,7 +226,7 @@ public static class SurfaceNavigationService
                 (candidate.ZOrder * 3.0);
 
             double memoryAdjustment =
-                environmentMemory?.GetNavigationScoreAdjustment(candidate, now) ?? 0;
+                environmentMemory?.GetNavigationScoreAdjustment(candidate, now, intent) ?? 0;
 
             double score = baseScore + memoryAdjustment;
 
