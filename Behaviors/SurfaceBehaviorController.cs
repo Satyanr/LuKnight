@@ -85,6 +85,9 @@ public sealed class SurfaceBehaviorController
         _supportWindowHandle !=
         nint.Zero;
 
+    public nint SupportWindowHandle =>
+        _supportWindowHandle;
+
 
     public bool IsBusy =>
         _surfaceAction !=

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Threading;
 using LuKnight.Views;
 using LuKnight.Services;
+using System.Diagnostics;
 
 namespace LuKnight.Behaviors;
 
@@ -54,6 +55,28 @@ public sealed class BehaviorController : IDisposable
     private bool _thinking;
 
     private readonly SurfaceBehaviorController _surfaceController;
+
+    private DesktopApplicationKind
+    _lastDebugApplicationKind =
+        DesktopApplicationKind.Unknown;
+
+    private void DebugApplicationContext(
+        DesktopApplicationKind appKind)
+    {
+        if (appKind ==
+            _lastDebugApplicationKind)
+        {
+            return;
+        }
+
+
+        _lastDebugApplicationKind =
+            appKind;
+
+
+        Debug.WriteLine(
+            $"[Lu-Knight] App context: {appKind}");
+    }
 
     public event Action? SupportLost;
 
@@ -466,8 +489,9 @@ public sealed class BehaviorController : IDisposable
     private int _ambientRepeatCount;
 
     private AmbientAction SelectAmbientAction(
-     AmbientContext context,
-     bool userActive)
+    AmbientContext context,
+    bool userActive,
+    DesktopApplicationKind appKind)
     {
         AmbientAction selected =
             AmbientAction.Idle;
@@ -524,38 +548,12 @@ public sealed class BehaviorController : IDisposable
             // =================================
 
             else if (context ==
-                     AmbientContext.ApplicationWindow)
+                AmbientContext.ApplicationWindow)
             {
-                if (roll < 0.24)
-                {
-                    selected =
-                        AmbientAction.Walk;
-                }
-                else if (roll < 0.52)
-                {
-                    selected =
-                        AmbientAction.Look;
-                }
-                else if (roll < 0.65)
-                {
-                    selected =
-                        AmbientAction.Twitch;
-                }
-                else if (roll < 0.83)
-                {
-                    selected =
-                        AmbientAction.CuriousPause;
-                }
-                else if (roll < 0.90)
-                {
-                    selected =
-                        AmbientAction.HappyPause;
-                }
-                else
-                {
-                    selected =
-                        AmbientAction.Idle;
-                }
+                selected =
+                    SelectApplicationAction(
+                        roll,
+                        appKind);
             }
 
             // =================================
@@ -596,7 +594,6 @@ public sealed class BehaviorController : IDisposable
                 }
             }
 
-
             if (selected !=
                 _lastAmbientAction)
             {
@@ -636,6 +633,213 @@ public sealed class BehaviorController : IDisposable
     {
         Desktop,
         ApplicationWindow
+    }
+
+    private DesktopApplicationKind
+        GetSupportedApplicationKind()
+    {
+        if (!_surfaceController.HasSupport)
+        {
+            return
+                DesktopApplicationKind.Unknown;
+        }
+
+
+        if (!DesktopApplicationService
+            .TryGetApplication(
+                _surfaceController
+                    .SupportWindowHandle,
+                out DesktopApplicationContext app))
+        {
+            return
+                DesktopApplicationKind.Unknown;
+        }
+
+
+        return app.Kind;
+    }
+
+
+    private AmbientAction
+        SelectApplicationAction(
+            double roll,
+            DesktopApplicationKind appKind)
+    {
+        switch (appKind)
+        {
+            // =================================
+            // VS CODE / IDE
+            // lebih observatif & penasaran
+            // =================================
+
+            case DesktopApplicationKind.CodeEditor:
+
+                if (roll < 0.14)
+                    return AmbientAction.Walk;
+
+                if (roll < 0.42)
+                    return AmbientAction.Look;
+
+                if (roll < 0.54)
+                    return AmbientAction.Twitch;
+
+                if (roll < 0.78)
+                    return AmbientAction.CuriousPause;
+
+                if (roll < 0.84)
+                    return AmbientAction.HappyPause;
+
+                return AmbientAction.Idle;
+
+
+            // =================================
+            // BROWSER
+            // aktif melihat-lihat
+            // =================================
+
+            case DesktopApplicationKind.Browser:
+
+                if (roll < 0.22)
+                    return AmbientAction.Walk;
+
+                if (roll < 0.52)
+                    return AmbientAction.Look;
+
+                if (roll < 0.64)
+                    return AmbientAction.Twitch;
+
+                if (roll < 0.82)
+                    return AmbientAction.CuriousPause;
+
+                if (roll < 0.90)
+                    return AmbientAction.HappyPause;
+
+                return AmbientAction.Idle;
+
+
+            // =================================
+            // PHOTOSHOP / CREATIVE
+            // penasaran + happy
+            // =================================
+
+            case DesktopApplicationKind.Creative:
+
+                if (roll < 0.16)
+                    return AmbientAction.Walk;
+
+                if (roll < 0.42)
+                    return AmbientAction.Look;
+
+                if (roll < 0.52)
+                    return AmbientAction.Twitch;
+
+                if (roll < 0.74)
+                    return AmbientAction.CuriousPause;
+
+                if (roll < 0.88)
+                    return AmbientAction.HappyPause;
+
+                return AmbientAction.Idle;
+
+
+            // =================================
+            // WORD / EXCEL / PPT
+            // lebih tenang
+            // =================================
+
+            case DesktopApplicationKind.Office:
+
+                if (roll < 0.12)
+                    return AmbientAction.Walk;
+
+                if (roll < 0.40)
+                    return AmbientAction.Look;
+
+                if (roll < 0.52)
+                    return AmbientAction.Twitch;
+
+                if (roll < 0.68)
+                    return AmbientAction.CuriousPause;
+
+                if (roll < 0.74)
+                    return AmbientAction.HappyPause;
+
+                return AmbientAction.Idle;
+
+
+            // =================================
+            // EXPLORER
+            // suka eksplor
+            // =================================
+
+            case DesktopApplicationKind.FileManager:
+
+                if (roll < 0.28)
+                    return AmbientAction.Walk;
+
+                if (roll < 0.55)
+                    return AmbientAction.Look;
+
+                if (roll < 0.67)
+                    return AmbientAction.Twitch;
+
+                if (roll < 0.82)
+                    return AmbientAction.CuriousPause;
+
+                if (roll < 0.88)
+                    return AmbientAction.HappyPause;
+
+                return AmbientAction.Idle;
+
+
+            // =================================
+            // DISCORD / TEAMS / ETC
+            // lebih sosial
+            // =================================
+
+            case DesktopApplicationKind.Communication:
+
+                if (roll < 0.14)
+                    return AmbientAction.Walk;
+
+                if (roll < 0.36)
+                    return AmbientAction.Look;
+
+                if (roll < 0.48)
+                    return AmbientAction.Twitch;
+
+                if (roll < 0.68)
+                    return AmbientAction.CuriousPause;
+
+                if (roll < 0.88)
+                    return AmbientAction.HappyPause;
+
+                return AmbientAction.Idle;
+
+
+            // =================================
+            // UNKNOWN APPLICATION
+            // =================================
+
+            default:
+
+                if (roll < 0.24)
+                    return AmbientAction.Walk;
+
+                if (roll < 0.52)
+                    return AmbientAction.Look;
+
+                if (roll < 0.65)
+                    return AmbientAction.Twitch;
+
+                if (roll < 0.83)
+                    return AmbientAction.CuriousPause;
+
+                if (roll < 0.90)
+                    return AmbientAction.HappyPause;
+
+                return AmbientAction.Idle;
+        }
     }
 
     private AmbientContext GetAmbientContext()
@@ -882,10 +1086,18 @@ public sealed class BehaviorController : IDisposable
                     thresholdSeconds: 8);
 
 
+        DesktopApplicationKind appKind =
+            context ==
+                AmbientContext.ApplicationWindow
+                ? GetSupportedApplicationKind()
+                : DesktopApplicationKind.Unknown;
+
+
         AmbientAction action =
             SelectAmbientAction(
                 context,
-                userActive);
+                userActive,
+                appKind);
 
 
         RememberAmbientAction(
@@ -1054,6 +1266,7 @@ public sealed class BehaviorController : IDisposable
                 break;
         }
     }
+
 
     private void StartWalking()
     {
