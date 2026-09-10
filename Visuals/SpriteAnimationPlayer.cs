@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -17,6 +18,8 @@ public sealed class SpriteAnimationPlayer :
     private SpriteAnimationClip? _clip;
 
     private int _frameIndex;
+    private readonly Dictionary<string, (long Length, DateTime Modified, BitmapImage Bitmap)>
+        _frameCache = new(StringComparer.OrdinalIgnoreCase);
 
     public event Action? FrameLoadFailed;
 
@@ -44,8 +47,7 @@ public sealed class SpriteAnimationPlayer :
     public void Play(
         SpriteAnimationClip clip)
     {
-        if (_clip?.Name ==
-            clip.Name)
+        if (ReferenceEquals(_clip, clip))
         {
             return;
         }
@@ -149,6 +151,14 @@ public sealed class SpriteAnimationPlayer :
                 return;
             }
 
+            var info = new FileInfo(resolvedPath);
+            if (_frameCache.TryGetValue(resolvedPath, out var cached) &&
+                cached.Length == info.Length && cached.Modified == info.LastWriteTimeUtc)
+            {
+                _image.Source = cached.Bitmap;
+                return;
+            }
+
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
@@ -156,6 +166,7 @@ public sealed class SpriteAnimationPlayer :
             bitmap.UriSource = new Uri(resolvedPath, UriKind.Absolute);
             bitmap.EndInit();
             bitmap.Freeze();
+            _frameCache[resolvedPath] = (info.Length, info.LastWriteTimeUtc, bitmap);
             _image.Source = bitmap;
         }
         catch
@@ -174,7 +185,8 @@ public sealed class SpriteAnimationPlayer :
 
     public void Dispose()
     {
-        _timer.Stop();
+        Stop();
+        _frameCache.Clear();
 
         _timer.Tick -=
             Timer_Tick;

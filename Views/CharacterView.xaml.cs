@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using LuKnight.Visuals;
 using System.Windows;
 using System.Windows.Controls;
@@ -30,16 +29,16 @@ public enum CharacterMood
     Surprised,
     Thinking,
     Confused,
-    Dizzy
+    Dizzy,
+    Sad,
+    Angry,
+    Determined,
+    Wink
 }
 
 public partial class CharacterView : UserControl
 {
-    private CharacterRenderMode _renderMode = CharacterRenderMode.Vector;
-    private CharacterRenderMode _preferredRenderMode = CharacterRenderMode.Vector;
-    private Storyboard? _spriteMotionStoryboard;
-    private readonly Dictionary<CharacterState, SpriteAnimationClip> _spriteStateClips = new();
-    private SpriteAnimationPlayer? _spritePlayer;
+
 
     private Storyboard? _currentStoryboard;
     private int _facingDirection = 1;
@@ -78,6 +77,7 @@ public partial class CharacterView : UserControl
 
         _moodStoryboard = null;
     }
+
     public CharacterMood CurrentMood { get; private set; }
         = CharacterMood.Neutral;
 
@@ -87,105 +87,14 @@ public partial class CharacterView : UserControl
     public CharacterView()
     {
         InitializeComponent();
-        EnsureSpritePlayer();
-        RegisterSpriteClip(
-            CharacterState.Idle,
-            new SpriteAnimationClip(
-                "idle",
-                new[]
-                {
-                    "Assets/Characters/LuKnight/Idle/idle_000.png"
-                },
-                framesPerSecond: 12,
-                loop: true));
-        SetRenderMode(CharacterRenderMode.Sprite);
-    }
-
-    public CharacterRenderMode RenderMode => _renderMode;
-
-    private void EnsureSpritePlayer()
-    {
-        if (_spritePlayer is not null)
-            return;
-
-        _spritePlayer = new SpriteAnimationPlayer(SpriteImage);
-        _spritePlayer.FrameLoadFailed += SpritePlayer_FrameLoadFailed;
-    }
-
-    private void SpritePlayer_FrameLoadFailed()
-    {
-        ApplyRenderMode(CharacterRenderMode.Vector);
-        PlayVectorForCurrentState();
-    }
-
-    public void SetRenderMode(CharacterRenderMode mode)
-    {
-        _preferredRenderMode = mode;
-        SetState(CurrentState);
-    }
-
-    private void ApplyRenderMode(CharacterRenderMode mode)
-    {
-        bool changed = _renderMode != mode;
-        _renderMode = mode;
-        bool useSprite = mode == CharacterRenderMode.Sprite;
-
-        SpriteLayer.Visibility = useSprite ? Visibility.Visible : Visibility.Collapsed;
-        VectorLayer.Visibility = useSprite ? Visibility.Collapsed : Visibility.Visible;
-
-        if (!useSprite)
-        {
-            _spritePlayer?.Stop();
-            StopSpriteMotion();
-            if (changed)
-            {
-                SetFacingDirection(_facingDirection);
-            }
-            return;
-        }
 
         EnsureSpritePlayer();
-        StopCurrentAnimation();
-        StopMoodStoryboard();
-        SetFacingDirection(_facingDirection);
-    }
 
-    public void RegisterSpriteClip(CharacterState state, SpriteAnimationClip clip)
-    {
-        _spriteStateClips[state] = clip;
-        if (_preferredRenderMode == CharacterRenderMode.Sprite && CurrentState == state)
-        {
-            EnsureSpritePlayer();
-            _spritePlayer?.Stop();
-            SetState(CurrentState);
-        }
-    }
+        RegisterDefaultSpriteClips();
+        RegisterDefaultSpriteExpressions();
 
-    private void PlaySpriteForCurrentState()
-    {
-        if (_renderMode != CharacterRenderMode.Sprite)
-            return;
-
-        EnsureSpritePlayer();
-        if (!_spriteStateClips.TryGetValue(CurrentState, out SpriteAnimationClip? clip))
-        {
-            ApplyRenderMode(CharacterRenderMode.Vector);
-            PlayVectorForCurrentState();
-            return;
-        }
-
-        _spritePlayer?.Play(clip);
-    }
-
-    private void CharacterView_Unloaded(object sender, RoutedEventArgs e)
-    {
-        StopSpriteMotion();
-        if (_spritePlayer is null)
-            return;
-
-        _spritePlayer.FrameLoadFailed -= SpritePlayer_FrameLoadFailed;
-        _spritePlayer.Dispose();
-        _spritePlayer = null;
+        SetRenderMode(
+            CharacterRenderMode.Sprite);
     }
 
     public void PlayLandingReaction()
@@ -219,6 +128,8 @@ public partial class CharacterView : UserControl
     {
         if (_renderMode == CharacterRenderMode.Sprite)
         {
+            if (CurrentMood == CharacterMood.Neutral || CurrentMood == CharacterMood.Happy)
+                PlaySpriteWink();
             return;
         }
 
@@ -434,6 +345,13 @@ public partial class CharacterView : UserControl
         StopMoodStoryboard();
 
         CurrentMood = mood;
+
+        if (_renderMode == CharacterRenderMode.Sprite)
+        {
+            StopSpriteExpression();
+            PlaySpriteForCurrentState();
+            return;
+        }
 
         ApplyMoodVisuals(mood);
 
@@ -660,6 +578,7 @@ public partial class CharacterView : UserControl
     {
         StopCurrentAnimation();
         StopSpriteMotion();
+        StopSpriteExpression();
         CurrentState = state;
 
         if (_preferredRenderMode == CharacterRenderMode.Sprite &&
@@ -678,27 +597,6 @@ public partial class CharacterView : UserControl
 
         ApplyRenderMode(CharacterRenderMode.Vector);
         PlayVectorForCurrentState();
-    }
-
-    private void StartSpriteMotion(string resourceName)
-    {
-        StopSpriteMotion();
-        if (FindResource(resourceName) is not Storyboard storyboard)
-            return;
-
-        _spriteMotionStoryboard = storyboard;
-        storyboard.Begin(this, HandoffBehavior.SnapshotAndReplace, true);
-    }
-
-    private void StopSpriteMotion()
-    {
-        _spriteMotionStoryboard?.Remove(this);
-        _spriteMotionStoryboard = null;
-        SpriteTranslate.X = 0;
-        SpriteTranslate.Y = 0;
-        SpriteRotate.Angle = 0;
-        SpriteScale.ScaleX = _facingDirection;
-        SpriteScale.ScaleY = 1;
     }
 
     private void PlayVectorForCurrentState()
