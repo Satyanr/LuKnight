@@ -586,6 +586,150 @@ public partial class CharacterView : UserControl
         EmblemGlow.Opacity = 0;
     }
 
+    private void AnimateSpriteShadowTo(
+    double targetOpacity,
+    double targetScaleX,
+    double targetScaleY,
+    double targetY)
+    {
+        double currentOpacity =
+            SpriteShadow.Opacity;
+
+        double currentScaleX =
+            SpriteShadowScale.ScaleX;
+
+        double currentScaleY =
+            SpriteShadowScale.ScaleY;
+
+        double currentY =
+            SpriteShadowTranslate.Y;
+
+
+        StopSpriteShadowAnimations();
+
+
+        SpriteShadow.Opacity =
+            targetOpacity;
+
+        SpriteShadowScale.ScaleX =
+            targetScaleX;
+
+        SpriteShadowScale.ScaleY =
+            targetScaleY;
+
+        SpriteShadowTranslate.Y =
+            targetY;
+
+
+        TimeSpan duration =
+            TimeSpan.FromMilliseconds(
+                140);
+
+
+        SpriteShadow.BeginAnimation(
+            UIElement.OpacityProperty,
+            new DoubleAnimation
+            {
+                From = currentOpacity,
+                To = targetOpacity,
+                Duration = duration,
+                FillBehavior =
+                    FillBehavior.Stop
+            });
+
+
+        SpriteShadowScale.BeginAnimation(
+            ScaleTransform.ScaleXProperty,
+            new DoubleAnimation
+            {
+                From = currentScaleX,
+                To = targetScaleX,
+                Duration = duration,
+                FillBehavior =
+                    FillBehavior.Stop
+            });
+
+
+        SpriteShadowScale.BeginAnimation(
+            ScaleTransform.ScaleYProperty,
+            new DoubleAnimation
+            {
+                From = currentScaleY,
+                To = targetScaleY,
+                Duration = duration,
+                FillBehavior =
+                    FillBehavior.Stop
+            });
+
+
+        SpriteShadowTranslate.BeginAnimation(
+            TranslateTransform.YProperty,
+            new DoubleAnimation
+            {
+                From = currentY,
+                To = targetY,
+                Duration = duration,
+                FillBehavior =
+                    FillBehavior.Stop
+            });
+    }
+
+    private void SetSpriteShadowForState(
+    CharacterState state)
+    {
+        switch (state)
+        {
+            case CharacterState.Idle:
+
+                AnimateSpriteShadowTo(
+                    0.28,
+                    1.00,
+                    1.00,
+                    0);
+
+                break;
+
+
+            case CharacterState.Walk:
+
+                AnimateSpriteShadowTo(
+                    0.30,
+                    1.08,
+                    0.92,
+                    0);
+
+                break;
+
+
+            case CharacterState.Sleep:
+
+                AnimateSpriteShadowTo(
+                    0.22,
+                    1.16,
+                    0.88,
+                    1);
+
+                break;
+
+
+            case CharacterState.Grabbed:
+
+            case CharacterState.Falling:
+
+            case CharacterState.Hanging:
+
+            case CharacterState.Climbing:
+
+                AnimateSpriteShadowTo(
+                    0,
+                    0.45,
+                    0.65,
+                    2);
+
+                break;
+        }
+    }
+
     private void CharacterView_Loaded(
         object sender,
         RoutedEventArgs e)
@@ -593,6 +737,45 @@ public partial class CharacterView : UserControl
         EnsureSpritePlayer();
         SetState(CurrentState);
         SetFacingDirection(_facingDirection);
+    }
+
+    private void StopSpriteShadowAnimations()
+    {
+        SpriteShadow
+            .BeginAnimation(
+                UIElement.OpacityProperty,
+                null);
+
+
+        SpriteShadowScale
+            .BeginAnimation(
+                ScaleTransform.ScaleXProperty,
+                null);
+
+        SpriteShadowScale
+            .BeginAnimation(
+                ScaleTransform.ScaleYProperty,
+                null);
+
+
+        SpriteShadowTranslate
+            .BeginAnimation(
+                TranslateTransform.YProperty,
+                null);
+    }
+
+    private void ResetSpriteShadow()
+    {
+        StopSpriteShadowAnimations();
+
+
+        SpriteShadow.Opacity = 0.28;
+
+        SpriteShadowScale.ScaleX = 1;
+        SpriteShadowScale.ScaleY = 1;
+
+        SpriteShadowTranslate.X = 0;
+        SpriteShadowTranslate.Y = 0;
     }
 
     public void SetState(CharacterState state)
@@ -615,6 +798,9 @@ public partial class CharacterView : UserControl
                 CharacterRenderMode.Sprite)
             {
                 PlaySpriteStateEntrance();
+
+                SetSpriteShadowForState(
+                    state);
 
                 StartSpriteStateMotion(
                     state);

@@ -22,6 +22,137 @@ public partial class CharacterView
 
     private bool _spriteCursorTracking;
 
+    private void PlaySpriteLandingShadow(
+    double impactSpeed)
+    {
+        if (_renderMode !=
+            CharacterRenderMode.Sprite)
+        {
+            return;
+        }
+
+
+        double strength =
+            Math.Clamp(
+                impactSpeed / 1000.0,
+                0.15,
+                1.0);
+
+
+        StopSpriteShadowAnimations();
+
+
+        // Base state setelah animasi selesai.
+        SpriteShadow.Opacity = 0.28;
+
+        SpriteShadowScale.ScaleX = 1;
+        SpriteShadowScale.ScaleY = 1;
+
+        SpriteShadowTranslate.Y = 0;
+
+
+        var opacityAnimation =
+            new DoubleAnimationUsingKeyFrames
+            {
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        opacityAnimation.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                0.38 +
+                (0.18 * strength),
+
+                KeyTime.FromTimeSpan(
+                    TimeSpan.Zero)));
+
+
+        opacityAnimation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                0.28,
+
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        300))));
+
+
+        SpriteShadow.BeginAnimation(
+            UIElement.OpacityProperty,
+            opacityAnimation);
+
+
+        var scaleX =
+            new DoubleAnimationUsingKeyFrames
+            {
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        scaleX.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                0.72 +
+                (0.10 * strength),
+
+                KeyTime.FromTimeSpan(
+                    TimeSpan.Zero)));
+
+
+        scaleX.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                1.10 +
+                (0.10 * strength),
+
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        85))));
+
+
+        scaleX.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                1,
+
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        300))));
+
+
+        SpriteShadowScale.BeginAnimation(
+            ScaleTransform.ScaleXProperty,
+            scaleX);
+
+
+        var scaleY =
+            new DoubleAnimationUsingKeyFrames
+            {
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        scaleY.KeyFrames.Add(
+            new LinearDoubleKeyFrame(
+                0.70,
+
+                KeyTime.FromTimeSpan(
+                    TimeSpan.Zero)));
+
+
+        scaleY.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                1,
+
+                KeyTime.FromTimeSpan(
+                    TimeSpan.FromMilliseconds(
+                        300))));
+
+
+        SpriteShadowScale.BeginAnimation(
+            ScaleTransform.ScaleYProperty,
+            scaleY);
+    }
+
     private void StopSpriteAttentionAnimations()
     {
         SpriteAttentionTranslate
@@ -537,6 +668,9 @@ public partial class CharacterView
 
         ResetSpriteImpact();
 
+        PlaySpriteLandingShadow(
+    impactSpeed);
+
 
         double strength =
             Math.Clamp(
@@ -934,6 +1068,7 @@ public partial class CharacterView
         StopSpriteMotion();
         StopSpriteExpression();
         ResetSpriteImpact();
+        ResetSpriteShadow();
         if (_spriteExpressionTimer is not null)
         {
             _spriteExpressionTimer.Tick -= SpriteExpressionTimer_Tick;
