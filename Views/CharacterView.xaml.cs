@@ -36,6 +36,8 @@ public enum CharacterMood
 public partial class CharacterView : UserControl
 {
     private CharacterRenderMode _renderMode = CharacterRenderMode.Vector;
+    private CharacterRenderMode _preferredRenderMode = CharacterRenderMode.Vector;
+    private Storyboard? _spriteMotionStoryboard;
     private readonly Dictionary<CharacterState, SpriteAnimationClip> _spriteStateClips = new();
     private SpriteAnimationPlayer? _spritePlayer;
 
@@ -112,10 +114,17 @@ public partial class CharacterView : UserControl
 
     private void SpritePlayer_FrameLoadFailed()
     {
-        SetRenderMode(CharacterRenderMode.Vector);
+        ApplyRenderMode(CharacterRenderMode.Vector);
+        PlayVectorForCurrentState();
     }
 
     public void SetRenderMode(CharacterRenderMode mode)
+    {
+        _preferredRenderMode = mode;
+        SetState(CurrentState);
+    }
+
+    private void ApplyRenderMode(CharacterRenderMode mode)
     {
         bool changed = _renderMode != mode;
         _renderMode = mode;
@@ -127,10 +136,10 @@ public partial class CharacterView : UserControl
         if (!useSprite)
         {
             _spritePlayer?.Stop();
+            StopSpriteMotion();
             if (changed)
             {
                 SetFacingDirection(_facingDirection);
-                SetState(CurrentState);
             }
             return;
         }
@@ -139,17 +148,16 @@ public partial class CharacterView : UserControl
         StopCurrentAnimation();
         StopMoodStoryboard();
         SetFacingDirection(_facingDirection);
-        PlaySpriteForCurrentState();
     }
 
     public void RegisterSpriteClip(CharacterState state, SpriteAnimationClip clip)
     {
         _spriteStateClips[state] = clip;
-        if (_renderMode == CharacterRenderMode.Sprite && CurrentState == state)
+        if (_preferredRenderMode == CharacterRenderMode.Sprite && CurrentState == state)
         {
             EnsureSpritePlayer();
             _spritePlayer?.Stop();
-            _spritePlayer?.Play(clip);
+            SetState(CurrentState);
         }
     }
 
@@ -161,7 +169,8 @@ public partial class CharacterView : UserControl
         EnsureSpritePlayer();
         if (!_spriteStateClips.TryGetValue(CurrentState, out SpriteAnimationClip? clip))
         {
-            SetRenderMode(CharacterRenderMode.Vector);
+            ApplyRenderMode(CharacterRenderMode.Vector);
+            PlayVectorForCurrentState();
             return;
         }
 
@@ -170,6 +179,7 @@ public partial class CharacterView : UserControl
 
     private void CharacterView_Unloaded(object sender, RoutedEventArgs e)
     {
+        StopSpriteMotion();
         if (_spritePlayer is null)
             return;
 
@@ -198,8 +208,7 @@ public partial class CharacterView : UserControl
 
         if (_renderMode == CharacterRenderMode.Sprite)
         {
-            SpriteImage.RenderTransformOrigin = new Point(0.5, 0.5);
-            SpriteImage.RenderTransform = new ScaleTransform(_facingDirection, 1);
+            SpriteScale.ScaleX = _facingDirection;
             return;
         }
 
@@ -650,18 +659,53 @@ public partial class CharacterView : UserControl
     public void SetState(CharacterState state)
     {
         StopCurrentAnimation();
-
+        StopSpriteMotion();
         CurrentState = state;
 
-        if (_renderMode == CharacterRenderMode.Sprite)
+        if (_preferredRenderMode == CharacterRenderMode.Sprite &&
+            _spriteStateClips.ContainsKey(state))
         {
+            ApplyRenderMode(CharacterRenderMode.Sprite);
             PlaySpriteForCurrentState();
+
+            // Pemuatan frame dapat memicu fallback secara sinkron.
+            if (_renderMode == CharacterRenderMode.Sprite && state == CharacterState.Idle)
+            {
+                StartSpriteMotion("SpriteIdleStoryboard");
+            }
             return;
         }
 
+        ApplyRenderMode(CharacterRenderMode.Vector);
+        PlayVectorForCurrentState();
+    }
+
+    private void StartSpriteMotion(string resourceName)
+    {
+        StopSpriteMotion();
+        if (FindResource(resourceName) is not Storyboard storyboard)
+            return;
+
+        _spriteMotionStoryboard = storyboard;
+        storyboard.Begin(this, HandoffBehavior.SnapshotAndReplace, true);
+    }
+
+    private void StopSpriteMotion()
+    {
+        _spriteMotionStoryboard?.Remove(this);
+        _spriteMotionStoryboard = null;
+        SpriteTranslate.X = 0;
+        SpriteTranslate.Y = 0;
+        SpriteRotate.Angle = 0;
+        SpriteScale.ScaleX = _facingDirection;
+        SpriteScale.ScaleY = 1;
+    }
+
+    private void PlayVectorForCurrentState()
+    {
         ResetVisualState();
 
-        switch (state)
+        switch (CurrentState)
         {
             case CharacterState.Idle:
                 StartStoryboard("IdleStoryboard");
