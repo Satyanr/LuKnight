@@ -1,6 +1,6 @@
 # Rendering Lu-Knight: model 3D dan sprite cadangan
 
-Renderer default sekarang `CharacterRenderMode.Model3D`. Lu-Knight memakai mesh 3D WPF dengan kamera orthographic, material, pencahayaan, dan sendi untuk kepala, telinga, lengan, serta kaki. Ini model prosedural dalam kode, bukan file Blender/GLB atau sprite yang diberi efek perspektif. Tidak ada package tambahan.
+Renderer default sekarang `CharacterRenderMode.Sprite`. Mode 3D tetap tersedia melalui `SetRenderMode(CharacterRenderMode.Model3D)`. Pada mode 3D, Lu-Knight memakai mesh 3D WPF dengan kamera orthographic, material, pencahayaan, dan sendi untuk kepala, telinga, lengan, serta kaki. Ini model prosedural dalam kode, bukan file Blender/GLB atau sprite yang diberi efek perspektif. Tidak ada package tambahan.
 
 ## Ukuran dan animasi
 
@@ -27,7 +27,7 @@ Keputusan behavior tetap memakai timer 33 ms. Gravity, target jump, dan terrain 
 
 112 frame state, tujuh ekspresi, dan master kini dirender ulang dari model 3D yang sama pada kanvas transparan 510 x 660, dengan kamera tetap. Tidak ada crop atau resize per siluet. Ukuran kepala/tubuh tetap konsisten; tinggi siluet boleh berubah secara alami saat duduk atau mengangkat kaki.
 
-Setiap folder state berisi 16 frame. Mode Sprite memakai satu frame Grabbed agar pose tetap stabil saat drag; gerak visualnya berasal dari transform. FPS Walk 25.6, Climbing sekitar 20.37, dan pose bernapas sekitar 5.60, sesuai periode ekspor. Mode utama 3D tidak dibatasi oleh FPS sprite tersebut.
+Setiap folder state berisi 16 frame. Mode Sprite memakai satu frame Grabbed agar pose tetap stabil saat drag; gerak visualnya berasal dari transform. FPS Walk 25.6, Climbing sekitar 20.37, dan pose bernapas sekitar 5.60, sesuai periode ekspor. Mode 3D tidak dibatasi oleh FPS sprite tersebut.
 
 Untuk regenerasi dan pemeriksaan:
 
@@ -53,4 +53,4 @@ Harness memeriksa semua state/mood, geometri tetap, transparansi tepi, kedua ara
 
 API yang digunakan: [WPF 3D overview](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/graphics-multimedia/3-d-graphics-overview) dan [CompositionTarget.Rendering](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/graphics-multimedia/how-to-render-on-a-per-frame-interval-using-compositiontarget).
 
-Verifikasi terakhir: 203 pemeriksaan logic/render dan 119 pemeriksaan aset lolos; clean/build berhasil tanpa warning/error. Aplikasi dijalankan dengan default Model3D. Pemeriksaan visual drag melalui computer-use belum selesai karena koneksi native pipe tidak tersedia; hasil benchmark offscreen tidak menjamin FPS desktop.
+Verifikasi terakhir: 203 pemeriksaan logic/render dan 119 pemeriksaan aset lolos; clean/build berhasil tanpa warning/error. Verifikasi tersebut dilakukan saat default masih Model3D; default kini Sprite sesuai pilihan pengguna. Pemeriksaan visual drag melalui computer-use belum selesai karena koneksi native pipe tidak tersedia; hasil benchmark offscreen tidak menjamin FPS desktop.

@@ -94,7 +94,7 @@ public partial class CharacterView : UserControl
         RegisterDefaultSpriteExpressions();
 
         SetRenderMode(
-            CharacterRenderMode.Model3D);
+            CharacterRenderMode.Sprite);
     }
 
     public void PlayLandingReaction(

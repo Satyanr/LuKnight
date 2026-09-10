@@ -50,9 +50,11 @@ internal static class Program
     private static void CheckRigAndRendering(string output)
     {
         var view = new CharacterView();
+        view.SetRenderMode(CharacterRenderMode.Model3D);
         var player = Get<CharacterModel3DPlayer>(view, "_modelPlayer");
         var step = Step(player);
         var viewport = Get<Viewport3D>(view, "ModelViewport");
+        var spriteSource = Get<Image>(view, "SpriteImage").Source;
         var camera = (OrthographicCamera)viewport.Camera;
         var head = (GeometryModel3D)Get<Model3DGroup>(Get<object>(player, "_head"), "Model").Children[0];
         Rect3D headBounds = head.Bounds;
@@ -100,7 +102,7 @@ internal static class Program
         view.SetAirborneVelocity(1400, -600); Settle(step);
         Require(Math.Abs(Get<AxisAngleRotation3D>(Get<object>(player, "_root"), "Roll").Angle) < 9,
             "Drag sway must stay bounded around the anchor");
-        Require(Get<Image>(view, "SpriteImage").Source is null, "3D path should not decode sprite frames");
+        Require(ReferenceEquals(Get<Image>(view, "SpriteImage").Source, spriteSource), "3D path should not decode sprite frames");
         SaveContactSheet(pictures, Path.Combine(output, "preview.png"));
         player.Dispose();
     }
@@ -108,6 +110,7 @@ internal static class Program
     private static void CheckLifecycle()
     {
         var view = new CharacterView();
+        view.SetRenderMode(CharacterRenderMode.Model3D);
         var model = Get<CharacterModel3DPlayer>(view, "_modelPlayer");
         model.Start(); model.Start();
         Require(Get<bool>(model, "_running"), "Model renderer failed to start");
@@ -132,6 +135,7 @@ internal static class Program
     private static void CheckGrabAndTargetReset()
     {
         var view = new CharacterView();
+        view.SetRenderMode(CharacterRenderMode.Model3D);
         var window = new Window { Width = 190, Height = 240, Content = view };
         new WindowInteropHelper(window).EnsureHandle(); // Hidden test window; no cursor input is synthesized.
         using (var physics = new CharacterPhysicsController(window, view))
@@ -158,6 +162,7 @@ internal static class Program
         foreach (int hz in new[] { 30, 60, 120, 144 })
         {
             var view = new CharacterView();
+        view.SetRenderMode(CharacterRenderMode.Model3D);
             var window = new Window { Width = 190, Height = 240, Content = view };
             new WindowInteropHelper(window).EnsureHandle();
             using (var behavior = new BehaviorController(window, view))
@@ -295,4 +300,3 @@ internal static class Program
         Console.WriteLine("Exported 112 frames + 7 expressions + master from the same 3D rig.");
     }
 }
-
