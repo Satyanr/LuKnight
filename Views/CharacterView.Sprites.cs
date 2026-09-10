@@ -105,6 +105,42 @@ public partial class CharacterView
                 1) * 1.1;
     }
 
+    private void StartSpriteStateMotion(
+     CharacterState state)
+    {
+        switch (state)
+        {
+            case CharacterState.Idle:
+
+                StartSpriteMotion(
+                    "SpriteIdleStoryboard");
+
+                break;
+
+
+            case CharacterState.Grabbed:
+
+                StartSpriteMotion(
+                    "SpriteGrabbedStoryboard");
+
+                break;
+
+
+            case CharacterState.Falling:
+
+                StartSpriteMotion(
+                    "SpriteFallingStoryboard");
+
+                break;
+
+
+            default:
+
+                StopSpriteMotion();
+
+                break;
+        }
+    }
     private void RelaxSpriteCursor()
     {
         if (!_spriteCursorTracking)
@@ -699,11 +735,16 @@ public partial class CharacterView
             3);
 
 
-        RegisterSpriteFolder(
+        RegisterSpriteClip(
             CharacterState.Grabbed,
-            "grabbed",
-            "Assets/Characters/LuKnight/Grabbed",
-            6);
+            new SpriteAnimationClip(
+            "grabbed-dangling",
+            new[]
+            {
+                "Assets/Characters/LuKnight/Grabbed/grabbed_000.png"
+            },
+            framesPerSecond: 1,
+            loop: true));
 
 
         RegisterSpriteFolder(

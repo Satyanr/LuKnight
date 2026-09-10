@@ -240,6 +240,13 @@ DateTime now)
         if (!_isGrabbed)
             return;
 
+        if (_character.CurrentState !=
+            CharacterState.Grabbed)
+        {
+            _character.SetState(
+                CharacterState.Grabbed);
+        }
+
         if (!TryGetCursor(out Point cursor))
             return;
 

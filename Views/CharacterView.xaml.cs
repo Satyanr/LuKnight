@@ -611,9 +611,11 @@ public partial class CharacterView : UserControl
             PlaySpriteForCurrentState();
 
             // Pemuatan frame dapat memicu fallback secara sinkron.
-            if (_renderMode == CharacterRenderMode.Sprite && state == CharacterState.Idle)
+            if (_renderMode ==
+                CharacterRenderMode.Sprite)
             {
-                StartSpriteMotion("SpriteIdleStoryboard");
+                StartSpriteStateMotion(
+                    state);
             }
             return;
         }
