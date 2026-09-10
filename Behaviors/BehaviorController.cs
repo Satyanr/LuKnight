@@ -57,11 +57,31 @@ public sealed class BehaviorController : IDisposable
     private enum SurfaceAction
     {
         None,
+
         EdgePause,
         Peeking,
+
         Hanging,
+
+        SideClimbingDown,
+        SideHolding,
+        SideClimbingUp,
+
         ClimbingUp
     }
+
+    private DateTime _sideClimbStartedAt =
+    DateTime.MinValue;
+
+    private double _sideGripOffsetY;
+
+    private double _sideClimbStartOffsetY;
+    private double _sideClimbTargetOffsetY;
+
+
+    private static readonly TimeSpan
+        SideClimbDuration =
+            TimeSpan.FromMilliseconds(850);
 
     private SurfaceAction _surfaceAction =
     SurfaceAction.None;
@@ -85,6 +105,10 @@ public sealed class BehaviorController : IDisposable
 
     public event Action? SupportLost;
 
+    public event Action<
+        double,
+        double>? SurfaceLaunchRequested;
+
     public void SetSupportWindow(
     nint? windowHandle)
     {
@@ -94,13 +118,17 @@ public sealed class BehaviorController : IDisposable
         _surfaceActionUntil =
             DateTime.MinValue;
 
+        _sideGripOffsetY = 0;
+
+        _sideClimbStartOffsetY = 0;
+        _sideClimbTargetOffsetY = 0;
+
         _supportWindowHandle =
             windowHandle ??
             nint.Zero;
 
         _lastSupportWindowBounds =
             Rect.Empty;
-
 
         if (_supportWindowHandle ==
             nint.Zero)
@@ -127,11 +155,17 @@ public sealed class BehaviorController : IDisposable
         _surfaceActionUntil =
             DateTime.MinValue;
 
+        _sideGripOffsetY = 0;
+
+        _sideClimbStartOffsetY = 0;
+        _sideClimbTargetOffsetY = 0;
+
         _supportWindowHandle =
             nint.Zero;
 
         _lastSupportWindowBounds =
             Rect.Empty;
+
     }
 
     private double GetHangingLeft(
@@ -227,6 +261,7 @@ public sealed class BehaviorController : IDisposable
                 (_random.NextDouble() *
                  1.8));
 
+        _sideGripOffsetY = 0;
 
         _character.SetState(
             CharacterState.Hanging);
@@ -237,6 +272,200 @@ public sealed class BehaviorController : IDisposable
 
 
         UpdateSupportWindow();
+    }
+
+    private void BeginSideClimbDown(
+    DateTime now)
+    {
+        if (!DesktopWindowService.TryGetWindow(
+                _supportWindowHandle,
+                out DesktopWindowInfo support))
+        {
+            LoseWindowSupport();
+            return;
+        }
+
+
+        // Seberapa jauh boleh turun.
+        double availableDistance =
+            Math.Max(
+                0,
+                support.Bounds.Height - 90);
+
+
+        double targetDistance =
+            Math.Min(
+                160,
+                availableDistance);
+
+
+        // Window terlalu pendek.
+        if (targetDistance < 50)
+        {
+            BeginClimbingUp(now);
+            return;
+        }
+
+
+        _surfaceAction =
+            SurfaceAction.SideClimbingDown;
+
+
+        _sideClimbStartedAt = now;
+
+        _sideClimbStartOffsetY =
+            _sideGripOffsetY;
+
+        _sideClimbTargetOffsetY =
+            targetDistance;
+
+
+        _character.SetState(
+            CharacterState.Climbing);
+
+
+        _character.SetMood(
+            CharacterMood.Curious);
+
+
+        _character.SetFacingDirection(
+            _surfaceEdgeDirection);
+    }
+
+    private void BeginSideHold(
+    DateTime now)
+    {
+        _surfaceAction =
+            SurfaceAction.SideHolding;
+
+
+        _surfaceActionUntil =
+            now.AddSeconds(
+                0.8 +
+                (_random.NextDouble() *
+                 1.2));
+
+
+        _character.SetState(
+            CharacterState.Hanging);
+
+
+        _character.SetMood(
+            CharacterMood.Curious);
+    }
+
+    private void BeginSideClimbUp(
+    DateTime now)
+    {
+        _surfaceAction =
+            SurfaceAction.SideClimbingUp;
+
+
+        _sideClimbStartedAt = now;
+
+        _sideClimbStartOffsetY =
+            _sideGripOffsetY;
+
+        _sideClimbTargetOffsetY =
+            0;
+
+
+        _character.SetState(
+            CharacterState.Climbing);
+
+
+        _character.SetMood(
+            CharacterMood.Curious);
+
+
+        _character.SetFacingDirection(
+            _surfaceEdgeDirection);
+    }
+
+    private void UpdateSideClimb(
+    DateTime now,
+    bool climbingUp)
+    {
+        if (!DesktopWindowService.TryGetWindow(
+                _supportWindowHandle,
+                out DesktopWindowInfo support))
+        {
+            LoseWindowSupport();
+            return;
+        }
+
+
+        double progress =
+            (now - _sideClimbStartedAt)
+            .TotalMilliseconds /
+            SideClimbDuration
+                .TotalMilliseconds;
+
+
+        progress =
+            Math.Clamp(
+                progress,
+                0,
+                1);
+
+
+        // smoothstep
+        double eased =
+            progress *
+            progress *
+            (3 - (2 * progress));
+
+
+        _sideGripOffsetY =
+            Lerp(
+                _sideClimbStartOffsetY,
+                _sideClimbTargetOffsetY,
+                eased);
+
+
+        Rect characterBounds =
+            DesktopMonitorService
+                .GetWindowBounds(
+                    _window);
+
+
+        double left =
+            GetHangingLeft(
+                support.Bounds,
+                characterBounds.Width);
+
+
+        double top =
+            support.Bounds.Top +
+            _sideGripOffsetY -
+            HangGripOffsetY;
+
+
+        DesktopMonitorService
+            .SetWindowPosition(
+                _window,
+                left,
+                top);
+
+
+        _lastSupportWindowBounds =
+            support.Bounds;
+
+
+        if (progress < 1)
+            return;
+
+
+        if (climbingUp)
+        {
+            _sideGripOffsetY = 0;
+
+            BeginClimbingUp(now);
+        }
+        else
+        {
+            BeginSideHold(now);
+        }
     }
 
     private void BeginClimbingUp(
@@ -465,10 +694,81 @@ public sealed class BehaviorController : IDisposable
                 }
 
 
-                BeginClimbingUp(now);
+                double hangChoice =
+                    _random.NextDouble();
+
+
+                // 55% naik kembali
+                if (hangChoice < 0.55)
+                {
+                    BeginClimbingUp(now);
+
+                    return true;
+                }
+
+
+                // 25% menjelajah sisi window
+                if (hangChoice < 0.80)
+                {
+                    BeginSideClimbDown(now);
+
+                    return true;
+                }
+
+
+                // 20% nekat melepas pegangan
+                ReleaseFromSurface(
+                    _surfaceEdgeDirection *
+                    220.0,
+
+                    80.0);
 
                 return true;
 
+            case SurfaceAction.SideClimbingDown:
+
+                UpdateSideClimb(
+                    now,
+                    climbingUp: false);
+
+                return true;
+
+
+            case SurfaceAction.SideHolding:
+
+                if (now <
+                    _surfaceActionUntil)
+                {
+                    return true;
+                }
+
+
+                // 70% naik kembali
+                if (_random.NextDouble() <
+                    0.70)
+                {
+                    BeginSideClimbUp(now);
+                }
+                else
+                {
+                    // 30% melepas diri dari sisi
+                    ReleaseFromSurface(
+                        _surfaceEdgeDirection *
+                        180.0,
+
+                        100.0);
+                }
+
+                return true;
+
+
+            case SurfaceAction.SideClimbingUp:
+
+                UpdateSideClimb(
+                    now,
+                    climbingUp: true);
+
+                return true;
 
             case SurfaceAction.ClimbingUp:
 
@@ -592,12 +892,12 @@ public sealed class BehaviorController : IDisposable
 
 
         double top =
-            _surfaceAction ==
-                SurfaceAction.Hanging
-                ? support.Bounds.Top -
-                  HangGripOffsetY
-                : support.Bounds.Top -
-                  characterBounds.Height;
+    isSideAttached
+        ? support.Bounds.Top +
+          _sideGripOffsetY -
+          HangGripOffsetY
+        : support.Bounds.Top -
+          characterBounds.Height;
 
 
         DesktopMonitorService
@@ -613,6 +913,50 @@ public sealed class BehaviorController : IDisposable
         return true;
     }
 
+    private void ReleaseFromSurface(
+    double horizontalVelocity,
+    double verticalVelocity)
+    {
+        if (_supportWindowHandle ==
+            nint.Zero)
+        {
+            return;
+        }
+
+
+        _supportWindowHandle =
+            nint.Zero;
+
+        _lastSupportWindowBounds =
+            Rect.Empty;
+
+
+        _surfaceAction =
+            SurfaceAction.None;
+
+        _surfaceActionUntil =
+            DateTime.MinValue;
+
+
+        _sideGripOffsetY = 0;
+
+        _walking = false;
+
+
+        // Behavior berhenti sementara,
+        // physics mengambil alih.
+        _paused = true;
+
+
+        _character.SetMood(
+            CharacterMood.Surprised);
+
+
+        SurfaceLaunchRequested?.Invoke(
+            horizontalVelocity,
+            verticalVelocity);
+    }
+
     private void LoseWindowSupport()
     {
         _surfaceAction =
@@ -620,6 +964,11 @@ public sealed class BehaviorController : IDisposable
 
         _surfaceActionUntil =
             DateTime.MinValue;
+
+        _sideGripOffsetY = 0;
+
+        _sideClimbStartOffsetY = 0;
+        _sideClimbTargetOffsetY = 0;
         if (_supportWindowHandle ==
             nint.Zero)
         {
@@ -1057,17 +1406,26 @@ public sealed class BehaviorController : IDisposable
             PlaceOnDesktopBottom();
         }
 
-        if (_surfaceAction ==
-    SurfaceAction.Hanging)
+        bool isSideAttached =
+            _surfaceAction ==
+                SurfaceAction.Hanging
+            ||
+            _surfaceAction ==
+                SurfaceAction.SideClimbingDown
+            ||
+            _surfaceAction ==
+                SurfaceAction.SideHolding
+            ||
+            _surfaceAction ==
+                SurfaceAction.SideClimbingUp;
+
+
+        if (isSideAttached)
         {
-            _character.SetState(
-                CharacterState.Hanging);
-        }
-        else if (_surfaceAction ==
-                 SurfaceAction.ClimbingUp)
-        {
-            _character.SetState(
-                CharacterState.Climbing);
+            left =
+                GetHangingLeft(
+                    support.Bounds,
+                    characterBounds.Width);
         }
         else
         {

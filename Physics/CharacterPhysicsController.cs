@@ -617,6 +617,16 @@ DateTime now)
 
     public void StartFallFromRest()
     {
+        StartFall(
+            0,
+            0);
+    }
+
+
+    public void StartFall(
+        double velocityX,
+        double velocityY)
+    {
         if (_isGrabbed ||
             _isFalling)
         {
@@ -630,10 +640,20 @@ DateTime now)
 
         _maximumImpactSpeed = 0;
 
-        _velocityX = 0;
-        _velocityY = 0;
-
         _wasShakenDuringGrab = false;
+
+
+        _velocityX =
+            Math.Clamp(
+                velocityX,
+                -MaximumThrowSpeed,
+                MaximumThrowSpeed);
+
+        _velocityY =
+            Math.Clamp(
+                velocityY,
+                -MaximumThrowSpeed,
+                MaximumThrowSpeed);
 
 
         _character.SetState(
@@ -646,7 +666,6 @@ DateTime now)
         _lastTickAt =
             DateTime.UtcNow;
     }
-
     private void Settle(
     double impactSpeed,
     nint? supportWindow)

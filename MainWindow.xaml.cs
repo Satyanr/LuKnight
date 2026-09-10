@@ -70,6 +70,17 @@ public partial class MainWindow : Window
             .StartFallFromRest();
     }
 
+    private void
+    BehaviorController_SurfaceLaunchRequested(
+        double velocityX,
+        double velocityY)
+    {
+        _physicsController?
+            .StartFall(
+                velocityX,
+                velocityY);
+    }
+
     private void PhysicsController_Shaken()
     {
         CharacterControl.SetMood(
@@ -97,7 +108,10 @@ public partial class MainWindow : Window
         _physicsController.Shaken +=
             PhysicsController_Shaken;
         _behaviorController.SupportLost +=
-BehaviorController_SupportLost;
+            BehaviorController_SupportLost;
+
+        _behaviorController.SurfaceLaunchRequested +=
+            BehaviorController_SurfaceLaunchRequested;
     }
 
     public MainWindow()
@@ -366,8 +380,8 @@ BehaviorController_SupportLost;
         }
         if (_behaviorController is not null)
         {
-            _behaviorController.SupportLost -=
-                BehaviorController_SupportLost;
+            _behaviorController.SurfaceLaunchRequested -=
+                BehaviorController_SurfaceLaunchRequested;
         }
         _behaviorController?.Dispose();
 
