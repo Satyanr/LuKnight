@@ -156,7 +156,10 @@ DateTime now)
 
     public event Action? Shaken;
 
-    public event Action<double, bool>? Landed;
+    public event Action<
+    double,
+    bool,
+    nint?>? Landed;
 
     public CharacterPhysicsController(
         Window window,
@@ -479,6 +482,69 @@ DateTime now)
             }
         }
 
+        // =========================
+        // APPLICATION WINDOW TOP
+        // =========================
+
+        if (_velocityY > 0 &&
+            DesktopWindowService
+                .TryFindLandingSurface(
+                    windowBounds,
+                    nextLeft,
+                    nextTop,
+                    out DesktopWindowInfo
+                        landingWindow))
+        {
+            double impactSpeed =
+                Math.Abs(
+                    _velocityY);
+
+
+            _maximumImpactSpeed =
+                Math.Max(
+                    _maximumImpactSpeed,
+                    impactSpeed);
+
+
+            double windowSurfaceTop =
+                landingWindow.Bounds.Top;
+
+
+            nextTop =
+                windowSurfaceTop -
+                height;
+
+
+            _bounceCount++;
+
+
+            if (impactSpeed >= 170 &&
+                _bounceCount <= 2)
+            {
+                _velocityY =
+                    -impactSpeed *
+                    FloorBounce;
+
+                _velocityX *=
+                    GroundFriction;
+            }
+            else
+            {
+                DesktopMonitorService
+                    .SetWindowPosition(
+                        _window,
+                        nextLeft,
+                        nextTop);
+
+
+                Settle(
+                    _maximumImpactSpeed,
+                    landingWindow.Handle);
+
+                return;
+            }
+        }
+
 
         // =========================
         // FLOOR
@@ -533,7 +599,8 @@ DateTime now)
                             floor);
 
                     Settle(
-                        _maximumImpactSpeed);
+                        _maximumImpactSpeed,
+                        null);
 
                     return;
                 }
@@ -548,8 +615,41 @@ DateTime now)
                 nextTop);
     }
 
+    public void StartFallFromRest()
+    {
+        if (_isGrabbed ||
+            _isFalling)
+        {
+            return;
+        }
+
+
+        _isFalling = true;
+
+        _bounceCount = 0;
+
+        _maximumImpactSpeed = 0;
+
+        _velocityX = 0;
+        _velocityY = 0;
+
+        _wasShakenDuringGrab = false;
+
+
+        _character.SetState(
+            CharacterState.Falling);
+
+        _character.SetMood(
+            CharacterMood.Surprised);
+
+
+        _lastTickAt =
+            DateTime.UtcNow;
+    }
+
     private void Settle(
-    double impactSpeed)
+    double impactSpeed,
+    nint? supportWindow)
     {
         _isFalling = false;
 
@@ -565,8 +665,9 @@ DateTime now)
         _wasShakenDuringGrab;
 
         Landed?.Invoke(
-            impactSpeed,
-            wasShaken);
+        impactSpeed,
+        wasShaken,
+        supportWindow);
 
         _wasShakenDuringGrab = false;
 

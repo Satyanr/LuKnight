@@ -48,6 +48,149 @@ public sealed class BehaviorController : IDisposable
 
     private bool _thinking;
 
+    private nint _supportWindowHandle =
+    nint.Zero;
+
+    private Rect _lastSupportWindowBounds =
+        Rect.Empty;
+
+    public event Action? SupportLost;
+
+    public void SetSupportWindow(
+    nint? windowHandle)
+    {
+        _supportWindowHandle =
+            windowHandle ??
+            nint.Zero;
+
+        _lastSupportWindowBounds =
+            Rect.Empty;
+
+
+        if (_supportWindowHandle ==
+            nint.Zero)
+        {
+            return;
+        }
+
+
+        if (DesktopWindowService.TryGetWindow(
+                _supportWindowHandle,
+                out DesktopWindowInfo info))
+        {
+            _lastSupportWindowBounds =
+                info.Bounds;
+        }
+    }
+
+
+    public void ClearSupportWindow()
+    {
+        _supportWindowHandle =
+            nint.Zero;
+
+        _lastSupportWindowBounds =
+            Rect.Empty;
+    }
+
+    private bool UpdateSupportWindow()
+    {
+        if (_supportWindowHandle ==
+            nint.Zero)
+        {
+            return true;
+        }
+
+
+        if (!DesktopWindowService.TryGetWindow(
+                _supportWindowHandle,
+                out DesktopWindowInfo support))
+        {
+            LoseWindowSupport();
+            return false;
+        }
+
+
+        Rect characterBounds =
+            DesktopMonitorService
+                .GetWindowBounds(
+                    _window);
+
+
+        double deltaX = 0;
+
+
+        if (!_lastSupportWindowBounds.IsEmpty)
+        {
+            deltaX =
+                support.Bounds.Left -
+                _lastSupportWindowBounds.Left;
+        }
+
+
+        double left =
+            characterBounds.Left +
+            deltaX;
+
+
+        double minimumLeft =
+            support.Bounds.Left;
+
+        double maximumLeft =
+            Math.Max(
+                minimumLeft,
+                support.Bounds.Right -
+                characterBounds.Width);
+
+
+        left =
+            Math.Clamp(
+                left,
+                minimumLeft,
+                maximumLeft);
+
+
+        double top =
+            support.Bounds.Top -
+            characterBounds.Height;
+
+
+        DesktopMonitorService
+            .SetWindowPosition(
+                _window,
+                left,
+                top);
+
+
+        _lastSupportWindowBounds =
+            support.Bounds;
+
+        return true;
+    }
+
+    private void LoseWindowSupport()
+    {
+        if (_supportWindowHandle ==
+            nint.Zero)
+        {
+            return;
+        }
+
+
+        _supportWindowHandle =
+            nint.Zero;
+
+        _lastSupportWindowBounds =
+            Rect.Empty;
+
+        _walking = false;
+
+        // Physics sekarang mengambil alih.
+        _paused = true;
+
+        SupportLost?.Invoke();
+    }
+
     private bool HasTemporaryMood(
     DateTime now)
     {
@@ -453,9 +596,19 @@ public sealed class BehaviorController : IDisposable
         _paused = false;
         _walking = false;
 
-        PlaceOnDesktopBottom();
+        if (_supportWindowHandle !=
+            nint.Zero)
+        {
+            if (!UpdateSupportWindow())
+                return;
+        }
+        else
+        {
+            PlaceOnDesktopBottom();
+        }
 
-        _character.SetState(CharacterState.Idle);
+        _character.SetState(
+            CharacterState.Idle);
         _character.SetFacingDirection(_direction);
 
         _lastTickAt = DateTime.UtcNow;
@@ -488,6 +641,17 @@ public sealed class BehaviorController : IDisposable
             .TotalSeconds;
 
         _lastTickAt = now;
+
+
+        // Window di bawah Lu-Knight bisa bergerak
+        // bahkan saat chat sedang terbuka.
+        if (_supportWindowHandle !=
+                nint.Zero &&
+            !UpdateSupportWindow())
+        {
+            return;
+        }
+
 
         if (_paused)
             return;
@@ -641,6 +805,85 @@ public sealed class BehaviorController : IDisposable
             maxSeconds: 4.0);
     }
 
+    private void MoveOnSupportWindow(
+    double deltaSeconds)
+    {
+        if (!DesktopWindowService.TryGetWindow(
+                _supportWindowHandle,
+                out DesktopWindowInfo support))
+        {
+            LoseWindowSupport();
+            return;
+        }
+
+
+        Rect characterBounds =
+            DesktopMonitorService
+                .GetWindowBounds(
+                    _window);
+
+
+        double minimumLeft =
+            support.Bounds.Left;
+
+        double maximumLeft =
+            Math.Max(
+                minimumLeft,
+                support.Bounds.Right -
+                characterBounds.Width);
+
+
+        double newLeft =
+            characterBounds.Left +
+            (_direction *
+             WalkSpeed *
+             deltaSeconds);
+
+
+        // Phase 3D-A:
+        // sementara Lu-Knight berbalik
+        // di tepi window.
+        if (newLeft <= minimumLeft)
+        {
+            newLeft =
+                minimumLeft;
+
+            _direction = 1;
+
+            _character
+                .SetFacingDirection(
+                    _direction);
+        }
+        else if (newLeft >=
+                 maximumLeft)
+        {
+            newLeft =
+                maximumLeft;
+
+            _direction = -1;
+
+            _character
+                .SetFacingDirection(
+                    _direction);
+        }
+
+
+        double top =
+            support.Bounds.Top -
+            characterBounds.Height;
+
+
+        DesktopMonitorService
+            .SetWindowPosition(
+                _window,
+                newLeft,
+                top);
+
+
+        _lastSupportWindowBounds =
+            support.Bounds;
+    }
+
     private void MoveCharacter(
      double deltaSeconds)
     {
@@ -688,6 +931,15 @@ public sealed class BehaviorController : IDisposable
                         monitor,
                         MonitorDirection.Left,
                         out _);
+
+            if (_supportWindowHandle !=
+                nint.Zero)
+            {
+                MoveOnSupportWindow(
+                    deltaSeconds);
+
+                return;
+            }
 
             if (taskbarBlocks ||
                 !hasNeighbor)

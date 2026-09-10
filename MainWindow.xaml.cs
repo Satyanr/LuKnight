@@ -27,14 +27,21 @@ public partial class MainWindow : Window
         _physicsController;
 
     private void PhysicsController_Landed(
-     double impactSpeed,
-     bool wasShaken)
+    double impactSpeed,
+    bool wasShaken,
+    nint? supportWindow)
     {
+        _behaviorController?
+            .SetSupportWindow(
+                supportWindow);
+
         _behaviorController?
             .Resume();
 
+
         CharacterControl
             .PlayLandingReaction();
+
 
         if (wasShaken)
         {
@@ -43,6 +50,7 @@ public partial class MainWindow : Window
 
             return;
         }
+
 
         if (impactSpeed > 650)
         {
@@ -54,6 +62,12 @@ public partial class MainWindow : Window
             _behaviorController?
                 .ReactHappy();
         }
+    }
+
+    private void BehaviorController_SupportLost()
+    {
+        _physicsController?
+            .StartFallFromRest();
     }
 
     private void PhysicsController_Shaken()
@@ -82,6 +96,8 @@ public partial class MainWindow : Window
 
         _physicsController.Shaken +=
             PhysicsController_Shaken;
+        _behaviorController.SupportLost +=
+BehaviorController_SupportLost;
     }
 
     public MainWindow()
@@ -192,6 +208,9 @@ public partial class MainWindow : Window
 
                 return;
             }
+
+            _behaviorController?
+                .ClearSupportWindow();
 
             _dragStarted = true;
         }
@@ -344,6 +363,11 @@ public partial class MainWindow : Window
                 PhysicsController_Landed;
 
             _physicsController.Dispose();
+        }
+        if (_behaviorController is not null)
+        {
+            _behaviorController.SupportLost -=
+                BehaviorController_SupportLost;
         }
         _behaviorController?.Dispose();
 
