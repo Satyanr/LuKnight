@@ -194,6 +194,9 @@ DateTime now)
         _bounceCount = 0;
         _maximumImpactSpeed = 0;
 
+        _targetWindowHandle =
+            nint.Zero;
+
         _shakeReversalCount = 0;
         _lastShakeDirection = 0;
 
@@ -553,8 +556,7 @@ DateTime now)
         // APPLICATION WINDOW TOP
         // =========================
 
-        if (_targetWindowHandle == nint.Zero &&
-            _velocityY > 0 &&
+        if (_velocityY > 0 &&
             DesktopWindowService
                 .TryFindLandingSurface(
                     windowBounds,
