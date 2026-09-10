@@ -610,13 +610,17 @@ public partial class CharacterView : UserControl
             ApplyRenderMode(CharacterRenderMode.Sprite);
             PlaySpriteForCurrentState();
 
-            // Pemuatan frame dapat memicu fallback secara sinkron.
+
             if (_renderMode ==
                 CharacterRenderMode.Sprite)
             {
+                PlaySpriteStateEntrance();
+
                 StartSpriteStateMotion(
                     state);
             }
+
+
             return;
         }
 

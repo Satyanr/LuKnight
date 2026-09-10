@@ -106,7 +106,7 @@ public partial class CharacterView
     }
 
     private void StartSpriteStateMotion(
-     CharacterState state)
+    CharacterState state)
     {
         switch (state)
         {
@@ -114,6 +114,22 @@ public partial class CharacterView
 
                 StartSpriteMotion(
                     "SpriteIdleStoryboard");
+
+                break;
+
+
+            case CharacterState.Walk:
+
+                StartSpriteMotion(
+                    "SpriteWalkStoryboard");
+
+                break;
+
+
+            case CharacterState.Sleep:
+
+                StartSpriteMotion(
+                    "SpriteSleepStoryboard");
 
                 break;
 
@@ -134,6 +150,22 @@ public partial class CharacterView
                 break;
 
 
+            case CharacterState.Hanging:
+
+                StartSpriteMotion(
+                    "SpriteHangingStoryboard");
+
+                break;
+
+
+            case CharacterState.Climbing:
+
+                StartSpriteMotion(
+                    "SpriteClimbingStoryboard");
+
+                break;
+
+
             default:
 
                 StopSpriteMotion();
@@ -141,6 +173,47 @@ public partial class CharacterView
                 break;
         }
     }
+
+    private void PlaySpriteStateEntrance()
+    {
+        if (_renderMode !=
+            CharacterRenderMode.Sprite)
+        {
+            return;
+        }
+
+
+        SpriteImpactRoot
+            .BeginAnimation(
+                UIElement.OpacityProperty,
+                null);
+
+
+        SpriteImpactRoot.Opacity =
+            0.72;
+
+
+        var animation =
+            new DoubleAnimation
+            {
+                From = 0.72,
+                To = 1.0,
+
+                Duration =
+                    TimeSpan.FromMilliseconds(
+                        110),
+
+                FillBehavior =
+                    FillBehavior.Stop
+            };
+
+
+        SpriteImpactRoot
+            .BeginAnimation(
+                UIElement.OpacityProperty,
+                animation);
+    }
+
     private void RelaxSpriteCursor()
     {
         if (!_spriteCursorTracking)
@@ -413,6 +486,11 @@ public partial class CharacterView
                 ScaleTransform.ScaleXProperty,
                 null);
 
+        SpriteImpactRoot
+            .BeginAnimation(
+            UIElement.OpacityProperty,
+            null);
+
         SpriteImpactScale
             .BeginAnimation(
                 ScaleTransform.ScaleYProperty,
@@ -443,6 +521,8 @@ public partial class CharacterView
         SpriteImpactTranslate.Y = 0;
 
         SpriteImpactRotate.Angle = 0;
+
+        SpriteImpactRoot.Opacity = 1;
     }
 
     private void PlaySpriteLandingReaction(

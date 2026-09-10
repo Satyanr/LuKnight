@@ -75,6 +75,110 @@
 
         </Storyboard>
 
+        <Storyboard x:Key="SpriteWalkStoryboard"
+                    RepeatBehavior="Forever"
+                    AutoReverse="True">
+
+            <DoubleAnimation
+                Storyboard.TargetName="SpriteTranslate"
+                Storyboard.TargetProperty="Y"
+                From="0"
+                To="-2.5"
+                Duration="0:0:0.18"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="SpriteRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-1.2"
+                To="1.2"
+                Duration="0:0:0.18"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="SpriteScale"
+                Storyboard.TargetProperty="ScaleY"
+                From="0.99"
+                To="1.015"
+                Duration="0:0:0.18"/>
+
+        </Storyboard>
+
+
+        <Storyboard x:Key="SpriteSleepStoryboard"
+                    RepeatBehavior="Forever"
+                    AutoReverse="True">
+
+            <DoubleAnimation
+                Storyboard.TargetName="SpriteScale"
+                Storyboard.TargetProperty="ScaleY"
+                From="0.985"
+                To="1.012"
+                Duration="0:0:2.4"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="SpriteTranslate"
+                Storyboard.TargetProperty="Y"
+                From="1"
+                To="2.2"
+                Duration="0:0:2.4"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="SpriteRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-0.35"
+                To="0.35"
+                Duration="0:0:3.2"/>
+
+        </Storyboard>
+
+
+        <Storyboard x:Key="SpriteHangingStoryboard"
+                    RepeatBehavior="Forever"
+                    AutoReverse="True">
+
+            <DoubleAnimation
+                Storyboard.TargetName="SpriteRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-2.2"
+                To="2.2"
+                Duration="0:0:0.62"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="SpriteTranslate"
+                Storyboard.TargetProperty="Y"
+                From="0"
+                To="2.4"
+                Duration="0:0:0.62"/>
+
+        </Storyboard>
+
+
+        <Storyboard x:Key="SpriteClimbingStoryboard"
+                    RepeatBehavior="Forever"
+                    AutoReverse="True">
+
+            <DoubleAnimation
+                Storyboard.TargetName="SpriteTranslate"
+                Storyboard.TargetProperty="Y"
+                From="2"
+                To="-3"
+                Duration="0:0:0.23"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="SpriteRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-1.5"
+                To="1.5"
+                Duration="0:0:0.23"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="SpriteScale"
+                Storyboard.TargetProperty="ScaleY"
+                From="0.99"
+                To="1.025"
+                Duration="0:0:0.23"/>
+
+        </Storyboard>
+
         <!-- ====================== -->
         <!-- BLINK -->
         <!-- ====================== -->
