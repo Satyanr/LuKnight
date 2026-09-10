@@ -68,6 +68,19 @@ public sealed class SurfaceBehaviorController
     private nint _pendingJumpTargetHandle =
         nint.Zero;
 
+    private SurfaceNavigationIntent
+_adventureIntent =
+    SurfaceNavigationIntent.Balanced;
+
+
+    private DateTime
+        _adventureIntentUntil =
+            DateTime.MinValue;
+
+
+    private int
+        _adventureJumpsRemaining;
+
 
     private const double HangGripOffsetY =
         90.0;
@@ -190,6 +203,8 @@ public sealed class SurfaceBehaviorController
 
         _lastSupportWindowBounds =
             Rect.Empty;
+
+        ResetNavigationAdventure();
 
     }
 
@@ -642,6 +657,145 @@ public sealed class SurfaceBehaviorController
                 amount);
     }
 
+    private bool HasActiveNavigationAdventure(
+    DateTime now)
+    {
+        return
+            _adventureJumpsRemaining > 0 &&
+            now < _adventureIntentUntil;
+    }
+
+    private void ResetNavigationAdventure()
+    {
+        _adventureIntent =
+            SurfaceNavigationIntent.Balanced;
+
+        _adventureIntentUntil =
+            DateTime.MinValue;
+
+        _adventureJumpsRemaining =
+            0;
+    }
+
+    private void StartNavigationAdventure(
+        DateTime now)
+    {
+        _adventureIntent =
+            SelectNavigationIntent();
+
+
+        _adventureJumpsRemaining =
+            _adventureIntent switch
+            {
+                SurfaceNavigationIntent.Explore
+                    => _random.Next(2, 5),
+
+                SurfaceNavigationIntent.Familiar
+                    => _random.Next(2, 4),
+
+                _ => _random.Next(1, 3)
+            };
+
+
+        double durationSeconds =
+            _adventureIntent switch
+            {
+                SurfaceNavigationIntent.Explore
+                    => 45 +
+                       (_random.NextDouble() * 30),
+
+                SurfaceNavigationIntent.Familiar
+                    => 35 +
+                       (_random.NextDouble() * 25),
+
+                _ => 25 +
+                     (_random.NextDouble() * 20)
+            };
+
+
+        _adventureIntentUntil =
+            now.AddSeconds(
+                durationSeconds);
+
+        switch (_adventureIntent)
+        {
+            case SurfaceNavigationIntent.Explore:
+
+                _character.SetMood(
+                    CharacterMood.Curious);
+
+                break;
+
+
+            case SurfaceNavigationIntent.Familiar:
+
+                if (_random.NextDouble() <
+                    0.35)
+                {
+                    _character.TwitchEars();
+                }
+
+                break;
+
+
+            case SurfaceNavigationIntent.Balanced:
+
+                break;
+        }
+
+
+        Debug.WriteLine(
+            $"[Lu-Knight] Adventure started " +
+            $"Intent={_adventureIntent}, " +
+            $"Jumps={_adventureJumpsRemaining}, " +
+            $"Duration={durationSeconds:0}s");
+    }
+
+    private SurfaceNavigationIntent
+    GetNavigationIntent(
+        DateTime now)
+    {
+        if (!HasActiveNavigationAdventure(
+                now))
+        {
+            StartNavigationAdventure(
+                now);
+        }
+
+
+        return _adventureIntent;
+    }
+
+    private void CommitNavigationJump(
+    DateTime now)
+    {
+        if (!HasActiveNavigationAdventure(
+                now))
+        {
+            return;
+        }
+
+
+        _adventureJumpsRemaining =
+            Math.Max(
+                0,
+                _adventureJumpsRemaining - 1);
+
+
+        Debug.WriteLine(
+            $"[Lu-Knight] Adventure progress " +
+            $"Intent={_adventureIntent}, " +
+            $"Remaining={_adventureJumpsRemaining}");
+
+
+        if (_adventureJumpsRemaining == 0)
+        {
+            Debug.WriteLine(
+                $"[Lu-Knight] Adventure completed " +
+                $"Intent={_adventureIntent}");
+        }
+    }
+
     private SurfaceNavigationIntent
         SelectNavigationIntent()
     {
@@ -784,7 +938,9 @@ public sealed class SurfaceBehaviorController
                 .GetWindowBounds(
                     _window);
 
-        SurfaceNavigationIntent navigationIntent = SelectNavigationIntent();
+        SurfaceNavigationIntent navigationIntent =
+             GetNavigationIntent(
+                    now);
 
         if (!SurfaceNavigationService
             .TryPlanJump(
@@ -804,31 +960,34 @@ public sealed class SurfaceBehaviorController
             return false;
         }
 
-    string destination =
-        "Unknown";
+        string destination =
+            "Unknown";
 
 
-    if (DesktopApplicationService
-        .TryGetApplication(
-            plan.Target.Handle,
-            out DesktopApplicationContext
-                destinationApplication))
-    {
-        destination =
-            $"{destinationApplication.ProcessName}" +
-            $" / {destinationApplication.Kind}";
-    }
+        if (DesktopApplicationService
+            .TryGetApplication(
+                plan.Target.Handle,
+                out DesktopApplicationContext
+                    destinationApplication))
+        {
+            destination =
+                $"{destinationApplication.ProcessName}" +
+                $" / {destinationApplication.Kind}";
+        }
 
 
-    Debug.WriteLine(
-        $"[Lu-Knight] Jump target found " +
-        $"Intent={navigationIntent}, " +
-        $"Target={destination}, " +
-        $"X={plan.VelocityX:0}, " +
-        $"Y={plan.VelocityY:0}");
+        Debug.WriteLine(
+            $"[Lu-Knight] Jump target found " +
+            $"Intent={navigationIntent}, " +
+            $"Target={destination}, " +
+            $"X={plan.VelocityX:0}, " +
+            $"Y={plan.VelocityY:0}");
 
         _pendingJumpVelocityX =
             plan.VelocityX;
+
+        CommitNavigationJump(
+                now);
 
         _pendingJumpVelocityY =
             plan.VelocityY;
