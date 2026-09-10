@@ -55,6 +55,9 @@ public sealed class BehaviorController : IDisposable
     private bool _thinking;
 
     private readonly SurfaceBehaviorController _surfaceController;
+    private readonly DesktopEnvironmentMemory _environmentMemory = new();
+    private DesktopApplicationContext? _pendingArrivalApplication;
+    private DateTime _pendingArrivalAt = DateTime.MinValue;
 
     private DesktopApplicationKind
     _lastDebugApplicationKind =
@@ -87,16 +90,31 @@ public sealed class BehaviorController : IDisposable
 
     public void SetSupportWindow(nint? windowHandle)
     {
+        nint previousHandle = _surfaceController.SupportWindowHandle;
         _surfaceController.SetSupportWindow(windowHandle);
+        nint currentHandle = _surfaceController.SupportWindowHandle;
+
+        if (currentHandle == nint.Zero)
+        {
+            CancelPendingApplicationArrival();
+            return;
+        }
+        if (currentHandle == previousHandle)
+            return;
+
+        CancelPendingApplicationArrival();
+        QueueApplicationArrival(currentHandle);
     }
 
     public void ClearSupportWindow()
     {
+        CancelPendingApplicationArrival();
         _surfaceController.ClearSupportWindow();
     }
 
     private void SurfaceController_SupportLost()
     {
+        CancelPendingApplicationArrival();
         _walking = false;
         _paused = true;
         SupportLost?.Invoke();
@@ -107,6 +125,7 @@ public sealed class BehaviorController : IDisposable
         double velocityY,
         nint targetWindowHandle)
     {
+        CancelPendingApplicationArrival();
         _walking = false;
         _paused = true;
         SurfaceLaunchRequested?.Invoke(
@@ -125,6 +144,100 @@ public sealed class BehaviorController : IDisposable
         double maxSeconds)
     {
         ScheduleNextDecision(minSeconds, maxSeconds);
+    }
+
+    private void CancelPendingApplicationArrival()
+    {
+        _pendingArrivalApplication = null;
+        _pendingArrivalAt = DateTime.MinValue;
+    }
+
+    private void QueueApplicationArrival(nint windowHandle)
+    {
+        if (!DesktopApplicationService.TryGetApplication(
+                windowHandle, out DesktopApplicationContext application))
+            return;
+
+        DateTime now = DateTime.UtcNow;
+        if (!_environmentMemory.ShouldReactToArrival(application, now))
+            return;
+
+        _pendingArrivalApplication = application;
+        // Tunggu landing reaction selesai dahulu.
+        _pendingArrivalAt = now.AddSeconds(1.15);
+        Debug.WriteLine($"[Lu-Knight] Arrival queued: {application.ProcessName} ({application.Kind})");
+    }
+
+    private void UpdatePendingApplicationArrival(DateTime now)
+    {
+        if (_pendingArrivalApplication is not DesktopApplicationContext application ||
+            now < _pendingArrivalAt)
+            return;
+
+        if (!_surfaceController.HasSupport ||
+            _surfaceController.SupportWindowHandle != application.WindowHandle)
+        {
+            CancelPendingApplicationArrival();
+            return;
+        }
+
+        if (_paused || _thinking || _sleeping ||
+            _surfaceController.IsBusy || HasTemporaryMood(now))
+            return;
+
+        CancelPendingApplicationArrival();
+        PlayApplicationArrivalReaction(application);
+    }
+
+    private void PlayApplicationArrivalReaction(DesktopApplicationContext application)
+    {
+        _walking = false;
+        _character.SetState(CharacterState.Idle);
+        int lookDirection = _random.Next(0, 2) == 0 ? -1 : 1;
+
+        switch (application.Kind)
+        {
+            case DesktopApplicationKind.CodeEditor:
+                SetTemporaryMood(CharacterMood.Curious, 1.35);
+                _character.LookSide(lookDirection);
+                if (_random.NextDouble() < 0.45)
+                    _character.TwitchEars();
+                break;
+
+            case DesktopApplicationKind.Browser:
+                SetTemporaryMood(CharacterMood.Curious, 1.05);
+                _character.LookSide(lookDirection);
+                break;
+
+            case DesktopApplicationKind.Creative:
+                SetTemporaryMood(CharacterMood.Happy, 1.15);
+                _character.TwitchEars();
+                break;
+
+            case DesktopApplicationKind.Office:
+                SetTemporaryMood(CharacterMood.Curious, 0.85);
+                if (_random.NextDouble() < 0.30)
+                    _character.LookSide(lookDirection);
+                break;
+
+            case DesktopApplicationKind.FileManager:
+                SetTemporaryMood(CharacterMood.Curious, 1.0);
+                _character.LookSide(lookDirection);
+                break;
+
+            case DesktopApplicationKind.Communication:
+                SetTemporaryMood(CharacterMood.Happy, 1.2);
+                if (_random.NextDouble() < 0.55)
+                    _character.TwitchEars();
+                break;
+
+            default:
+                SetTemporaryMood(CharacterMood.Curious, 0.8);
+                break;
+        }
+
+        ScheduleNextDecision(1.6, 2.8);
+        Debug.WriteLine($"[Lu-Knight] Arrived at {application.ProcessName} ({application.Kind})");
     }
 
     private bool HasTemporaryMood(
@@ -1002,6 +1115,7 @@ public sealed class BehaviorController : IDisposable
         }
 
         UpdateMood(now);
+        UpdatePendingApplicationArrival(now);
 
         bool cursorHasAttention =
             UpdateCursorAwareness(now);
@@ -1550,6 +1664,7 @@ public sealed class BehaviorController : IDisposable
 
     public void Dispose()
     {
+        CancelPendingApplicationArrival();
         _surfaceController.SupportLost -=
             SurfaceController_SupportLost;
 
