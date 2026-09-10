@@ -93,7 +93,16 @@ public partial class CharacterView : UserControl
 
     private void EnsureSpritePlayer()
     {
-        _spritePlayer ??= new SpriteAnimationPlayer(SpriteImage);
+        if (_spritePlayer is not null)
+            return;
+
+        _spritePlayer = new SpriteAnimationPlayer(SpriteImage);
+        _spritePlayer.FrameLoadFailed += SpritePlayer_FrameLoadFailed;
+    }
+
+    private void SpritePlayer_FrameLoadFailed()
+    {
+        SetRenderMode(CharacterRenderMode.Vector);
     }
 
     public void SetRenderMode(CharacterRenderMode mode)
@@ -142,9 +151,7 @@ public partial class CharacterView : UserControl
         EnsureSpritePlayer();
         if (!_spriteStateClips.TryGetValue(CurrentState, out SpriteAnimationClip? clip))
         {
-            // Tidak ada clip untuk state ini; hentikan animasi state sebelumnya.
-            _spritePlayer?.Stop();
-            SpriteImage.Source = null;
+            SetRenderMode(CharacterRenderMode.Vector);
             return;
         }
 
@@ -153,7 +160,11 @@ public partial class CharacterView : UserControl
 
     private void CharacterView_Unloaded(object sender, RoutedEventArgs e)
     {
-        _spritePlayer?.Dispose();
+        if (_spritePlayer is null)
+            return;
+
+        _spritePlayer.FrameLoadFailed -= SpritePlayer_FrameLoadFailed;
+        _spritePlayer.Dispose();
         _spritePlayer = null;
     }
 

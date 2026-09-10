@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -16,6 +17,8 @@ public sealed class SpriteAnimationPlayer :
     private SpriteAnimationClip? _clip;
 
     private int _frameIndex;
+
+    public event Action? FrameLoadFailed;
 
 
     public SpriteAnimationPlayer(
@@ -61,6 +64,9 @@ public sealed class SpriteAnimationPlayer :
 
         ShowCurrentFrame();
 
+        // Fallback dapat memanggil Stop() saat frame pertama gagal dimuat.
+        if (!ReferenceEquals(_clip, clip))
+            return;
 
         if (clip.Frames.Count > 1)
         {
@@ -120,49 +126,49 @@ public sealed class SpriteAnimationPlayer :
 
     private void ShowCurrentFrame()
     {
-        if (_clip is null ||
-            _clip.Frames.Count == 0)
+        if (_clip is null)
+            return;
+
+        if (_clip.Frames.Count == 0)
         {
+            FailFrameLoad();
             return;
         }
 
-
-        string path =
-            _clip.Frames[
-                _frameIndex];
-
-
         try
         {
-            var bitmap =
-                new BitmapImage();
+            string resolvedPath = _clip.Frames[_frameIndex];
+            if (!Path.IsPathRooted(resolvedPath))
+            {
+                resolvedPath = Path.Combine(AppContext.BaseDirectory, resolvedPath);
+            }
 
+            if (!File.Exists(resolvedPath))
+            {
+                FailFrameLoad();
+                return;
+            }
 
+            var bitmap = new BitmapImage();
             bitmap.BeginInit();
-
-            bitmap.CacheOption =
-                BitmapCacheOption.OnLoad;
-
-            bitmap.UriSource =
-                new Uri(
-                    path,
-                    UriKind.RelativeOrAbsolute);
-
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+            bitmap.UriSource = new Uri(resolvedPath, UriKind.Absolute);
             bitmap.EndInit();
-
             bitmap.Freeze();
-
-
-            _image.Source =
-                bitmap;
+            _image.Source = bitmap;
         }
         catch
         {
-            // Sprite asset belum tersedia /
-            // invalid.
-            // Vector renderer tetap menjadi
-            // fallback.
+            FailFrameLoad();
         }
+    }
+
+    private void FailFrameLoad()
+    {
+        _image.Source = null;
+        Stop();
+        FrameLoadFailed?.Invoke();
     }
 
 
