@@ -17,13 +17,13 @@ public static class SurfaceNavigationService
         60.0;
 
     private const double MaximumJumpX =
-        1100.0;
+        1450.0;
 
     private const double MaximumTargetAbove =
-        320.0;
+        420.0;
 
     private const double MaximumTargetBelow =
-        700.0;
+        850.0;
 
 
     public static bool TryPlanJump(
@@ -81,31 +81,33 @@ public static class SurfaceNavigationService
                 characterBounds.Height;
 
 
-            // Target posisi karakter agar
-            // berada kira-kira di tengah
-            // window tujuan.
-            double targetLeft =
-                candidate.Bounds.Left +
-                ((candidate.Bounds.Width -
-                  characterWidth) / 2.0);
+            const double LandingInset = 22.0;
+            double minimumTargetLeft = candidate.Bounds.Left + LandingInset;
+            double maximumTargetLeft = candidate.Bounds.Right - characterWidth - LandingInset;
 
+            // Window sempit boleh memakai seluruh lebarnya.
+            if (maximumTargetLeft < minimumTargetLeft)
+            {
+                minimumTargetLeft = candidate.Bounds.Left;
+                maximumTargetLeft = candidate.Bounds.Right - characterWidth;
+            }
+            if (maximumTargetLeft < minimumTargetLeft)
+                continue;
 
-            double minimumTargetLeft =
-                candidate.Bounds.Left;
-
-            double maximumTargetLeft =
-                Math.Max(
-                    minimumTargetLeft,
-                    candidate.Bounds.Right -
-                    characterWidth);
-
-
-            targetLeft =
-                Math.Clamp(
-                    targetLeft,
-                    minimumTargetLeft,
-                    maximumTargetLeft);
-
+            double targetLeft;
+            // Pilih landing terdekat yang tetap searah dengan lompatan.
+            if (preferredDirection > 0)
+            {
+                targetLeft = Math.Max(minimumTargetLeft, characterBounds.Left + MinimumJumpX);
+                if (targetLeft > maximumTargetLeft)
+                    continue;
+            }
+            else
+            {
+                targetLeft = Math.Min(maximumTargetLeft, characterBounds.Left - MinimumJumpX);
+                if (targetLeft < minimumTargetLeft)
+                    continue;
+            }
 
             double targetTop =
                 candidate.Bounds.Top -
@@ -129,22 +131,6 @@ public static class SurfaceNavigationService
                     MinimumJumpX ||
                 absoluteX >
                     MaximumJumpX)
-            {
-                continue;
-            }
-
-
-            // Hanya pilih target pada arah
-            // yang sedang dilihat.
-            if (preferredDirection < 0 &&
-                deltaX >= 0)
-            {
-                continue;
-            }
-
-
-            if (preferredDirection > 0 &&
-                deltaX <= 0)
             {
                 continue;
             }

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Windows;
 using LuKnight.Services;
 using LuKnight.Views;
@@ -671,8 +672,13 @@ public sealed class SurfaceBehaviorController
                 _environmentMemory,
                 out SurfaceJumpPlan plan))
         {
+            Debug.WriteLine($"[Lu-Knight] No valid jump target. Direction={_surfaceEdgeDirection}");
             return false;
         }
+
+        Debug.WriteLine(
+            $"[Lu-Knight] Jump target found HWND={plan.Target.Handle}, " +
+            $"X={plan.VelocityX:0}, Y={plan.VelocityY:0}, Bounds={plan.Target.Bounds}");
 
         _pendingJumpVelocityX =
             plan.VelocityX;
@@ -730,7 +736,7 @@ public sealed class SurfaceBehaviorController
 
 
                 // Coba langsung melompat jika ada window tujuan yang sesuai.
-                if (_random.NextDouble() < 0.35 &&
+                if (_random.NextDouble() < 0.70 &&
                     BeginTargetJump(now))
                 {
                     return true;
@@ -771,6 +777,12 @@ public sealed class SurfaceBehaviorController
                 }
 
 
+                // Coba target lain setelah jeda aksi selesai.
+                if (_random.NextDouble() < 0.45 && BeginTargetJump(now))
+                {
+                    return true;
+                }
+
                 // Setelah peek masih ada
                 // kemungkinan nekat hanging.
                 if (_random.NextDouble() <
@@ -794,6 +806,12 @@ public sealed class SurfaceBehaviorController
                     return true;
                 }
 
+
+                // Coba target lain setelah jeda aksi selesai.
+                if (_random.NextDouble() < 0.35 && BeginTargetJump(now))
+                {
+                    return true;
+                }
 
                 double hangChoice =
                     _random.NextDouble();
