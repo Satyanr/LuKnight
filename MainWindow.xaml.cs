@@ -73,12 +73,14 @@ public partial class MainWindow : Window
     private void
     BehaviorController_SurfaceLaunchRequested(
         double velocityX,
-        double velocityY)
+        double velocityY,
+        nint targetWindowHandle)
     {
         _physicsController?
             .StartFall(
                 velocityX,
-                velocityY);
+                velocityY,
+                targetWindowHandle);
     }
 
     private void PhysicsController_Shaken()

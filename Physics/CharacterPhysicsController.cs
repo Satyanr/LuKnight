@@ -496,6 +496,9 @@ DateTime now)
             double targetSurfaceTop =
                 targetWindow.Bounds.Top;
 
+            double nextBottom =
+                nextTop + height;
+
             double characterLeft =
                 nextLeft + 14;
 
@@ -506,28 +509,39 @@ DateTime now)
                 characterRight > targetWindow.Bounds.Left + 28 &&
                 characterLeft < targetWindow.Bounds.Right - 28;
 
-            bool crossedTarget =
+            bool reachesTargetHeight =
                 _velocityY > 0 &&
                 windowBounds.Bottom <= targetSurfaceTop + 1 &&
-                nextTop + height >= targetSurfaceTop &&
-                overlapsTarget;
+                nextBottom >= targetSurfaceTop;
 
-            if (crossedTarget)
+            if (reachesTargetHeight)
             {
-                double impactSpeed =
-                    Math.Abs(_velocityY);
+                if (overlapsTarget)
+                {
+                    double impactSpeed =
+                        Math.Abs(_velocityY);
 
-                DesktopMonitorService
-                    .SetWindowPosition(
-                        _window,
-                        nextLeft,
-                        targetSurfaceTop - height);
+                    DesktopMonitorService
+                        .SetWindowPosition(
+                            _window,
+                            nextLeft,
+                            targetSurfaceTop - height);
 
-                Settle(
-                    impactSpeed,
-                    targetWindow.Handle);
+                    Settle(
+                        impactSpeed,
+                        targetWindow.Handle);
 
-                return;
+                    return;
+                }
+
+                // Target terlewat; aktifkan kembali landing normal.
+                _targetWindowHandle = nint.Zero;
+            }
+            else if (_velocityY > 0 &&
+                     windowBounds.Bottom > targetSurfaceTop + 1)
+            {
+                // Target bergerak hingga permukaannya sudah terlewati.
+                _targetWindowHandle = nint.Zero;
             }
         }
         else
@@ -696,7 +710,7 @@ DateTime now)
             nint.Zero);
     }
 
-    private void StartFall(
+    public void StartFall(
         double velocityX,
         double velocityY,
         nint targetWindowHandle)

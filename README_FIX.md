@@ -4,7 +4,7 @@ Perubahan utama:
 
 - Gemini model diperbarui ke `gemini-3.8-flash`.
 - Request memakai REST `v1beta` + header `x-goog-api-key`.
-- Timeout 30 detik dan pesan error HTTP yang lebih jelas.
+- Timeout 60 detik dan pesan error HTTP yang lebih jelas.
 - Conversation history disimpan hingga 20 turn terakhir.
 - Input dikunci saat request berjalan agar respons tidak saling tumpang tindih.
 - Status chat menunjukkan Local / Ready / Busy / Connected / Error.

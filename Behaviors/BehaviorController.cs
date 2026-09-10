@@ -82,6 +82,7 @@ public sealed class BehaviorController : IDisposable
 
     private double _pendingJumpVelocityX;
     private double _pendingJumpVelocityY;
+    private nint _pendingJumpTargetHandle = nint.Zero;
 
 
     private static readonly TimeSpan
@@ -112,7 +113,8 @@ public sealed class BehaviorController : IDisposable
 
     public event Action<
         double,
-        double>? SurfaceLaunchRequested;
+        double,
+        nint>? SurfaceLaunchRequested;
 
     public void SetSupportWindow(
     nint? windowHandle)
@@ -127,6 +129,7 @@ public sealed class BehaviorController : IDisposable
 
         _pendingJumpVelocityX = 0;
         _pendingJumpVelocityY = 0;
+        _pendingJumpTargetHandle = nint.Zero;
 
         _sideClimbStartOffsetY = 0;
         _sideClimbTargetOffsetY = 0;
@@ -167,6 +170,7 @@ public sealed class BehaviorController : IDisposable
 
         _pendingJumpVelocityX = 0;
         _pendingJumpVelocityY = 0;
+        _pendingJumpTargetHandle = nint.Zero;
 
         _sideClimbStartOffsetY = 0;
         _sideClimbTargetOffsetY = 0;
@@ -657,6 +661,9 @@ public sealed class BehaviorController : IDisposable
         _pendingJumpVelocityY =
             plan.VelocityY;
 
+        _pendingJumpTargetHandle =
+            plan.Target.Handle;
+
         _surfaceAction =
             SurfaceAction.JumpPreparing;
 
@@ -870,12 +877,17 @@ public sealed class BehaviorController : IDisposable
                 double velocityY =
                     _pendingJumpVelocityY;
 
+                nint targetWindowHandle =
+                    _pendingJumpTargetHandle;
+
                 _pendingJumpVelocityX = 0;
                 _pendingJumpVelocityY = 0;
+                _pendingJumpTargetHandle = nint.Zero;
 
                 ReleaseFromSurface(
                     velocityX,
-                    velocityY);
+                    velocityY,
+                    targetWindowHandle);
 
                 return true;
 
@@ -968,11 +980,21 @@ public sealed class BehaviorController : IDisposable
                 .GetWindowBounds(
                     _window);
 
+        bool isSideAttached =
+            _surfaceAction ==
+                SurfaceAction.Hanging
+            ||
+            _surfaceAction ==
+                SurfaceAction.SideHolding
+            ||
+            _surfaceAction ==
+                SurfaceAction.JumpPreparing;
+
+
         double left;
 
 
-        if (_surfaceAction ==
-            SurfaceAction.Hanging)
+        if (isSideAttached)
         {
             left =
                 GetHangingLeft(
@@ -1015,17 +1037,6 @@ public sealed class BehaviorController : IDisposable
         }
 
 
-        bool isSideAttached =
-            _surfaceAction ==
-                SurfaceAction.Hanging
-            ||
-            _surfaceAction ==
-                SurfaceAction.SideHolding
-            ||
-            _surfaceAction ==
-                SurfaceAction.JumpPreparing;
-
-
         double top =
             isSideAttached
                 ? support.Bounds.Top +
@@ -1050,7 +1061,8 @@ public sealed class BehaviorController : IDisposable
 
     private void ReleaseFromSurface(
     double horizontalVelocity,
-    double verticalVelocity)
+    double verticalVelocity,
+    nint targetWindowHandle = default)
     {
         if (_supportWindowHandle ==
             nint.Zero)
@@ -1076,6 +1088,7 @@ public sealed class BehaviorController : IDisposable
 
         _pendingJumpVelocityX = 0;
         _pendingJumpVelocityY = 0;
+        _pendingJumpTargetHandle = nint.Zero;
 
         _walking = false;
 
@@ -1090,7 +1103,8 @@ public sealed class BehaviorController : IDisposable
 
         SurfaceLaunchRequested?.Invoke(
             horizontalVelocity,
-            verticalVelocity);
+            verticalVelocity,
+            targetWindowHandle);
     }
 
     private void LoseWindowSupport()
@@ -1105,6 +1119,7 @@ public sealed class BehaviorController : IDisposable
 
         _pendingJumpVelocityX = 0;
         _pendingJumpVelocityY = 0;
+        _pendingJumpTargetHandle = nint.Zero;
 
         _sideClimbStartOffsetY = 0;
         _sideClimbTargetOffsetY = 0;

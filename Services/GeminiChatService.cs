@@ -104,7 +104,7 @@ public sealed class GeminiChatService : IChatService
             catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
                 throw new TimeoutException(
-                    "Gemini tidak merespons dalam 30 detik. Periksa koneksi internet lalu coba lagi.",
+                    "Gemini tidak merespons dalam 60 detik. Periksa koneksi internet lalu coba lagi.",
                     ex);
             }
             catch (HttpRequestException ex)
