@@ -48,66 +48,7 @@ public sealed class BehaviorController : IDisposable
 
     private bool _thinking;
 
-    private nint _supportWindowHandle =
-    nint.Zero;
-
-    private Rect _lastSupportWindowBounds =
-        Rect.Empty;
-
-    private enum SurfaceAction
-    {
-        None,
-
-        EdgePause,
-        Peeking,
-
-        Hanging,
-
-        SideClimbingDown,
-        SideHolding,
-        SideClimbingUp,
-
-        JumpPreparing,
-
-        ClimbingUp
-    }
-
-    private DateTime _sideClimbStartedAt =
-    DateTime.MinValue;
-
-    private double _sideGripOffsetY;
-
-    private double _sideClimbStartOffsetY;
-    private double _sideClimbTargetOffsetY;
-
-    private double _pendingJumpVelocityX;
-    private double _pendingJumpVelocityY;
-    private nint _pendingJumpTargetHandle = nint.Zero;
-
-
-    private static readonly TimeSpan
-        SideClimbDuration =
-            TimeSpan.FromMilliseconds(850);
-
-    private SurfaceAction _surfaceAction =
-    SurfaceAction.None;
-
-    private int _surfaceEdgeDirection = 1;
-
-    private DateTime _surfaceActionUntil =
-        DateTime.MinValue;
-
-    private DateTime _climbStartedAt =
-        DateTime.MinValue;
-
-
-    private const double HangGripOffsetY =
-        90.0;
-
-
-    private static readonly TimeSpan
-        ClimbDuration =
-            TimeSpan.FromMilliseconds(650);
+    private readonly SurfaceBehaviorController _surfaceController;
 
     public event Action? SupportLost;
 
@@ -116,1032 +57,46 @@ public sealed class BehaviorController : IDisposable
         double,
         nint>? SurfaceLaunchRequested;
 
-    public void SetSupportWindow(
-    nint? windowHandle)
+    public void SetSupportWindow(nint? windowHandle)
     {
-        _surfaceAction =
-            SurfaceAction.None;
-
-        _surfaceActionUntil =
-            DateTime.MinValue;
-
-        _sideGripOffsetY = 0;
-
-        _pendingJumpVelocityX = 0;
-        _pendingJumpVelocityY = 0;
-        _pendingJumpTargetHandle = nint.Zero;
-
-        _sideClimbStartOffsetY = 0;
-        _sideClimbTargetOffsetY = 0;
-
-        _supportWindowHandle =
-            windowHandle ??
-            nint.Zero;
-
-        _lastSupportWindowBounds =
-            Rect.Empty;
-
-        if (_supportWindowHandle ==
-            nint.Zero)
-        {
-            return;
-        }
-
-
-        if (DesktopWindowService.TryGetWindow(
-                _supportWindowHandle,
-                out DesktopWindowInfo info))
-        {
-            _lastSupportWindowBounds =
-                info.Bounds;
-        }
+        _surfaceController.SetSupportWindow(windowHandle);
     }
-
 
     public void ClearSupportWindow()
     {
-        _surfaceAction =
-            SurfaceAction.None;
-
-        _surfaceActionUntil =
-            DateTime.MinValue;
-
-        _sideGripOffsetY = 0;
-
-        _pendingJumpVelocityX = 0;
-        _pendingJumpVelocityY = 0;
-        _pendingJumpTargetHandle = nint.Zero;
-
-        _sideClimbStartOffsetY = 0;
-        _sideClimbTargetOffsetY = 0;
-
-        _supportWindowHandle =
-            nint.Zero;
-
-        _lastSupportWindowBounds =
-            Rect.Empty;
-
+        _surfaceController.ClearSupportWindow();
     }
 
-    private double GetHangingLeft(
-    Rect supportBounds,
-    double characterWidth)
-    {
-        const double overhang = 18;
-
-
-        if (_surfaceEdgeDirection < 0)
-        {
-            return supportBounds.Left -
-                   overhang;
-        }
-
-
-        return supportBounds.Right -
-               characterWidth +
-               overhang;
-    }
-
-    private void BeginEdgePause(
-    int edgeDirection)
+    private void SurfaceController_SupportLost()
     {
         _walking = false;
-
-        _surfaceEdgeDirection =
-            edgeDirection < 0
-                ? -1
-                : 1;
-
-
-        _surfaceAction =
-            SurfaceAction.EdgePause;
-
-
-        _surfaceActionUntil =
-            DateTime.UtcNow
-                .AddMilliseconds(550);
-
-
-        _character.SetState(
-            CharacterState.Idle);
-
-
-        _character.SetFacingDirection(
-            _surfaceEdgeDirection);
-
-
-        _character.SetMood(
-            CharacterMood.Curious);
-
-
-        _character.LookDown();
-    }
-
-    private void BeginPeeking(
-    DateTime now)
-    {
-        _surfaceAction =
-            SurfaceAction.Peeking;
-
-
-        _surfaceActionUntil =
-            now.AddMilliseconds(950);
-
-
-        _character.SetState(
-            CharacterState.Idle);
-
-
-        _character.SetMood(
-            CharacterMood.Curious);
-
-
-        _character.PlayEdgePeek(
-            _surfaceEdgeDirection);
-    }
-
-    private void BeginHanging(
-    DateTime now)
-    {
-        _walking = false;
-
-
-        _surfaceAction =
-            SurfaceAction.Hanging;
-
-
-        _surfaceActionUntil =
-            now.AddSeconds(
-                1.5 +
-                (_random.NextDouble() *
-                 1.8));
-
-        _sideGripOffsetY = 0;
-
-        _character.SetState(
-            CharacterState.Hanging);
-
-
-        _character.SetMood(
-            CharacterMood.Curious);
-
-
-        UpdateSupportWindow();
-    }
-
-    private void BeginSideClimbDown(
-    DateTime now)
-    {
-        if (!DesktopWindowService.TryGetWindow(
-                _supportWindowHandle,
-                out DesktopWindowInfo support))
-        {
-            LoseWindowSupport();
-            return;
-        }
-
-
-        // Seberapa jauh boleh turun.
-        double availableDistance =
-            Math.Max(
-                0,
-                support.Bounds.Height - 90);
-
-
-        double targetDistance =
-            Math.Min(
-                160,
-                availableDistance);
-
-
-        // Window terlalu pendek.
-        if (targetDistance < 50)
-        {
-            BeginClimbingUp(now);
-            return;
-        }
-
-
-        _surfaceAction =
-            SurfaceAction.SideClimbingDown;
-
-
-        _sideClimbStartedAt = now;
-
-        _sideClimbStartOffsetY =
-            _sideGripOffsetY;
-
-        _sideClimbTargetOffsetY =
-            targetDistance;
-
-
-        _character.SetState(
-            CharacterState.Climbing);
-
-
-        _character.SetMood(
-            CharacterMood.Curious);
-
-
-        _character.SetFacingDirection(
-            _surfaceEdgeDirection);
-    }
-
-    private void BeginSideHold(
-    DateTime now)
-    {
-        _surfaceAction =
-            SurfaceAction.SideHolding;
-
-
-        _surfaceActionUntil =
-            now.AddSeconds(
-                0.8 +
-                (_random.NextDouble() *
-                 1.2));
-
-
-        _character.SetState(
-            CharacterState.Hanging);
-
-
-        _character.SetMood(
-            CharacterMood.Curious);
-    }
-
-    private void BeginSideClimbUp(
-    DateTime now)
-    {
-        _surfaceAction =
-            SurfaceAction.SideClimbingUp;
-
-
-        _sideClimbStartedAt = now;
-
-        _sideClimbStartOffsetY =
-            _sideGripOffsetY;
-
-        _sideClimbTargetOffsetY =
-            0;
-
-
-        _character.SetState(
-            CharacterState.Climbing);
-
-
-        _character.SetMood(
-            CharacterMood.Curious);
-
-
-        _character.SetFacingDirection(
-            _surfaceEdgeDirection);
-    }
-
-    private void UpdateSideClimb(
-    DateTime now,
-    bool climbingUp)
-    {
-        if (!DesktopWindowService.TryGetWindow(
-                _supportWindowHandle,
-                out DesktopWindowInfo support))
-        {
-            LoseWindowSupport();
-            return;
-        }
-
-
-        double progress =
-            (now - _sideClimbStartedAt)
-            .TotalMilliseconds /
-            SideClimbDuration
-                .TotalMilliseconds;
-
-
-        progress =
-            Math.Clamp(
-                progress,
-                0,
-                1);
-
-
-        // smoothstep
-        double eased =
-            progress *
-            progress *
-            (3 - (2 * progress));
-
-
-        _sideGripOffsetY =
-            Lerp(
-                _sideClimbStartOffsetY,
-                _sideClimbTargetOffsetY,
-                eased);
-
-
-        Rect characterBounds =
-            DesktopMonitorService
-                .GetWindowBounds(
-                    _window);
-
-
-        double left =
-            GetHangingLeft(
-                support.Bounds,
-                characterBounds.Width);
-
-
-        double top =
-            support.Bounds.Top +
-            _sideGripOffsetY -
-            HangGripOffsetY;
-
-
-        DesktopMonitorService
-            .SetWindowPosition(
-                _window,
-                left,
-                top);
-
-
-        _lastSupportWindowBounds =
-            support.Bounds;
-
-
-        if (progress < 1)
-            return;
-
-
-        if (climbingUp)
-        {
-            _sideGripOffsetY = 0;
-
-            BeginClimbingUp(now);
-        }
-        else
-        {
-            BeginSideHold(now);
-        }
-    }
-
-    private void BeginClimbingUp(
-    DateTime now)
-    {
-        _surfaceAction =
-            SurfaceAction.ClimbingUp;
-
-
-        _climbStartedAt = now;
-
-
-        _character.SetState(
-            CharacterState.Climbing);
-
-
-        _character.SetMood(
-            CharacterMood.Curious);
-    }
-
-    private void UpdateClimbingUp(
-    DateTime now)
-    {
-        if (!DesktopWindowService.TryGetWindow(
-                _supportWindowHandle,
-                out DesktopWindowInfo support))
-        {
-            LoseWindowSupport();
-            return;
-        }
-
-
-        Rect characterBounds =
-            DesktopMonitorService
-                .GetWindowBounds(
-                    _window);
-
-
-        double progress =
-            (now - _climbStartedAt)
-            .TotalMilliseconds /
-            ClimbDuration.TotalMilliseconds;
-
-
-        progress =
-            Math.Clamp(
-                progress,
-                0,
-                1);
-
-
-        // ease-out
-        double eased =
-            1 -
-            Math.Pow(
-                1 - progress,
-                3);
-
-
-        double hangingLeft =
-            GetHangingLeft(
-                support.Bounds,
-                characterBounds.Width);
-
-
-        double standingLeft =
-            _surfaceEdgeDirection < 0
-                ? support.Bounds.Left
-                : support.Bounds.Right -
-                  characterBounds.Width;
-
-
-        double hangingTop =
-            support.Bounds.Top -
-            HangGripOffsetY;
-
-
-        double standingTop =
-            support.Bounds.Top -
-            characterBounds.Height;
-
-
-        double left =
-            Lerp(
-                hangingLeft,
-                standingLeft,
-                eased);
-
-
-        double top =
-            Lerp(
-                hangingTop,
-                standingTop,
-                eased);
-
-
-        DesktopMonitorService
-            .SetWindowPosition(
-                _window,
-                left,
-                top);
-
-
-        _lastSupportWindowBounds =
-            support.Bounds;
-
-
-        if (progress < 1)
-            return;
-
-
-        _surfaceAction =
-            SurfaceAction.None;
-
-
-        // setelah naik, menghadap ke dalam
-        _direction =
-            -_surfaceEdgeDirection;
-
-
-        _character.SetState(
-            CharacterState.Idle);
-
-
-        _character.SetFacingDirection(
-            _direction);
-
-
-        if (!_thinking)
-        {
-            _character.SetMood(
-                CharacterMood.Neutral);
-        }
-
-
-        ScheduleNextDecision(
-            0.6,
-            1.4);
-    }
-
-    private static double Lerp(
-    double from,
-    double to,
-    double amount)
-    {
-        return from +
-               ((to - from) *
-                amount);
-    }
-
-    private bool BeginTargetJump(
-        DateTime now)
-    {
-        if (_supportWindowHandle ==
-            nint.Zero)
-        {
-            return false;
-        }
-
-        Rect characterBounds =
-            DesktopMonitorService
-                .GetWindowBounds(
-                    _window);
-
-        if (!SurfaceNavigationService
-            .TryPlanJump(
-                _supportWindowHandle,
-                characterBounds,
-                _surfaceEdgeDirection,
-                out SurfaceJumpPlan plan))
-        {
-            return false;
-        }
-
-        _pendingJumpVelocityX =
-            plan.VelocityX;
-
-        _pendingJumpVelocityY =
-            plan.VelocityY;
-
-        _pendingJumpTargetHandle =
-            plan.Target.Handle;
-
-        _surfaceAction =
-            SurfaceAction.JumpPreparing;
-
-        _surfaceActionUntil =
-            now.AddMilliseconds(430);
-
-        int lookDirection =
-            plan.VelocityX < 0
-                ? -1
-                : 1;
-
-        _character.SetState(
-            CharacterState.Hanging);
-
-        _character.SetMood(
-            CharacterMood.Curious);
-
-        _character.SetFacingDirection(
-            lookDirection);
-
-        _character.LookSide(
-            lookDirection);
-
-        return true;
-    }
-
-    private bool UpdateSurfaceAction(
-    DateTime now)
-    {
-        switch (_surfaceAction)
-        {
-            case SurfaceAction.None:
-
-                return false;
-
-
-            case SurfaceAction.EdgePause:
-
-                if (now <
-                    _surfaceActionUntil)
-                {
-                    return true;
-                }
-
-
-                double choice =
-                    _random.NextDouble();
-
-
-                // 55% balik
-                if (choice < 0.55)
-                {
-                    TurnBackFromEdge();
-                    return true;
-                }
-
-
-                // 30% mengintip
-                if (choice < 0.85)
-                {
-                    BeginPeeking(now);
-                    return true;
-                }
-
-
-                // 15% bergantung
-                BeginHanging(now);
-
-                return true;
-
-
-            case SurfaceAction.Peeking:
-
-                if (now <
-                    _surfaceActionUntil)
-                {
-                    return true;
-                }
-
-
-                // Setelah peek masih ada
-                // kemungkinan nekat hanging.
-                if (_random.NextDouble() <
-                    0.25)
-                {
-                    BeginHanging(now);
-                }
-                else
-                {
-                    TurnBackFromEdge();
-                }
-
-                return true;
-
-
-            case SurfaceAction.Hanging:
-
-                if (now <
-                    _surfaceActionUntil)
-                {
-                    return true;
-                }
-
-
-                double hangChoice =
-                    _random.NextDouble();
-
-
-                // 45% naik kembali
-                if (hangChoice < 0.45)
-                {
-                    BeginClimbingUp(now);
-
-                    return true;
-                }
-
-
-                // 25% turun sisi
-                if (hangChoice < 0.70)
-                {
-                    BeginSideClimbDown(now);
-
-                    return true;
-                }
-
-
-                // 20% coba lompat ke window lain
-                if (hangChoice < 0.90)
-                {
-                    if (BeginTargetJump(now))
-                    {
-                        return true;
-                    }
-
-                    BeginClimbingUp(now);
-
-                    return true;
-                }
-
-
-                // 10% benar-benar nekat jatuh
-                ReleaseFromSurface(
-                    _surfaceEdgeDirection *
-                    180.0,
-
-                    100.0);
-
-                return true;
-
-            case SurfaceAction.SideClimbingDown:
-
-                UpdateSideClimb(
-                    now,
-                    climbingUp: false);
-
-                return true;
-
-
-            case SurfaceAction.SideHolding:
-
-                if (now <
-                    _surfaceActionUntil)
-                {
-                    return true;
-                }
-
-
-                double sideChoice =
-                    _random.NextDouble();
-
-
-                // 60% naik
-                if (sideChoice < 0.60)
-                {
-                    BeginSideClimbUp(now);
-                }
-                else if (sideChoice < 0.85)
-                {
-                    // 25% mencoba loncat
-                    if (BeginTargetJump(now))
-                    {
-                        return true;
-                    }
-
-                    BeginSideClimbUp(now);
-                }
-                else
-                {
-                    // 15% melepas diri dari sisi
-                    ReleaseFromSurface(
-                        _surfaceEdgeDirection *
-                        160.0,
-
-                        100.0);
-                }
-
-                return true;
-
-
-            case SurfaceAction.JumpPreparing:
-
-                if (now <
-                    _surfaceActionUntil)
-                {
-                    return true;
-                }
-
-                double velocityX =
-                    _pendingJumpVelocityX;
-
-                double velocityY =
-                    _pendingJumpVelocityY;
-
-                nint targetWindowHandle =
-                    _pendingJumpTargetHandle;
-
-                _pendingJumpVelocityX = 0;
-                _pendingJumpVelocityY = 0;
-                _pendingJumpTargetHandle = nint.Zero;
-
-                ReleaseFromSurface(
-                    velocityX,
-                    velocityY,
-                    targetWindowHandle);
-
-                return true;
-
-
-            case SurfaceAction.SideClimbingUp:
-
-                UpdateSideClimb(
-                    now,
-                    climbingUp: true);
-
-                return true;
-
-            case SurfaceAction.ClimbingUp:
-
-                UpdateClimbingUp(now);
-
-                return true;
-
-
-            default:
-
-                return false;
-        }
-    }
-
-    private void TurnBackFromEdge()
-    {
-        _surfaceAction =
-            SurfaceAction.None;
-
-
-        _direction =
-            -_surfaceEdgeDirection;
-
-
-        _character.SetState(
-            CharacterState.Idle);
-
-
-        _character.SetFacingDirection(
-            _direction);
-
-
-        if (!_thinking)
-        {
-            _character.SetMood(
-                CharacterMood.Neutral);
-        }
-
-
-        ScheduleNextDecision(
-            0.4,
-            1.0);
-    }
-
-    private bool UpdateSupportWindow()
-    {
-        if (_supportWindowHandle ==
-            nint.Zero)
-        {
-            return true;
-        }
-
-
-        if (!DesktopWindowService.TryGetWindow(
-                _supportWindowHandle,
-                out DesktopWindowInfo support))
-        {
-            LoseWindowSupport();
-            return false;
-        }
-
-
-        if (_surfaceAction ==
-                SurfaceAction.ClimbingUp
-            ||
-            _surfaceAction ==
-                SurfaceAction.SideClimbingDown
-            ||
-            _surfaceAction ==
-                SurfaceAction.SideClimbingUp)
-        {
-            // Posisi selama climbing dikontrol
-            // oleh update animasi climbing.
-            return true;
-        }
-
-        Rect characterBounds =
-            DesktopMonitorService
-                .GetWindowBounds(
-                    _window);
-
-        bool isSideAttached =
-            _surfaceAction ==
-                SurfaceAction.Hanging
-            ||
-            _surfaceAction ==
-                SurfaceAction.SideHolding
-            ||
-            _surfaceAction ==
-                SurfaceAction.JumpPreparing;
-
-
-        double left;
-
-
-        if (isSideAttached)
-        {
-            left =
-                GetHangingLeft(
-                    support.Bounds,
-                    characterBounds.Width);
-        }
-        else
-        {
-            double deltaX = 0;
-
-
-            if (!_lastSupportWindowBounds.IsEmpty)
-            {
-                deltaX =
-                    support.Bounds.Left -
-                    _lastSupportWindowBounds.Left;
-            }
-
-
-            left =
-                characterBounds.Left +
-                deltaX;
-
-
-            double minimumLeft =
-                support.Bounds.Left;
-
-            double maximumLeft =
-                Math.Max(
-                    minimumLeft,
-                    support.Bounds.Right -
-                    characterBounds.Width);
-
-
-            left =
-                Math.Clamp(
-                    left,
-                    minimumLeft,
-                    maximumLeft);
-        }
-
-
-        double top =
-            isSideAttached
-                ? support.Bounds.Top +
-                  _sideGripOffsetY -
-                  HangGripOffsetY
-                : support.Bounds.Top -
-                  characterBounds.Height;
-
-
-        DesktopMonitorService
-            .SetWindowPosition(
-                _window,
-                left,
-                top);
-
-
-        _lastSupportWindowBounds =
-            support.Bounds;
-
-        return true;
-    }
-
-    private void ReleaseFromSurface(
-    double horizontalVelocity,
-    double verticalVelocity,
-    nint targetWindowHandle = default)
-    {
-        if (_supportWindowHandle ==
-            nint.Zero)
-        {
-            return;
-        }
-
-        _supportWindowHandle =
-            nint.Zero;
-
-        _lastSupportWindowBounds =
-            Rect.Empty;
-
-
-        _surfaceAction =
-            SurfaceAction.None;
-
-        _surfaceActionUntil =
-            DateTime.MinValue;
-
-
-        _sideGripOffsetY = 0;
-
-        _pendingJumpVelocityX = 0;
-        _pendingJumpVelocityY = 0;
-        _pendingJumpTargetHandle = nint.Zero;
-
-        _walking = false;
-
-
-        // Behavior berhenti sementara,
-        // physics mengambil alih.
         _paused = true;
+        SupportLost?.Invoke();
+    }
 
-
-        _character.SetMood(
-            CharacterMood.Surprised);
-
+    private void SurfaceController_SurfaceLaunchRequested(
+        double velocityX,
+        double velocityY,
+        nint targetWindowHandle)
+    {
+        _walking = false;
+        _paused = true;
         SurfaceLaunchRequested?.Invoke(
-            horizontalVelocity,
-            verticalVelocity,
+            velocityX,
+            velocityY,
             targetWindowHandle);
     }
 
-    private void LoseWindowSupport()
+    private void SurfaceController_DirectionChanged(int direction)
     {
-        _surfaceAction =
-            SurfaceAction.None;
+        _direction = direction < 0 ? -1 : 1;
+    }
 
-        _surfaceActionUntil =
-            DateTime.MinValue;
-
-        _sideGripOffsetY = 0;
-
-        _pendingJumpVelocityX = 0;
-        _pendingJumpVelocityY = 0;
-        _pendingJumpTargetHandle = nint.Zero;
-
-        _sideClimbStartOffsetY = 0;
-        _sideClimbTargetOffsetY = 0;
-        if (_supportWindowHandle ==
-            nint.Zero)
-        {
-            return;
-        }
-
-
-        _supportWindowHandle =
-            nint.Zero;
-
-        _lastSupportWindowBounds =
-            Rect.Empty;
-
-        _walking = false;
-
-        // Physics sekarang mengambil alih.
-        _paused = true;
-
-        SupportLost?.Invoke();
+    private void SurfaceController_DecisionDelayRequested(
+        double minSeconds,
+        double maxSeconds)
+    {
+        ScheduleNextDecision(minSeconds, maxSeconds);
     }
 
     private bool HasTemporaryMood(
@@ -1496,6 +451,21 @@ public sealed class BehaviorController : IDisposable
         _window = window;
         _character = character;
 
+        _surfaceController =
+            new SurfaceBehaviorController(window, character, _random);
+
+        _surfaceController.SupportLost +=
+            SurfaceController_SupportLost;
+
+        _surfaceController.SurfaceLaunchRequested +=
+            SurfaceController_SurfaceLaunchRequested;
+
+        _surfaceController.DirectionChanged +=
+            SurfaceController_DirectionChanged;
+
+        _surfaceController.DecisionDelayRequested +=
+            SurfaceController_DecisionDelayRequested;
+
         _timer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(33)
@@ -1549,48 +519,19 @@ public sealed class BehaviorController : IDisposable
         _paused = false;
         _walking = false;
 
-        if (_supportWindowHandle !=
-            nint.Zero)
+        if (_surfaceController.HasSupport)
         {
-            if (!UpdateSupportWindow())
+            if (!_surfaceController.UpdateSupportWindow())
+            {
                 return;
+            }
         }
         else
         {
             PlaceOnDesktopBottom();
         }
 
-        if (_surfaceAction ==
-                SurfaceAction.Hanging
-            ||
-            _surfaceAction ==
-                SurfaceAction.SideHolding
-            ||
-            _surfaceAction ==
-                SurfaceAction.JumpPreparing)
-        {
-            _character.SetState(
-                CharacterState.Hanging);
-        }
-        else if (_surfaceAction ==
-                     SurfaceAction.ClimbingUp
-                 ||
-                 _surfaceAction ==
-                     SurfaceAction.SideClimbingDown
-                 ||
-                 _surfaceAction ==
-                     SurfaceAction.SideClimbingUp)
-        {
-            _character.SetState(
-                CharacterState.Climbing);
-        }
-        else
-        {
-            _character.SetState(
-                CharacterState.Idle);
-        }
-
-        _character.SetFacingDirection(_direction);
+        _surfaceController.RestoreCharacterState(_direction);
 
         _lastTickAt = DateTime.UtcNow;
 
@@ -1626,9 +567,8 @@ public sealed class BehaviorController : IDisposable
 
         // Window di bawah Lu-Knight bisa bergerak
         // bahkan saat chat sedang terbuka.
-        if (_supportWindowHandle !=
-                nint.Zero &&
-            !UpdateSupportWindow())
+        if (_surfaceController.HasSupport &&
+            !_surfaceController.UpdateSupportWindow())
         {
             return;
         }
@@ -1643,7 +583,7 @@ public sealed class BehaviorController : IDisposable
                 0,
                 0.1);
 
-        if (UpdateSurfaceAction(now))
+        if (_surfaceController.Update(now, _thinking))
         {
             if (now >= _nextBlinkAt)
             {
@@ -1798,100 +738,6 @@ public sealed class BehaviorController : IDisposable
             maxSeconds: 4.0);
     }
 
-    private void MoveOnSupportWindow(
-    double deltaSeconds)
-    {
-        if (_surfaceAction !=
-            SurfaceAction.None)
-        {
-            return;
-        }
-
-        if (!DesktopWindowService.TryGetWindow(
-                _supportWindowHandle,
-                out DesktopWindowInfo support))
-        {
-            LoseWindowSupport();
-            return;
-        }
-
-
-        Rect characterBounds =
-            DesktopMonitorService
-                .GetWindowBounds(
-                    _window);
-
-
-        double minimumLeft =
-            support.Bounds.Left;
-
-        double maximumLeft =
-            Math.Max(
-                minimumLeft,
-                support.Bounds.Right -
-                characterBounds.Width);
-
-
-        double newLeft =
-            characterBounds.Left +
-            (_direction *
-             WalkSpeed *
-             deltaSeconds);
-
-        double supportTop =
-            support.Bounds.Top -
-            characterBounds.Height;
-
-
-        // Phase 3D-A:
-        // sementara Lu-Knight berbalik
-        // di tepi window.
-        if (newLeft <= minimumLeft)
-        {
-            newLeft =
-                minimumLeft;
-
-
-            DesktopMonitorService
-                .SetWindowPosition(
-                    _window,
-                    newLeft,
-                    supportTop);
-
-
-            BeginEdgePause(-1);
-
-            return;
-        }
-        else if (newLeft >= maximumLeft)
-        {
-            newLeft =
-                maximumLeft;
-
-
-            DesktopMonitorService
-                .SetWindowPosition(
-                    _window,
-                    newLeft,
-                    supportTop);
-
-
-            BeginEdgePause(1);
-
-            return;
-        }
-
-        DesktopMonitorService
-            .SetWindowPosition(
-                _window,
-                newLeft,
-                supportTop);
-
-
-        _lastSupportWindowBounds =
-            support.Bounds;
-    }
-
     private void MoveCharacter(
     double deltaSeconds)
     {
@@ -1899,11 +745,17 @@ public sealed class BehaviorController : IDisposable
         // WALKING ON APPLICATION WINDOW
         // ====================================
 
-        if (_supportWindowHandle !=
-            nint.Zero)
+        if (_surfaceController.HasSupport)
         {
-            MoveOnSupportWindow(
-                deltaSeconds);
+            _surfaceController.MoveOnSupportWindow(
+                deltaSeconds,
+                _direction,
+                WalkSpeed);
+
+            if (_surfaceController.IsBusy)
+            {
+                _walking = false;
+            }
 
             return;
         }
@@ -2064,6 +916,18 @@ public sealed class BehaviorController : IDisposable
 
     public void Dispose()
     {
+        _surfaceController.SupportLost -=
+            SurfaceController_SupportLost;
+
+        _surfaceController.SurfaceLaunchRequested -=
+            SurfaceController_SurfaceLaunchRequested;
+
+        _surfaceController.DirectionChanged -=
+            SurfaceController_DirectionChanged;
+
+        _surfaceController.DecisionDelayRequested -=
+            SurfaceController_DecisionDelayRequested;
+
         _timer.Stop();
         _timer.Tick -= OnTick;
     }
