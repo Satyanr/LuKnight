@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using LuKnight.Visuals;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -33,6 +35,10 @@ public enum CharacterMood
 
 public partial class CharacterView : UserControl
 {
+    private CharacterRenderMode _renderMode = CharacterRenderMode.Vector;
+    private readonly Dictionary<CharacterState, SpriteAnimationClip> _spriteStateClips = new();
+    private SpriteAnimationPlayer? _spritePlayer;
+
     private Storyboard? _currentStoryboard;
     private int _facingDirection = 1;
 
@@ -79,10 +85,85 @@ public partial class CharacterView : UserControl
     public CharacterView()
     {
         InitializeComponent();
+        EnsureSpritePlayer();
+        SetRenderMode(CharacterRenderMode.Vector);
+    }
+
+    public CharacterRenderMode RenderMode => _renderMode;
+
+    private void EnsureSpritePlayer()
+    {
+        _spritePlayer ??= new SpriteAnimationPlayer(SpriteImage);
+    }
+
+    public void SetRenderMode(CharacterRenderMode mode)
+    {
+        bool changed = _renderMode != mode;
+        _renderMode = mode;
+        bool useSprite = mode == CharacterRenderMode.Sprite;
+
+        SpriteLayer.Visibility = useSprite ? Visibility.Visible : Visibility.Collapsed;
+        VectorLayer.Visibility = useSprite ? Visibility.Collapsed : Visibility.Visible;
+
+        if (!useSprite)
+        {
+            _spritePlayer?.Stop();
+            if (changed)
+            {
+                SetFacingDirection(_facingDirection);
+                SetState(CurrentState);
+            }
+            return;
+        }
+
+        EnsureSpritePlayer();
+        StopCurrentAnimation();
+        StopMoodStoryboard();
+        SetFacingDirection(_facingDirection);
+        PlaySpriteForCurrentState();
+    }
+
+    public void RegisterSpriteClip(CharacterState state, SpriteAnimationClip clip)
+    {
+        _spriteStateClips[state] = clip;
+        if (_renderMode == CharacterRenderMode.Sprite && CurrentState == state)
+        {
+            EnsureSpritePlayer();
+            _spritePlayer?.Stop();
+            _spritePlayer?.Play(clip);
+        }
+    }
+
+    private void PlaySpriteForCurrentState()
+    {
+        if (_renderMode != CharacterRenderMode.Sprite)
+            return;
+
+        EnsureSpritePlayer();
+        if (!_spriteStateClips.TryGetValue(CurrentState, out SpriteAnimationClip? clip))
+        {
+            // Tidak ada clip untuk state ini; hentikan animasi state sebelumnya.
+            _spritePlayer?.Stop();
+            SpriteImage.Source = null;
+            return;
+        }
+
+        _spritePlayer?.Play(clip);
+    }
+
+    private void CharacterView_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _spritePlayer?.Dispose();
+        _spritePlayer = null;
     }
 
     public void PlayLandingReaction()
     {
+        if (_renderMode == CharacterRenderMode.Sprite)
+        {
+            return;
+        }
+
         PlayTransientStoryboard(
             "LandingReactionStoryboard");
     }
@@ -94,11 +175,23 @@ public partial class CharacterView : UserControl
                 ? -1
                 : 1;
 
+        if (_renderMode == CharacterRenderMode.Sprite)
+        {
+            SpriteImage.RenderTransformOrigin = new Point(0.5, 0.5);
+            SpriteImage.RenderTransform = new ScaleTransform(_facingDirection, 1);
+            return;
+        }
+
         BodyScale.ScaleX =
             _facingDirection;
     }
     public void Blink()
     {
+        if (_renderMode == CharacterRenderMode.Sprite)
+        {
+            return;
+        }
+
         if (CurrentState == CharacterState.Sleep)
             return;
 
@@ -108,6 +201,11 @@ public partial class CharacterView : UserControl
 
     public void TwitchEars()
     {
+        if (_renderMode == CharacterRenderMode.Sprite)
+        {
+            return;
+        }
+
         if (CurrentState == CharacterState.Sleep)
             return;
 
@@ -117,6 +215,11 @@ public partial class CharacterView : UserControl
 
     public void LookSide(int direction)
     {
+        if (_renderMode == CharacterRenderMode.Sprite)
+        {
+            return;
+        }
+
         if (CurrentState == CharacterState.Sleep)
             return;
 
@@ -177,6 +280,11 @@ public partial class CharacterView : UserControl
     double horizontal,
     double vertical)
     {
+        if (_renderMode == CharacterRenderMode.Sprite)
+        {
+            return;
+        }
+
         if (CurrentState == CharacterState.Sleep)
             return;
 
@@ -227,6 +335,11 @@ public partial class CharacterView : UserControl
 
     public void RelaxCursorLook()
     {
+        if (_renderMode == CharacterRenderMode.Sprite)
+        {
+            return;
+        }
+
         if (!_cursorTracking)
             return;
 
@@ -331,6 +444,11 @@ public partial class CharacterView : UserControl
     private void ApplyMoodVisuals(
         CharacterMood mood)
     {
+        if (_renderMode == CharacterRenderMode.Sprite)
+        {
+            return;
+        }
+
         ResetMoodVisuals();
 
         switch (mood)
@@ -460,6 +578,11 @@ public partial class CharacterView : UserControl
 
     private void ResetMoodVisuals()
     {
+        if (_renderMode == CharacterRenderMode.Sprite)
+        {
+            return;
+        }
+
         DizzyEyes.Visibility =
         Visibility.Collapsed;
 
@@ -498,7 +621,9 @@ public partial class CharacterView : UserControl
         object sender,
         RoutedEventArgs e)
     {
-        SetState(CharacterState.Idle);
+        EnsureSpritePlayer();
+        SetState(CurrentState);
+        SetFacingDirection(_facingDirection);
     }
 
     public void SetState(CharacterState state)
@@ -506,6 +631,12 @@ public partial class CharacterView : UserControl
         StopCurrentAnimation();
 
         CurrentState = state;
+
+        if (_renderMode == CharacterRenderMode.Sprite)
+        {
+            PlaySpriteForCurrentState();
+            return;
+        }
 
         ResetVisualState();
 
@@ -561,6 +692,11 @@ public partial class CharacterView : UserControl
 
     public void LookDown()
     {
+        if (_renderMode == CharacterRenderMode.Sprite)
+        {
+            return;
+        }
+
         if (CurrentState ==
             CharacterState.Sleep)
         {
@@ -630,6 +766,11 @@ public partial class CharacterView : UserControl
     public void PlayEdgePeek(
         int direction)
     {
+        if (_renderMode == CharacterRenderMode.Sprite)
+        {
+            return;
+        }
+
         if (CurrentState ==
             CharacterState.Sleep)
         {

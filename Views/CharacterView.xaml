@@ -6,6 +6,7 @@
              Background="Transparent"
              Cursor="SizeAll"
              Loaded="CharacterView_Loaded"
+             Unloaded="CharacterView_Unloaded"
              MouseRightButtonDown="CharacterView_MouseRightButtonDown">
 
     <UserControl.Resources>
@@ -501,6 +502,19 @@
     <Grid Background="Transparent">
 
         <!-- Semua bagian karakter ada di dalam container ini -->
+        <!-- SPRITE / SOFT-3D RENDERER -->
+        <Grid x:Name="SpriteLayer"
+              Visibility="Collapsed"
+              IsHitTestVisible="False">
+            <Image x:Name="SpriteImage"
+                   Stretch="Uniform"
+                   HorizontalAlignment="Stretch"
+                   VerticalAlignment="Stretch"
+                   RenderOptions.BitmapScalingMode="HighQuality"/>
+        </Grid>
+
+        <!-- CURRENT VECTOR RENDERER -->
+        <Grid x:Name="VectorLayer">
         <Grid x:Name="CharacterRoot"
               RenderTransformOrigin="0.5,0.72">
 
@@ -1107,6 +1121,7 @@
                        Opacity="0"
                        Visibility="Collapsed"/>
 
+        </Grid>
         </Grid>
     </Grid>
 
