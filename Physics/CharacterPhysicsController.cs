@@ -24,6 +24,8 @@ public sealed class CharacterPhysicsController : IDisposable
     private double _velocityX;
     private double _velocityY;
 
+    private nint _targetWindowHandle;
+
     private int _bounceCount;
 
     private DateTime _lastTickAt;
@@ -483,10 +485,62 @@ DateTime now)
         }
 
         // =========================
+        // INTENTIONAL JUMP TARGET
+        // =========================
+
+        if (_targetWindowHandle != nint.Zero &&
+            DesktopWindowService.TryGetWindow(
+                _targetWindowHandle,
+                out DesktopWindowInfo targetWindow))
+        {
+            double targetSurfaceTop =
+                targetWindow.Bounds.Top;
+
+            double characterLeft =
+                nextLeft + 14;
+
+            double characterRight =
+                nextLeft + width - 14;
+
+            bool overlapsTarget =
+                characterRight > targetWindow.Bounds.Left + 28 &&
+                characterLeft < targetWindow.Bounds.Right - 28;
+
+            bool crossedTarget =
+                _velocityY > 0 &&
+                windowBounds.Bottom <= targetSurfaceTop + 1 &&
+                nextTop + height >= targetSurfaceTop &&
+                overlapsTarget;
+
+            if (crossedTarget)
+            {
+                double impactSpeed =
+                    Math.Abs(_velocityY);
+
+                DesktopMonitorService
+                    .SetWindowPosition(
+                        _window,
+                        nextLeft,
+                        targetSurfaceTop - height);
+
+                Settle(
+                    impactSpeed,
+                    targetWindow.Handle);
+
+                return;
+            }
+        }
+        else
+        {
+            _targetWindowHandle = nint.Zero;
+        }
+
+        // =========================
         // APPLICATION WINDOW TOP
         // =========================
 
-        if (_velocityY > 0 &&
+        if (_targetWindowHandle == nint.Zero &&
+            _velocityY > 0 &&
             DesktopWindowService
                 .TryFindLandingSurface(
                     windowBounds,
@@ -624,8 +678,28 @@ DateTime now)
 
 
     public void StartFall(
+        SurfaceJumpPlan jumpPlan)
+    {
+        StartFall(
+            jumpPlan.VelocityX,
+            jumpPlan.VelocityY,
+            jumpPlan.Target.Handle);
+    }
+
+    public void StartFall(
         double velocityX,
         double velocityY)
+    {
+        StartFall(
+            velocityX,
+            velocityY,
+            nint.Zero);
+    }
+
+    private void StartFall(
+        double velocityX,
+        double velocityY,
+        nint targetWindowHandle)
     {
         if (_isGrabbed ||
             _isFalling)
@@ -641,6 +715,9 @@ DateTime now)
         _maximumImpactSpeed = 0;
 
         _wasShakenDuringGrab = false;
+
+        _targetWindowHandle =
+            targetWindowHandle;
 
 
         _velocityX =
@@ -674,6 +751,8 @@ DateTime now)
 
         _velocityX = 0;
         _velocityY = 0;
+
+        _targetWindowHandle = nint.Zero;
 
         _bounceCount = 0;
 

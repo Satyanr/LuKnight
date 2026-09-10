@@ -67,6 +67,8 @@ public sealed class BehaviorController : IDisposable
         SideHolding,
         SideClimbingUp,
 
+        JumpPreparing,
+
         ClimbingUp
     }
 
@@ -77,6 +79,9 @@ public sealed class BehaviorController : IDisposable
 
     private double _sideClimbStartOffsetY;
     private double _sideClimbTargetOffsetY;
+
+    private double _pendingJumpVelocityX;
+    private double _pendingJumpVelocityY;
 
 
     private static readonly TimeSpan
@@ -120,6 +125,9 @@ public sealed class BehaviorController : IDisposable
 
         _sideGripOffsetY = 0;
 
+        _pendingJumpVelocityX = 0;
+        _pendingJumpVelocityY = 0;
+
         _sideClimbStartOffsetY = 0;
         _sideClimbTargetOffsetY = 0;
 
@@ -156,6 +164,9 @@ public sealed class BehaviorController : IDisposable
             DateTime.MinValue;
 
         _sideGripOffsetY = 0;
+
+        _pendingJumpVelocityX = 0;
+        _pendingJumpVelocityY = 0;
 
         _sideClimbStartOffsetY = 0;
         _sideClimbTargetOffsetY = 0;
@@ -616,6 +627,62 @@ public sealed class BehaviorController : IDisposable
                 amount);
     }
 
+    private bool BeginTargetJump(
+        DateTime now)
+    {
+        if (_supportWindowHandle ==
+            nint.Zero)
+        {
+            return false;
+        }
+
+        Rect characterBounds =
+            DesktopMonitorService
+                .GetWindowBounds(
+                    _window);
+
+        if (!SurfaceNavigationService
+            .TryPlanJump(
+                _supportWindowHandle,
+                characterBounds,
+                _surfaceEdgeDirection,
+                out SurfaceJumpPlan plan))
+        {
+            return false;
+        }
+
+        _pendingJumpVelocityX =
+            plan.VelocityX;
+
+        _pendingJumpVelocityY =
+            plan.VelocityY;
+
+        _surfaceAction =
+            SurfaceAction.JumpPreparing;
+
+        _surfaceActionUntil =
+            now.AddMilliseconds(430);
+
+        int lookDirection =
+            plan.VelocityX < 0
+                ? -1
+                : 1;
+
+        _character.SetState(
+            CharacterState.Hanging);
+
+        _character.SetMood(
+            CharacterMood.Curious);
+
+        _character.SetFacingDirection(
+            lookDirection);
+
+        _character.LookSide(
+            lookDirection);
+
+        return true;
+    }
+
     private bool UpdateSurfaceAction(
     DateTime now)
     {
@@ -698,8 +765,8 @@ public sealed class BehaviorController : IDisposable
                     _random.NextDouble();
 
 
-                // 55% naik kembali
-                if (hangChoice < 0.55)
+                // 45% naik kembali
+                if (hangChoice < 0.45)
                 {
                     BeginClimbingUp(now);
 
@@ -707,8 +774,8 @@ public sealed class BehaviorController : IDisposable
                 }
 
 
-                // 25% menjelajah sisi window
-                if (hangChoice < 0.80)
+                // 25% turun sisi
+                if (hangChoice < 0.70)
                 {
                     BeginSideClimbDown(now);
 
@@ -716,12 +783,26 @@ public sealed class BehaviorController : IDisposable
                 }
 
 
-                // 20% nekat melepas pegangan
+                // 20% coba lompat ke window lain
+                if (hangChoice < 0.90)
+                {
+                    if (BeginTargetJump(now))
+                    {
+                        return true;
+                    }
+
+                    BeginClimbingUp(now);
+
+                    return true;
+                }
+
+
+                // 10% benar-benar nekat jatuh
                 ReleaseFromSurface(
                     _surfaceEdgeDirection *
-                    220.0,
+                    180.0,
 
-                    80.0);
+                    100.0);
 
                 return true;
 
@@ -743,21 +824,58 @@ public sealed class BehaviorController : IDisposable
                 }
 
 
-                // 70% naik kembali
-                if (_random.NextDouble() <
-                    0.70)
+                double sideChoice =
+                    _random.NextDouble();
+
+
+                // 60% naik
+                if (sideChoice < 0.60)
                 {
+                    BeginSideClimbUp(now);
+                }
+                else if (sideChoice < 0.85)
+                {
+                    // 25% mencoba loncat
+                    if (BeginTargetJump(now))
+                    {
+                        return true;
+                    }
+
                     BeginSideClimbUp(now);
                 }
                 else
                 {
-                    // 30% melepas diri dari sisi
+                    // 15% melepas diri dari sisi
                     ReleaseFromSurface(
                         _surfaceEdgeDirection *
-                        180.0,
+                        160.0,
 
                         100.0);
                 }
+
+                return true;
+
+
+            case SurfaceAction.JumpPreparing:
+
+                if (now <
+                    _surfaceActionUntil)
+                {
+                    return true;
+                }
+
+                double velocityX =
+                    _pendingJumpVelocityX;
+
+                double velocityY =
+                    _pendingJumpVelocityY;
+
+                _pendingJumpVelocityX = 0;
+                _pendingJumpVelocityY = 0;
+
+                ReleaseFromSurface(
+                    velocityX,
+                    velocityY);
 
                 return true;
 
@@ -897,21 +1015,24 @@ public sealed class BehaviorController : IDisposable
         }
 
 
-                bool isSideAttached =
-                        _surfaceAction ==
-                                SurfaceAction.Hanging
-                        ||
-                        _surfaceAction ==
-                                SurfaceAction.SideHolding;
+        bool isSideAttached =
+            _surfaceAction ==
+                SurfaceAction.Hanging
+            ||
+            _surfaceAction ==
+                SurfaceAction.SideHolding
+            ||
+            _surfaceAction ==
+                SurfaceAction.JumpPreparing;
 
 
-                double top =
-                        isSideAttached
-                                ? support.Bounds.Top +
-                                    _sideGripOffsetY -
-                                    HangGripOffsetY
-                                : support.Bounds.Top -
-                                    characterBounds.Height;
+        double top =
+            isSideAttached
+                ? support.Bounds.Top +
+                  _sideGripOffsetY -
+                  HangGripOffsetY
+                : support.Bounds.Top -
+                  characterBounds.Height;
 
 
         DesktopMonitorService
@@ -937,7 +1058,6 @@ public sealed class BehaviorController : IDisposable
             return;
         }
 
-
         _supportWindowHandle =
             nint.Zero;
 
@@ -954,6 +1074,9 @@ public sealed class BehaviorController : IDisposable
 
         _sideGripOffsetY = 0;
 
+        _pendingJumpVelocityX = 0;
+        _pendingJumpVelocityY = 0;
+
         _walking = false;
 
 
@@ -964,7 +1087,6 @@ public sealed class BehaviorController : IDisposable
 
         _character.SetMood(
             CharacterMood.Surprised);
-
 
         SurfaceLaunchRequested?.Invoke(
             horizontalVelocity,
@@ -980,6 +1102,9 @@ public sealed class BehaviorController : IDisposable
             DateTime.MinValue;
 
         _sideGripOffsetY = 0;
+
+        _pendingJumpVelocityX = 0;
+        _pendingJumpVelocityY = 0;
 
         _sideClimbStartOffsetY = 0;
         _sideClimbTargetOffsetY = 0;
@@ -1424,7 +1549,10 @@ public sealed class BehaviorController : IDisposable
                 SurfaceAction.Hanging
             ||
             _surfaceAction ==
-                SurfaceAction.SideHolding)
+                SurfaceAction.SideHolding
+            ||
+            _surfaceAction ==
+                SurfaceAction.JumpPreparing)
         {
             _character.SetState(
                 CharacterState.Hanging);

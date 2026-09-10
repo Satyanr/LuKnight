@@ -380,6 +380,9 @@ public partial class MainWindow : Window
         }
         if (_behaviorController is not null)
         {
+            _behaviorController.SupportLost -=
+                BehaviorController_SupportLost;
+
             _behaviorController.SurfaceLaunchRequested -=
                 BehaviorController_SurfaceLaunchRequested;
         }
