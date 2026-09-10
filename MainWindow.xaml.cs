@@ -245,8 +245,8 @@ public partial class MainWindow : Window
         }
 
 
-        _physicsController?
-            .UpdateGrab();
+        // Physics samples the global cursor once per rendered frame. Mouse events only
+        // start the grab; high polling-rate mice no longer trigger redundant window moves.
 
         e.Handled = true;
     }

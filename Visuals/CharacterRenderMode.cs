@@ -3,5 +3,6 @@ namespace LuKnight.Visuals;
 public enum CharacterRenderMode
 {
     Vector,
-    Sprite
+    Sprite,
+    Model3D
 }

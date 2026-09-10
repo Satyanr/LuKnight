@@ -16,6 +16,7 @@ public partial class CharacterView
     private Storyboard? _spriteMotionStoryboard;
     private readonly Dictionary<CharacterState, SpriteAnimationClip> _spriteStateClips = new();
     private SpriteAnimationPlayer? _spritePlayer;
+    private CharacterModel3DPlayer? _modelPlayer;
 
     private double _spriteLookX;
     private double _spriteLookY;
@@ -350,6 +351,11 @@ public partial class CharacterView
         double velocityX,
         double velocityY)
     {
+        if (_renderMode == CharacterRenderMode.Model3D)
+        {
+            _modelPlayer?.SetVelocity(velocityX, velocityY);
+            return;
+        }
         UpdateSpriteAirMotion(
             velocityX,
             velocityY);
@@ -1046,58 +1052,17 @@ public partial class CharacterView
 
     private void RegisterDefaultSpriteClips()
     {
-        RegisterSpriteFolder(
-            CharacterState.Idle,
-            "idle",
-            "Assets/Characters/LuKnight/Idle",
-            5);
-
-
-        RegisterSpriteFolder(
-            CharacterState.Walk,
-            "walk",
-            "Assets/Characters/LuKnight/Walk",
-            7);
-
-
-        RegisterSpriteFolder(
-            CharacterState.Sleep,
-            "sleep",
-            "Assets/Characters/LuKnight/Sleep",
-            3);
-
-
-        RegisterSpriteClip(
-            CharacterState.Grabbed,
-            new SpriteAnimationClip(
-            "grabbed-dangling",
-            new[]
-            {
-                "Assets/Characters/LuKnight/Grabbed/grabbed_000.png"
-            },
-            framesPerSecond: 1,
-            loop: true));
-
-
-        RegisterSpriteFolder(
-            CharacterState.Falling,
-            "falling",
-            "Assets/Characters/LuKnight/Falling",
-            7);
-
-
-        RegisterSpriteFolder(
-            CharacterState.Hanging,
-            "hanging",
-            "Assets/Characters/LuKnight/Hanging",
-            5);
-
-
-        RegisterSpriteFolder(
-            CharacterState.Climbing,
-            "climbing",
-            "Assets/Characters/LuKnight/Climbing",
-            7);
+        // Fallback frames are exported from the 3D rig at one fixed scale/camera.
+        double breathingFps = 16 * 2.2 / (2 * Math.PI);
+        RegisterSpriteFolder(CharacterState.Idle, "idle", "Assets/Characters/LuKnight/Idle", breathingFps);
+        RegisterSpriteFolder(CharacterState.Walk, "walk", "Assets/Characters/LuKnight/Walk", 25.6);
+        RegisterSpriteFolder(CharacterState.Sleep, "sleep", "Assets/Characters/LuKnight/Sleep", breathingFps);
+        // A stable grab pose: movement comes from the transform, not mismatched body frames.
+        RegisterSpriteClip(CharacterState.Grabbed, new SpriteAnimationClip("grabbed-dangling",
+            new[] { "Assets/Characters/LuKnight/Grabbed/grabbed_000.png" }, 1, true));
+        RegisterSpriteFolder(CharacterState.Falling, "falling", "Assets/Characters/LuKnight/Falling", breathingFps);
+        RegisterSpriteFolder(CharacterState.Hanging, "hanging", "Assets/Characters/LuKnight/Hanging", breathingFps);
+        RegisterSpriteFolder(CharacterState.Climbing, "climbing", "Assets/Characters/LuKnight/Climbing", 16 * 8 / (2 * Math.PI));
     }
 
     private void EnsureSpritePlayer()
@@ -1128,7 +1093,25 @@ public partial class CharacterView
         bool useSprite = mode == CharacterRenderMode.Sprite;
 
         SpriteLayer.Visibility = useSprite ? Visibility.Visible : Visibility.Collapsed;
-        VectorLayer.Visibility = useSprite ? Visibility.Collapsed : Visibility.Visible;
+        VectorLayer.Visibility = mode == CharacterRenderMode.Vector ? Visibility.Visible : Visibility.Collapsed;
+        ModelViewport.Visibility = mode == CharacterRenderMode.Model3D ? Visibility.Visible : Visibility.Collapsed;
+
+        if (mode == CharacterRenderMode.Model3D)
+        {
+            _modelPlayer ??= new CharacterModel3DPlayer(ModelViewport);
+            if (changed)
+            {
+                _spritePlayer?.Stop();
+                StopSpriteMotion();
+                StopSpriteExpression();
+                StopCurrentAnimation();
+                StopMoodStoryboard();
+            }
+            _modelPlayer.SetFacingDirection(_facingDirection);
+            if (IsLoaded) _modelPlayer.Start();
+            return;
+        }
+        _modelPlayer?.Stop();
 
         if (!useSprite)
         {
@@ -1183,6 +1166,10 @@ public partial class CharacterView
 
     private void CharacterView_Unloaded(object sender, RoutedEventArgs e)
     {
+        _modelPlayer?.Dispose();
+        _modelPlayer = null;
+        StopCurrentAnimation();
+        StopMoodStoryboard();
         StopSpriteMotion();
         StopSpriteExpression();
         ResetSpriteImpact();

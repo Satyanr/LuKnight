@@ -94,12 +94,17 @@ public partial class CharacterView : UserControl
         RegisterDefaultSpriteExpressions();
 
         SetRenderMode(
-            CharacterRenderMode.Sprite);
+            CharacterRenderMode.Model3D);
     }
 
     public void PlayLandingReaction(
         double impactSpeed = 0)
     {
+        if (_renderMode == CharacterRenderMode.Model3D)
+        {
+            _modelPlayer?.Land(impactSpeed);
+            return;
+        }
         if (_renderMode ==
             CharacterRenderMode.Sprite)
         {
@@ -121,6 +126,11 @@ public partial class CharacterView : UserControl
                 ? -1
                 : 1;
 
+        if (_renderMode == CharacterRenderMode.Model3D)
+        {
+            _modelPlayer?.SetFacingDirection(_facingDirection);
+            return;
+        }
         if (_renderMode == CharacterRenderMode.Sprite)
         {
             SpriteScale.ScaleX = _facingDirection;
@@ -132,6 +142,11 @@ public partial class CharacterView : UserControl
     }
     public void Blink()
     {
+        if (_renderMode == CharacterRenderMode.Model3D)
+        {
+            _modelPlayer?.Blink();
+            return;
+        }
         if (_renderMode == CharacterRenderMode.Sprite)
         {
             if (CurrentMood == CharacterMood.Neutral || CurrentMood == CharacterMood.Happy)
@@ -148,6 +163,11 @@ public partial class CharacterView : UserControl
 
     public void TwitchEars()
     {
+        if (_renderMode == CharacterRenderMode.Model3D)
+        {
+            _modelPlayer?.TwitchEars();
+            return;
+        }
         if (_renderMode ==
     CharacterRenderMode.Sprite)
         {
@@ -165,6 +185,11 @@ public partial class CharacterView : UserControl
 
     public void LookSide(int direction)
     {
+        if (_renderMode == CharacterRenderMode.Model3D)
+        {
+            _modelPlayer?.Look(direction, 0, 1.2);
+            return;
+        }
         if (_renderMode ==
     CharacterRenderMode.Sprite)
         {
@@ -234,6 +259,11 @@ public partial class CharacterView : UserControl
     double horizontal,
     double vertical)
     {
+        if (_renderMode == CharacterRenderMode.Model3D)
+        {
+            _modelPlayer?.Look(horizontal, vertical);
+            return;
+        }
         if (_renderMode ==
     CharacterRenderMode.Sprite)
         {
@@ -294,6 +324,11 @@ public partial class CharacterView : UserControl
 
     public void RelaxCursorLook()
     {
+        if (_renderMode == CharacterRenderMode.Model3D)
+        {
+            _modelPlayer?.Look(0, 0);
+            return;
+        }
         if (_renderMode ==
     CharacterRenderMode.Sprite)
         {
@@ -367,6 +402,11 @@ public partial class CharacterView : UserControl
 
         CurrentMood = mood;
 
+        if (_renderMode == CharacterRenderMode.Model3D)
+        {
+            _modelPlayer?.SetMood(mood);
+            return;
+        }
         if (_renderMode == CharacterRenderMode.Sprite)
         {
             StopSpriteExpression();
@@ -779,6 +819,15 @@ public partial class CharacterView : UserControl
 
     public void SetState(CharacterState state)
     {
+        if (_preferredRenderMode == CharacterRenderMode.Model3D)
+        {
+            CurrentState = state;
+            ApplyRenderMode(CharacterRenderMode.Model3D);
+            _modelPlayer?.SetState(state);
+            _modelPlayer?.SetMood(CurrentMood);
+            return;
+        }
+
         bool stateChanged =
             CurrentState != state;
 
@@ -881,6 +930,11 @@ public partial class CharacterView : UserControl
 
     public void LookDown()
     {
+        if (_renderMode == CharacterRenderMode.Model3D)
+        {
+            _modelPlayer?.Look(0, 1, 1.2);
+            return;
+        }
         if (_renderMode ==
             CharacterRenderMode.Sprite)
         {
@@ -958,6 +1012,12 @@ public partial class CharacterView : UserControl
     public void PlayEdgePeek(
         int direction)
     {
+        if (_renderMode == CharacterRenderMode.Model3D)
+        {
+            _modelPlayer?.Look(direction * .6, 1, 1.1);
+            _modelPlayer?.TwitchEars();
+            return;
+        }
         if (_renderMode ==
             CharacterRenderMode.Sprite)
         {

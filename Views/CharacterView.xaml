@@ -668,6 +668,10 @@
 
 
     <Grid Background="Transparent">
+        <Viewport3D x:Name="ModelViewport"
+                    Visibility="Collapsed"
+                    IsHitTestVisible="False"
+                    ClipToBounds="False"/>
 
         <!-- Semua bagian karakter ada di dalam container ini -->
         <!-- SPRITE / SOFT-3D RENDERER -->

@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Threading;
+using System.Windows.Media;
 using LuKnight.Views;
 using LuKnight.Services;
 using System.Diagnostics;
@@ -25,8 +26,11 @@ public sealed class BehaviorController : IDisposable
 
     private readonly DispatcherTimer _timer;
     private readonly Random _random = new();
+    private TimeSpan? _lastWalkRenderTime;
+    private bool _renderSubscribed;
+    private bool _canWalkOnRender;
+    private double _walkPixelRemainder;
 
-    private DateTime _lastTickAt;
     private DateTime _nextDecisionAt;
 
     private DateTime _nextBlinkAt;
@@ -1094,7 +1098,6 @@ public sealed class BehaviorController : IDisposable
         DateTime now =
             DateTime.UtcNow;
 
-        _lastTickAt = now;
         _lastInteractionAt = now;
 
         ScheduleNextSleepCycle();
@@ -1106,6 +1109,11 @@ public sealed class BehaviorController : IDisposable
         ScheduleNextBlink();
 
         _timer.Start();
+        if (!_renderSubscribed)
+        {
+            CompositionTarget.Rendering += OnMovementRendering;
+            _renderSubscribed = true;
+        }
     }
 
     public void Pause(
@@ -1193,8 +1201,6 @@ public sealed class BehaviorController : IDisposable
                 _direction);
 
 
-        _lastTickAt =
-            DateTime.UtcNow;
 
 
         ScheduleNextDecision(
@@ -1219,32 +1225,13 @@ public sealed class BehaviorController : IDisposable
         DateTime now =
             DateTime.UtcNow;
 
-        double deltaSeconds =
-            (now - _lastTickAt)
-            .TotalSeconds;
-
-        _lastTickAt = now;
-
-
-        // Window di bawah Lu-Knight bisa bergerak
-        // bahkan saat chat sedang terbuka.
-        if (_surfaceController.HasSupport &&
-            !_surfaceController.UpdateSupportWindow())
-        {
-            return;
-        }
+        _canWalkOnRender = false;
 
 
         if (IsPaused)
             return;
 
-        deltaSeconds =
-            Math.Clamp(
-                deltaSeconds,
-                0,
-                0.1);
-
-        if (_surfaceController.Update(now, _thinking))
+        if (_surfaceController.IsBusy)
         {
             if (now >= _nextBlinkAt)
             {
@@ -1325,11 +1312,31 @@ public sealed class BehaviorController : IDisposable
         }
 
 
-        if (_walking)
+        _canWalkOnRender = _walking;
+    }
+
+    private void OnMovementRendering(object? sender, EventArgs e)
+    {
+        var time = ((RenderingEventArgs)e).RenderingTime;
+        if (_lastWalkRenderTime == time) return;
+        double delta = _lastWalkRenderTime is { } previous ? (time - previous).TotalSeconds : 0;
+        _lastWalkRenderTime = time;
+        // Follow support and animate climbing at the same cadence as walking/physics.
+        if (_surfaceController.HasSupport && !_surfaceController.UpdateSupportWindow()) return;
+        if (!IsPaused && _surfaceController.Update(DateTime.UtcNow, _thinking)) return;
+        if (!_canWalkOnRender || !_walking || IsPaused || _surfaceController.IsBusy ||
+            _character.CurrentState != CharacterState.Walk)
         {
-            MoveCharacter(
-                deltaSeconds);
+            _walkPixelRemainder = 0;
+            return;
         }
+
+        // Keep fractional distance across frames; Win32 window positions are integer pixels.
+        // Without this, rounding each small step changes speed on 60/120/144 Hz monitors.
+        double distance = WalkSpeed * Math.Clamp(delta, 0, .05) + _walkPixelRemainder;
+        double pixels = Math.Floor(distance);
+        _walkPixelRemainder = distance - pixels;
+        if (pixels > 0) MoveCharacter(pixels / WalkSpeed);
     }
     private void ChooseNextBehavior()
     {
@@ -1818,6 +1825,8 @@ public sealed class BehaviorController : IDisposable
 
     public void Dispose()
     {
+        CompositionTarget.Rendering -= OnMovementRendering;
+        _renderSubscribed = false;
         CancelPendingApplicationArrival();
         _surfaceController.SupportLost -=
             SurfaceController_SupportLost;

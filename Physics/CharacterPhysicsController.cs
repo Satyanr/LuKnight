@@ -1,6 +1,6 @@
 using System;
 using System.Windows;
-using System.Windows.Threading;
+using System.Windows.Media;
 using LuKnight.Services;
 using LuKnight.Views;
 
@@ -11,7 +11,7 @@ public sealed class CharacterPhysicsController : IDisposable
     private readonly Window _window;
     private readonly CharacterView _character;
 
-    private readonly DispatcherTimer _timer;
+    private TimeSpan? _lastRenderTime;
 
     private bool _isGrabbed;
     private bool _isFalling;
@@ -170,14 +170,7 @@ DateTime now)
         _window = window;
         _character = character;
 
-        _timer = new DispatcherTimer
-        {
-            Interval =
-                TimeSpan.FromMilliseconds(16)
-        };
-
-        _timer.Tick += OnTick;
-        _timer.Start();
+        CompositionTarget.Rendering += OnRendering;
 
         _lastTickAt =
             DateTime.UtcNow;
@@ -272,19 +265,19 @@ DateTime now)
             instantVelocityY,
             now);
 
-            // Sedikit smoothing supaya throw
-            // tidak terlalu sensitif.
+            // Time-based smoothing keeps throw response consistent across refresh rates.
+            double velocityBlend = 1 - Math.Exp(-delta / .035);
             _velocityX =
                 Lerp(
                     _velocityX,
                     instantVelocityX,
-                    0.38);
+                    velocityBlend);
 
             _velocityY =
                 Lerp(
                     _velocityY,
                     instantVelocityY,
-                    0.38);
+                    velocityBlend);
 
             _velocityX =
                 Math.Clamp(
@@ -307,6 +300,8 @@ DateTime now)
                 cursor.Y -
                 _grabOffset.Y);
 
+        _character.SetAirborneVelocity(_velocityX, _velocityY);
+
         _lastCursor = cursor;
         _lastCursorAt = now;
     }
@@ -316,6 +311,8 @@ DateTime now)
         if (!_isGrabbed)
             return;
 
+        // Include the final cursor sample before releasing into the ballistic path.
+        UpdateGrab();
         _isGrabbed = false;
         _isFalling = true;
 
@@ -334,6 +331,14 @@ DateTime now)
             DateTime.UtcNow;
     }
 
+    private void OnRendering(object? sender, EventArgs e)
+    {
+        var time = ((RenderingEventArgs)e).RenderingTime;
+        if (_lastRenderTime == time) return;
+        _lastRenderTime = time;
+        OnTick(sender, e);
+    }
+
     private void OnTick(
         object? sender,
         EventArgs e)
@@ -346,6 +351,12 @@ DateTime now)
             .TotalSeconds;
 
         _lastTickAt = now;
+
+        if (_isGrabbed)
+        {
+            UpdateGrab();
+            return;
+        }
 
         if (!_isFalling)
             return;
@@ -832,7 +843,6 @@ DateTime now)
 
     public void Dispose()
     {
-        _timer.Stop();
-        _timer.Tick -= OnTick;
+        CompositionTarget.Rendering -= OnRendering;
     }
 }
