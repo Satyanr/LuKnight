@@ -5,6 +5,7 @@ using System.Windows.Input;
 using LuKnight.Services;
 using LuKnight.Views;
 using LuKnight.Behaviors;
+using LuKnight.Physics;
 
 namespace LuKnight;
 
@@ -22,6 +23,30 @@ public partial class MainWindow : Window
     private bool _leftMouseDown;
     private bool _dragStarted;
 
+    private CharacterPhysicsController?
+        _physicsController;
+
+    private void PhysicsController_Landed(
+double impactSpeed)
+    {
+        _behaviorController?
+            .Resume();
+
+        CharacterControl
+            .PlayLandingReaction();
+
+        if (impactSpeed > 650)
+        {
+            _behaviorController?
+                .ReactConfused();
+        }
+        else
+        {
+            _behaviorController?
+                .ReactHappy();
+        }
+    }
+
     private void MainWindow_Loaded(
     object sender,
     RoutedEventArgs e)
@@ -32,6 +57,13 @@ public partial class MainWindow : Window
                 CharacterControl);
 
         _behaviorController.Start();
+        _physicsController =
+    new CharacterPhysicsController(
+        this,
+        CharacterControl);
+
+        _physicsController.Landed +=
+            PhysicsController_Landed;
     }
 
     public MainWindow()
@@ -68,82 +100,102 @@ public partial class MainWindow : Window
     }
 
     private void Character_PreviewMouseLeftButtonDown(
-        object sender,
-        MouseButtonEventArgs e)
+    object sender,
+    MouseButtonEventArgs e)
     {
         _leftMouseDown = true;
+        _dragStarted = false;
 
         _behaviorController?
             .NotifyUserInteraction();
 
         _behaviorController?
             .Pause();
-        _dragStarted = false;
-        _mouseDownPosition = e.GetPosition(this);
+
+        _mouseDownPosition =
+            e.GetPosition(this);
 
         CharacterControl.CaptureMouse();
+
         e.Handled = true;
     }
 
     private void Character_PreviewMouseMove(
-        object sender,
-        MouseEventArgs e)
+     object sender,
+     MouseEventArgs e)
     {
         if (!_leftMouseDown)
             return;
 
-        if (e.LeftButton != MouseButtonState.Pressed)
+        if (e.LeftButton !=
+            MouseButtonState.Pressed)
+        {
             return;
+        }
 
-        Point currentPosition = e.GetPosition(this);
+        Point currentPosition =
+            e.GetPosition(this);
 
         double horizontalDistance =
-            Math.Abs(currentPosition.X - _mouseDownPosition.X);
+            Math.Abs(
+                currentPosition.X -
+                _mouseDownPosition.X);
 
         double verticalDistance =
-            Math.Abs(currentPosition.Y - _mouseDownPosition.Y);
+            Math.Abs(
+                currentPosition.Y -
+                _mouseDownPosition.Y);
 
         bool movedEnough =
-            horizontalDistance >= SystemParameters.MinimumHorizontalDragDistance ||
-            verticalDistance >= SystemParameters.MinimumVerticalDragDistance;
+            horizontalDistance >=
+                SystemParameters
+                    .MinimumHorizontalDragDistance
+            ||
+            verticalDistance >=
+                SystemParameters
+                    .MinimumVerticalDragDistance;
 
-        if (!movedEnough)
-            return;
 
-        _dragStarted = true;
-        _leftMouseDown = false;
-
-        CharacterControl.ReleaseMouseCapture();
-        ChatPopup.IsOpen = false;
-
-        try
+        if (!_dragStarted)
         {
-            DragMove();
+            if (!movedEnough)
+                return;
+
+            _dragStarted = true;
+
+            ChatPopup.IsOpen = false;
+
+            _physicsController?
+                .BeginGrab();
         }
-        catch (InvalidOperationException)
-        {
-            // Mouse bisa terlepas tepat saat
-            // ambang drag tercapai.
-        }
-        finally
-        {
-            _behaviorController?.Resume();
-        }
+
+
+        _physicsController?
+            .UpdateGrab();
 
         e.Handled = true;
     }
 
     private void Character_PreviewMouseLeftButtonUp(
-        object sender,
-        MouseButtonEventArgs e)
+     object sender,
+     MouseButtonEventArgs e)
     {
         if (!_leftMouseDown)
             return;
 
-        CharacterControl.ReleaseMouseCapture();
+        CharacterControl
+            .ReleaseMouseCapture();
+
         _leftMouseDown = false;
 
-        if (!_dragStarted)
+        if (_dragStarted)
+        {
+            _physicsController?
+                .EndGrab();
+
+            _dragStarted = false;
+        }
+        else
         {
             _behaviorController?
                 .ReactToClick();
@@ -153,7 +205,6 @@ public partial class MainWindow : Window
 
         e.Handled = true;
     }
-
     private void ToggleChat()
     {
         _behaviorController?
@@ -252,10 +303,20 @@ public partial class MainWindow : Window
         }
     }
 
-    protected override void OnClosed(EventArgs e)
+    protected override void OnClosed(
+    EventArgs e)
     {
         _requestCts?.Cancel();
+
+        if (_physicsController is not null)
+        {
+            _physicsController.Landed -=
+                PhysicsController_Landed;
+
+            _physicsController.Dispose();
+        }
         _behaviorController?.Dispose();
+
         base.OnClosed(e);
     }
 }

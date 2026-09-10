@@ -284,13 +284,6 @@ public sealed class BehaviorController : IDisposable
             if (!_cursorVeryClose)
             {
                 _cursorVeryClose = true;
-
-                _character.TwitchEars();
-            }
-
-            if (!_cursorVeryClose)
-            {
-                _cursorVeryClose = true;
                 _cursorCloseSince = now;
 
                 _character.TwitchEars();

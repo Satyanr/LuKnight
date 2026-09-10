@@ -11,7 +11,10 @@ public enum CharacterState
 {
     Idle,
     Walk,
-    Sleep
+    Sleep,
+
+    Grabbed,
+    Falling
 }
 
 public enum CharacterMood
@@ -72,6 +75,12 @@ public partial class CharacterView : UserControl
     public CharacterView()
     {
         InitializeComponent();
+    }
+
+    public void PlayLandingReaction()
+    {
+        PlayTransientStoryboard(
+            "LandingReactionStoryboard");
     }
 
     public void SetFacingDirection(int direction)
@@ -475,6 +484,21 @@ public partial class CharacterView : UserControl
 
                 StartStoryboard("SleepStoryboard");
                 break;
+
+            case CharacterState.Grabbed:
+
+                StartStoryboard(
+                    "GrabbedStoryboard");
+
+                break;
+
+
+            case CharacterState.Falling:
+
+                StartStoryboard(
+                    "FallingStoryboard");
+
+                break;
         }
     }
 
@@ -524,7 +548,8 @@ public partial class CharacterView : UserControl
         SleepText.Visibility = Visibility.Collapsed;
         SleepText.Opacity = 0;
 
-        BodyScale.ScaleX = 1;
+        BodyScale.ScaleX =
+            _facingDirection;
         BodyScale.ScaleY = 1;
 
         BodyTranslate.X = 0;

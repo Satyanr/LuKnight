@@ -217,6 +217,80 @@
                 AutoReverse="True"/>
 
         </Storyboard>
+
+        <!-- ====================== -->
+        <!-- GRABBED -->
+        <!-- ====================== -->
+
+        <Storyboard x:Key="GrabbedStoryboard"
+                    RepeatBehavior="Forever"
+                    AutoReverse="True">
+
+            <DoubleAnimation
+                Storyboard.TargetName="BodyRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-4"
+                To="4"
+                Duration="0:0:0.30"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="BodyTranslate"
+                Storyboard.TargetProperty="Y"
+                From="0"
+                To="3"
+                Duration="0:0:0.30"/>
+
+        </Storyboard>
+
+
+        <!-- ====================== -->
+        <!-- FALLING -->
+        <!-- ====================== -->
+
+        <Storyboard x:Key="FallingStoryboard"
+                    RepeatBehavior="Forever"
+                    AutoReverse="True">
+
+            <DoubleAnimation
+                Storyboard.TargetName="BodyRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-7"
+                To="7"
+                Duration="0:0:0.45"/>
+
+        </Storyboard>
+
+
+        <!-- ====================== -->
+        <!-- LANDING -->
+        <!-- ====================== -->
+
+        <Storyboard x:Key="LandingReactionStoryboard"
+                    FillBehavior="Stop">
+
+            <DoubleAnimation
+                Storyboard.TargetName="MoodScale"
+                Storyboard.TargetProperty="ScaleX"
+                From="1.10"
+                To="1"
+                Duration="0:0:0.22"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="MoodScale"
+                Storyboard.TargetProperty="ScaleY"
+                From="0.82"
+                To="1"
+                Duration="0:0:0.22"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="MoodTranslate"
+                Storyboard.TargetProperty="Y"
+                From="5"
+                To="0"
+                Duration="0:0:0.22"/>
+
+        </Storyboard>
+
     </UserControl.Resources>
 
 
