@@ -226,22 +226,73 @@
                     RepeatBehavior="Forever"
                     AutoReverse="True">
 
+            <!-- tubuh menggantung -->
             <DoubleAnimation
                 Storyboard.TargetName="BodyRotate"
                 Storyboard.TargetProperty="Angle"
-                From="-4"
-                To="4"
+                From="-3"
+                To="3"
                 Duration="0:0:0.30"/>
 
             <DoubleAnimation
                 Storyboard.TargetName="BodyTranslate"
                 Storyboard.TargetProperty="Y"
                 From="0"
-                To="3"
+                To="4"
                 Duration="0:0:0.30"/>
 
-        </Storyboard>
 
+            <!-- tangan menggantung -->
+
+            <DoubleAnimation
+                Storyboard.TargetName="LeftArmRotate"
+                Storyboard.TargetProperty="Angle"
+                From="30"
+                To="40"
+                Duration="0:0:0.34"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="RightArmRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-30"
+                To="-40"
+                Duration="0:0:0.34"/>
+
+
+            <!-- kaki menggantung -->
+
+            <DoubleAnimation
+                Storyboard.TargetName="LeftFootRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-5"
+                To="9"
+                Duration="0:0:0.32"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="RightFootRotate"
+                Storyboard.TargetProperty="Angle"
+                From="5"
+                To="-9"
+                Duration="0:0:0.32"/>
+
+
+            <!-- telinga ikut lemas -->
+
+            <DoubleAnimation
+                Storyboard.TargetName="LeftEarRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-10"
+                To="-4"
+                Duration="0:0:0.40"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="RightEarRotate"
+                Storyboard.TargetProperty="Angle"
+                From="10"
+                To="4"
+                Duration="0:0:0.40"/>
+
+        </Storyboard>
 
         <!-- ====================== -->
         <!-- FALLING -->
@@ -287,6 +338,37 @@
                 Storyboard.TargetProperty="Y"
                 From="5"
                 To="0"
+                Duration="0:0:0.22"/>
+
+        </Storyboard>
+
+        <!-- ====================== -->
+        <!-- DIZZY -->
+        <!-- ====================== -->
+
+        <Storyboard x:Key="DizzyStoryboard"
+                    RepeatBehavior="Forever"
+                    AutoReverse="True">
+
+            <DoubleAnimation
+                Storyboard.TargetName="DizzyEyeRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-4"
+                To="4"
+                Duration="0:0:0.16"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="DizzyEyeTranslate"
+                Storyboard.TargetProperty="X"
+                From="-2"
+                To="2"
+                Duration="0:0:0.12"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="MoodRotate"
+                Storyboard.TargetProperty="Angle"
+                From="-5"
+                To="5"
                 Duration="0:0:0.22"/>
 
         </Storyboard>
@@ -675,6 +757,72 @@
                              Margin="0,96,56,0"/>
 
                 </Grid>
+
+            </Grid>
+
+            <!-- ============================= -->
+            <!-- DIZZY EYES OVERLAY -->
+            <!-- ============================= -->
+
+            <Grid x:Name="DizzyEyes"
+                  Visibility="Collapsed"
+                  IsHitTestVisible="False"
+                  RenderTransformOrigin="0.5,0.5">
+
+                <Grid.RenderTransform>
+                    <TransformGroup>
+
+                        <RotateTransform x:Name="DizzyEyeRotate"
+                                         Angle="0"/>
+
+                        <TranslateTransform x:Name="DizzyEyeTranslate"
+                                            X="0"
+                                            Y="0"/>
+
+                    </TransformGroup>
+                </Grid.RenderTransform>
+
+
+                <!-- menutup pupil normal tetapi mempertahankan ring cyan -->
+
+                <Ellipse Width="43"
+                         Height="50"
+                         Fill="#151923"
+                         HorizontalAlignment="Left"
+                         VerticalAlignment="Top"
+                         Margin="30,85,0,0"/>
+
+                <Ellipse Width="43"
+                         Height="50"
+                         Fill="#151923"
+                         HorizontalAlignment="Right"
+                         VerticalAlignment="Top"
+                         Margin="0,85,30,0"/>
+
+
+                <!-- X eyes -->
+
+                <TextBlock Text="×"
+                           Width="43"
+                           Height="50"
+                           FontSize="34"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           TextAlignment="Center"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Top"
+                           Margin="30,87,0,0"/>
+
+                <TextBlock Text="×"
+                           Width="43"
+                           Height="50"
+                           FontSize="34"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           TextAlignment="Center"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Top"
+                           Margin="0,87,30,0"/>
 
             </Grid>
 

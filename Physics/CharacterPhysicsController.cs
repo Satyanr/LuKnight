@@ -39,13 +39,124 @@ public sealed class CharacterPhysicsController : IDisposable
 
     private double _maximumImpactSpeed;
 
+    private int _shakeReversalCount;
+    private int _lastShakeDirection;
+
+    private DateTime _shakeWindowStartedAt;
+    private DateTime _lastShakeImpulseAt;
+
+    private bool _wasShakenDuringGrab;
+
+    private const double ShakeVelocityThreshold =
+        650.0;
+
+    private const int ShakeReversalsRequired =
+        4;
+
+    private static readonly TimeSpan ShakeWindow =
+        TimeSpan.FromSeconds(1.20);
+
+    private static readonly TimeSpan ShakeImpulseCooldown =
+        TimeSpan.FromMilliseconds(75);
+
+    private void DetectShake(
+double velocityX,
+double velocityY,
+DateTime now)
+    {
+        double absX =
+            Math.Abs(velocityX);
+
+        double absY =
+            Math.Abs(velocityY);
+
+        double strongestVelocity =
+            Math.Max(absX, absY);
+
+        if (strongestVelocity <
+            ShakeVelocityThreshold)
+        {
+            return;
+        }
+
+
+        if (now - _shakeWindowStartedAt >
+            ShakeWindow)
+        {
+            _shakeWindowStartedAt = now;
+
+            _shakeReversalCount = 0;
+            _lastShakeDirection = 0;
+        }
+
+
+        if (now - _lastShakeImpulseAt <
+            ShakeImpulseCooldown)
+        {
+            return;
+        }
+
+
+        int direction;
+
+        if (absX >= absY)
+        {
+            direction =
+                velocityX >= 0
+                    ? 1
+                    : -1;
+        }
+        else
+        {
+            direction =
+                velocityY >= 0
+                    ? 2
+                    : -2;
+        }
+
+
+        if (_lastShakeDirection != 0 &&
+            direction != _lastShakeDirection)
+        {
+            _shakeReversalCount++;
+        }
+
+
+        _lastShakeDirection =
+            direction;
+
+        _lastShakeImpulseAt =
+            now;
+
+
+        if (_shakeReversalCount <
+            ShakeReversalsRequired)
+        {
+            return;
+        }
+
+
+        if (_wasShakenDuringGrab)
+            return;
+
+
+        _wasShakenDuringGrab = true;
+
+        Shaken?.Invoke();
+    }
+
     public bool IsGrabbed => _isGrabbed;
     public bool IsFalling => _isFalling;
 
     public bool IsActive =>
         _isGrabbed || _isFalling;
 
-    public event Action<double>? Landed;
+    public bool WasShakenDuringGrab =>
+        _wasShakenDuringGrab;
+
+    public event Action? Shaken;
+
+    public event Action<double, bool>? Landed;
 
     public CharacterPhysicsController(
         Window window,
@@ -77,6 +188,17 @@ public sealed class CharacterPhysicsController : IDisposable
 
         _bounceCount = 0;
         _maximumImpactSpeed = 0;
+
+        _shakeReversalCount = 0;
+        _lastShakeDirection = 0;
+
+        _shakeWindowStartedAt =
+            DateTime.UtcNow;
+
+        _lastShakeImpulseAt =
+            DateTime.MinValue;
+
+        _wasShakenDuringGrab = false;
 
         _velocityX = 0;
         _velocityY = 0;
@@ -122,6 +244,11 @@ public sealed class CharacterPhysicsController : IDisposable
             double instantVelocityY =
                 (cursor.Y - _lastCursor.Y)
                 / delta;
+
+            DetectShake(
+            instantVelocityX,
+            instantVelocityY,
+            now);
 
             // Sedikit smoothing supaya throw
             // tidak terlalu sensitif.
@@ -177,7 +304,9 @@ public sealed class CharacterPhysicsController : IDisposable
             CharacterState.Falling);
 
         _character.SetMood(
-            CharacterMood.Surprised);
+        _wasShakenDuringGrab
+            ? CharacterMood.Dizzy
+            : CharacterMood.Surprised);
 
         _lastTickAt =
             DateTime.UtcNow;
@@ -326,12 +455,18 @@ public sealed class CharacterPhysicsController : IDisposable
         _character.SetState(
             CharacterState.Idle);
 
+        bool wasShaken =
+        _wasShakenDuringGrab;
+
         Landed?.Invoke(
-            impactSpeed);
+            impactSpeed,
+            wasShaken);
+
+        _wasShakenDuringGrab = false;
 
         _maximumImpactSpeed = 0;
     }
-    
+
     private bool TryGetCursor(
         out Point position)
     {

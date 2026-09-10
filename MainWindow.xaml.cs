@@ -27,13 +27,22 @@ public partial class MainWindow : Window
         _physicsController;
 
     private void PhysicsController_Landed(
-double impactSpeed)
+     double impactSpeed,
+     bool wasShaken)
     {
         _behaviorController?
             .Resume();
 
         CharacterControl
             .PlayLandingReaction();
+
+        if (wasShaken)
+        {
+            _behaviorController?
+                .ReactDizzy();
+
+            return;
+        }
 
         if (impactSpeed > 650)
         {
@@ -45,6 +54,12 @@ double impactSpeed)
             _behaviorController?
                 .ReactHappy();
         }
+    }
+
+    private void PhysicsController_Shaken()
+    {
+        CharacterControl.SetMood(
+            CharacterMood.Dizzy);
     }
 
     private void MainWindow_Loaded(
@@ -64,6 +79,9 @@ double impactSpeed)
 
         _physicsController.Landed +=
             PhysicsController_Landed;
+
+        _physicsController.Shaken +=
+            PhysicsController_Shaken;
     }
 
     public MainWindow()
@@ -319,6 +337,9 @@ double impactSpeed)
 
         if (_physicsController is not null)
         {
+            _physicsController.Shaken -=
+                PhysicsController_Shaken;
+
             _physicsController.Landed -=
                 PhysicsController_Landed;
 

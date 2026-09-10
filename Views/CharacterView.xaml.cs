@@ -24,7 +24,8 @@ public enum CharacterMood
     Happy,
     Surprised,
     Thinking,
-    Confused
+    Confused,
+    Dizzy
 }
 
 public partial class CharacterView : UserControl
@@ -314,6 +315,13 @@ public partial class CharacterView : UserControl
                     "ThinkingStoryboard");
 
                 break;
+
+            case CharacterMood.Dizzy:
+
+                StartMoodStoryboard(
+                    "DizzyStoryboard");
+
+                break;
         }
     }
 
@@ -421,11 +429,42 @@ public partial class CharacterView : UserControl
                 EmblemGlow.Opacity = 0.12;
 
                 break;
+
+            case CharacterMood.Dizzy:
+
+                DizzyEyes.Visibility =
+                    Visibility.Visible;
+
+                MoodRotate.Angle = 5;
+
+                LeftEarRotate.Angle = -5;
+                RightEarRotate.Angle = 7;
+
+                LeftArmRotate.Angle = 28;
+                RightArmRotate.Angle = -28;
+
+                LeftCheek.Opacity = 0.25;
+                RightCheek.Opacity = 0.25;
+
+                MouthScale.ScaleX = 0.75;
+                MouthScale.ScaleY = 0.65;
+
+                EmblemGlow.Opacity = 0.18;
+
+                break;
         }
     }
 
     private void ResetMoodVisuals()
     {
+        DizzyEyes.Visibility =
+        Visibility.Collapsed;
+
+        DizzyEyeRotate.Angle = 0;
+
+        DizzyEyeTranslate.X = 0;
+        DizzyEyeTranslate.Y = 0;
+
         MoodScale.ScaleX = 1;
         MoodScale.ScaleY = 1;
 

@@ -346,6 +346,13 @@ public sealed class BehaviorController : IDisposable
             0.90);
     }
 
+    public void ReactDizzy()
+    {
+        SetTemporaryMood(
+            CharacterMood.Dizzy,
+            2.20);
+    }
+
 
     public void ReactConfused()
     {
