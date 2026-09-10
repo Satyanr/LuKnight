@@ -887,6 +887,10 @@ public sealed class BehaviorController : IDisposable
     private void MoveCharacter(
      double deltaSeconds)
     {
+        // ====================================
+        // WALKING ON DESKTOP / TASKBAR
+        // ====================================
+
         Rect windowBounds =
             DesktopMonitorService
                 .GetWindowBounds(
@@ -897,6 +901,7 @@ public sealed class BehaviorController : IDisposable
                 .GetMonitorForWindow(
                     _window);
 
+
         double width =
             windowBounds.Width;
 
@@ -906,6 +911,7 @@ public sealed class BehaviorController : IDisposable
             (_direction *
              WalkSpeed *
              deltaSeconds);
+
 
         double newTop =
             monitor.WorkArea.Bottom -
@@ -920,6 +926,10 @@ public sealed class BehaviorController : IDisposable
             width;
 
 
+        // =========================
+        // LEFT EDGE
+        // =========================
+
         if (newLeft <= minLeft)
         {
             bool taskbarBlocks =
@@ -932,14 +942,6 @@ public sealed class BehaviorController : IDisposable
                         MonitorDirection.Left,
                         out _);
 
-            if (_supportWindowHandle !=
-                nint.Zero)
-            {
-                MoveOnSupportWindow(
-                    deltaSeconds);
-
-                return;
-            }
 
             if (taskbarBlocks ||
                 !hasNeighbor)
@@ -954,6 +956,12 @@ public sealed class BehaviorController : IDisposable
                         _direction);
             }
         }
+
+
+        // =========================
+        // RIGHT EDGE
+        // =========================
+
         else if (newLeft >= maxLeft)
         {
             bool taskbarBlocks =
@@ -965,6 +973,7 @@ public sealed class BehaviorController : IDisposable
                         monitor,
                         MonitorDirection.Right,
                         out _);
+
 
             if (taskbarBlocks ||
                 !hasNeighbor)
@@ -987,7 +996,6 @@ public sealed class BehaviorController : IDisposable
                 newLeft,
                 newTop);
     }
-
     private void PlaceOnDesktopBottom()
     {
         Rect windowBounds =
