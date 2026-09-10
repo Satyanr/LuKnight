@@ -29,21 +29,20 @@
         <!-- ====================== -->
         <!-- EAR TWITCH -->
         <!-- ====================== -->
-        <Storyboard x:Key="EarTwitchStoryboard">
+        <Storyboard x:Key="EarTwitchStoryboard"
+                    FillBehavior="Stop">
 
             <DoubleAnimation
                 Storyboard.TargetName="LeftEarRotate"
                 Storyboard.TargetProperty="Angle"
-                From="-24"
-                To="-12"
+                By="9"
                 Duration="0:0:0.12"
                 AutoReverse="True"/>
 
             <DoubleAnimation
                 Storyboard.TargetName="RightEarRotate"
                 Storyboard.TargetProperty="Angle"
-                From="27"
-                To="16"
+                By="-9"
                 Duration="0:0:0.12"
                 BeginTime="0:0:0.04"
                 AutoReverse="True"/>
@@ -142,6 +141,82 @@
 
         </Storyboard>
 
+        <Storyboard x:Key="ThinkingStoryboard"
+                    RepeatBehavior="Forever"
+                    AutoReverse="True">
+
+            <DoubleAnimation
+                Storyboard.TargetName="EmblemScale"
+                Storyboard.TargetProperty="ScaleX"
+                From="1.05"
+                To="1.28"
+                Duration="0:0:0.65"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="EmblemScale"
+                Storyboard.TargetProperty="ScaleY"
+                From="1.05"
+                To="1.28"
+                Duration="0:0:0.65"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="EmblemGlow"
+                Storyboard.TargetProperty="Opacity"
+                From="0.20"
+                To="0.80"
+                Duration="0:0:0.65"/>
+
+        </Storyboard>
+
+        <Storyboard x:Key="HappyReactionStoryboard"
+                    FillBehavior="Stop">
+
+            <DoubleAnimation
+                Storyboard.TargetName="MoodTranslate"
+                Storyboard.TargetProperty="Y"
+                From="0"
+                To="-7"
+                Duration="0:0:0.14"
+                AutoReverse="True"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="MoodScale"
+                Storyboard.TargetProperty="ScaleX"
+                From="1.03"
+                To="1.08"
+                Duration="0:0:0.14"
+                AutoReverse="True"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="MoodScale"
+                Storyboard.TargetProperty="ScaleY"
+                From="1.03"
+                To="1.08"
+                Duration="0:0:0.14"
+                AutoReverse="True"/>
+
+        </Storyboard>
+
+        <Storyboard x:Key="SurpriseReactionStoryboard"
+                    FillBehavior="Stop">
+
+            <DoubleAnimation
+                Storyboard.TargetName="MoodScale"
+                Storyboard.TargetProperty="ScaleX"
+                From="1"
+                To="1.09"
+                Duration="0:0:0.10"
+                AutoReverse="True"/>
+
+            <DoubleAnimation
+                Storyboard.TargetName="MoodScale"
+                Storyboard.TargetProperty="ScaleY"
+                From="1"
+                To="1.09"
+                Duration="0:0:0.10"
+                AutoReverse="True"/>
+
+        </Storyboard>
     </UserControl.Resources>
 
 
@@ -154,14 +229,31 @@
             <Grid.RenderTransform>
                 <TransformGroup>
 
+                    <!-- movement / facing -->
                     <ScaleTransform x:Name="BodyScale"
                                     ScaleX="1"
                                     ScaleY="1"/>
 
+                    <!-- emotion squash/stretch -->
+                    <ScaleTransform x:Name="MoodScale"
+                                    ScaleX="1"
+                                    ScaleY="1"/>
+
+                    <!-- walk rotation -->
                     <RotateTransform x:Name="BodyRotate"
                                      Angle="0"/>
 
+                    <!-- emotion head/body tilt -->
+                    <RotateTransform x:Name="MoodRotate"
+                                     Angle="0"/>
+
+                    <!-- movement -->
                     <TranslateTransform x:Name="BodyTranslate"
+                                        X="0"
+                                        Y="0"/>
+
+                    <!-- reaction bounce -->
+                    <TranslateTransform x:Name="MoodTranslate"
                                         X="0"
                                         Y="0"/>
 
@@ -336,10 +428,27 @@
             <!-- CHEST EMBLEM -->
             <!-- ============================= -->
 
-            <Grid Width="24"
+            <Grid x:Name="ChestEmblem"
+                  Width="24"
                   Height="24"
                   VerticalAlignment="Bottom"
-                  Margin="0,0,0,63">
+                  Margin="0,0,0,63"
+                  RenderTransformOrigin="0.5,0.5">
+
+                <Grid.RenderTransform>
+                    <ScaleTransform x:Name="EmblemScale"
+                                    ScaleX="1"
+                                    ScaleY="1"/>
+                </Grid.RenderTransform>
+
+
+                <!-- glow -->
+                <Ellipse x:Name="EmblemGlow"
+                         Width="36"
+                         Height="36"
+                         Fill="#5570C9F4"
+                         Opacity="0"/>
+
 
                 <Polygon Points="12,1 22,12 12,23 2,12"
                          Fill="#70C9F4"
@@ -527,16 +636,20 @@
             <!-- CHEEKS -->
             <!-- ============================= -->
 
-            <Ellipse Width="21"
+            <Ellipse x:Name="LeftCheek"
+                     Width="21"
                      Height="9"
                      Fill="#D4F2FF"
+                     Opacity="0.55"
                      HorizontalAlignment="Left"
                      VerticalAlignment="Top"
                      Margin="20,139,0,0"/>
 
-            <Ellipse Width="21"
+            <Ellipse x:Name="RightCheek"
+                     Width="21"
                      Height="9"
                      Fill="#D4F2FF"
+                     Opacity="0.55"
                      HorizontalAlignment="Right"
                      VerticalAlignment="Top"
                      Margin="0,139,20,0"/>
@@ -560,13 +673,21 @@
             <!-- MOUTH -->
             <!-- ============================= -->
 
-            <Border Width="27"
+            <Border x:Name="MouthShape"
+                    Width="27"
                     Height="22"
                     Background="#22242C"
                     CornerRadius="4,4,14,14"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Top"
-                    Margin="0,146,0,0">
+                    Margin="0,146,0,0"
+                    RenderTransformOrigin="0.5,0.5">
+
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="MouthScale"
+                                    ScaleX="1"
+                                    ScaleY="1"/>
+                </Border.RenderTransform>
 
                 <Ellipse Width="13"
                          Height="7"

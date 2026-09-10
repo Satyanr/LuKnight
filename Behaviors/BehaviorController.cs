@@ -41,6 +41,82 @@ public sealed class BehaviorController : IDisposable
     private const double CursorCuriousRadius = 140;
     private const double CursorWakeRadius = 100;
 
+    private DateTime _cursorCloseSince;
+
+    private DateTime _temporaryMoodUntil =
+        DateTime.MinValue;
+
+    private bool _thinking;
+
+    private bool HasTemporaryMood(
+    DateTime now)
+    {
+        return now < _temporaryMoodUntil;
+    }
+
+
+    private void SetAmbientMood(
+        CharacterMood mood,
+        DateTime now)
+    {
+        if (_thinking ||
+            HasTemporaryMood(now))
+        {
+            return;
+        }
+
+        if (_character.CurrentMood != mood)
+        {
+            _character.SetMood(mood);
+        }
+    }
+
+
+    private void SetTemporaryMood(
+        CharacterMood mood,
+        double seconds)
+    {
+        _temporaryMoodUntil =
+            DateTime.UtcNow
+                .AddSeconds(seconds);
+
+        _character.SetMood(mood);
+    }
+
+
+    private void UpdateMood(
+        DateTime now)
+    {
+        if (_thinking)
+            return;
+
+        if (now < _temporaryMoodUntil)
+            return;
+
+        if (_temporaryMoodUntil !=
+            DateTime.MinValue)
+        {
+            _temporaryMoodUntil =
+                DateTime.MinValue;
+
+            if (_cursorVeryClose)
+            {
+                _character.SetMood(
+                    CharacterMood.Happy);
+            }
+            else if (_cursorNearby)
+            {
+                _character.SetMood(
+                    CharacterMood.Curious);
+            }
+            else
+            {
+                _character.SetMood(
+                    CharacterMood.Neutral);
+            }
+        }
+    }
+
     private bool UpdateCursorAwareness(
     DateTime now)
     {
@@ -138,6 +214,10 @@ public sealed class BehaviorController : IDisposable
 
             _character.RelaxCursorLook();
 
+            SetAmbientMood(
+    CharacterMood.Neutral,
+    now);
+
             return false;
         }
 
@@ -149,6 +229,12 @@ public sealed class BehaviorController : IDisposable
         if (!_cursorNearby)
         {
             _cursorNearby = true;
+
+            _cursorCloseSince = now;
+
+            SetAmbientMood(
+                CharacterMood.Curious,
+                now);
 
             // Lu-Knight berhenti untuk melihat user.
             _walking = false;
@@ -202,6 +288,27 @@ public sealed class BehaviorController : IDisposable
                 _character.TwitchEars();
             }
 
+            if (!_cursorVeryClose)
+            {
+                _cursorVeryClose = true;
+                _cursorCloseSince = now;
+
+                _character.TwitchEars();
+            }
+
+            if (now - _cursorCloseSince
+                >= TimeSpan.FromSeconds(1.1))
+            {
+                SetAmbientMood(
+                    CharacterMood.Happy,
+                    now);
+            }
+            else
+            {
+                SetAmbientMood(
+                    CharacterMood.Curious,
+                    now);
+            }
             // Sesekali telinga bereaksi lagi
             // jika cursor tetap dekat.
             if (now >= _nextCursorReactionAt)
@@ -220,11 +327,72 @@ public sealed class BehaviorController : IDisposable
             // Hysteresis supaya status tidak
             // berkedip-kedip di batas radius.
             _cursorVeryClose = false;
+
+            SetAmbientMood(
+                CharacterMood.Curious,
+                now);
         }
 
         return true;
     }
 
+    public void ReactToClick()
+    {
+        NotifyUserInteraction();
+
+        SetTemporaryMood(
+            CharacterMood.Surprised,
+            0.30);
+    }
+
+
+    public void ReactHappy()
+    {
+        SetTemporaryMood(
+            CharacterMood.Happy,
+            0.90);
+    }
+
+
+    public void ReactConfused()
+    {
+        SetTemporaryMood(
+            CharacterMood.Confused,
+            1.20);
+    }
+
+
+    public void SetThinking(bool thinking)
+    {
+        _thinking = thinking;
+
+        _temporaryMoodUntil =
+            DateTime.MinValue;
+
+        if (thinking)
+        {
+            _character.SetMood(
+                CharacterMood.Thinking);
+
+            return;
+        }
+
+        if (_cursorVeryClose)
+        {
+            _character.SetMood(
+                CharacterMood.Happy);
+        }
+        else if (_cursorNearby)
+        {
+            _character.SetMood(
+                CharacterMood.Curious);
+        }
+        else
+        {
+            _character.SetMood(
+                CharacterMood.Neutral);
+        }
+    }
     public BehaviorController(
         Window window,
         CharacterView character)
@@ -329,6 +497,8 @@ public sealed class BehaviorController : IDisposable
                 deltaSeconds,
                 0,
                 0.1);
+
+        UpdateMood(now);
 
         bool cursorHasAttention =
             UpdateCursorAwareness(now);
@@ -571,6 +741,9 @@ public sealed class BehaviorController : IDisposable
     {
         _walking = false;
         _sleeping = true;
+
+        _character.SetMood(
+    CharacterMood.Neutral);
 
         _character.SetState(
             CharacterState.Sleep);

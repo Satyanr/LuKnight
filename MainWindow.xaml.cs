@@ -144,7 +144,12 @@ public partial class MainWindow : Window
         _leftMouseDown = false;
 
         if (!_dragStarted)
+        {
+            _behaviorController?
+                .ReactToClick();
+
             ToggleChat();
+        }
 
         e.Handled = true;
     }
@@ -185,6 +190,8 @@ public partial class MainWindow : Window
 
         ChatPanelControl.AddUserMessage(message);
         ChatPanelControl.SetBusy(true);
+        _behaviorController?
+            .SetThinking(true);
 
         if (_usesGemini)
         {
@@ -198,6 +205,12 @@ public partial class MainWindow : Window
                     message,
                     requestCts.Token);
 
+            _behaviorController?
+                .SetThinking(false);
+
+            _behaviorController?
+                .ReactHappy();
+
             ChatPanelControl.AddAssistantMessage(reply);
 
             ChatPanelControl.SetStatus(
@@ -208,6 +221,8 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
+            _behaviorController?
+                .SetThinking(false);
             ChatPanelControl.AddAssistantMessage("Permintaan dibatalkan.");
 
             if (_usesGemini)
@@ -215,6 +230,11 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            _behaviorController?
+                .SetThinking(false);
+
+            _behaviorController?
+                .ReactConfused();
             ChatPanelControl.AddAssistantMessage($"Terjadi kesalahan: {ex.Message}");
 
             ChatPanelControl.SetStatus(
