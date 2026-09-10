@@ -14,11 +14,8 @@ public enum BehaviorPauseReason
 
     Chat = 1 << 0,
     UserDrag = 1 << 1,
-    Physics = 1 << 2,
+    Physics = 1 << 2
 
-    // Untuk menjaga compatibility
-    // kalau masih ada caller lama.
-    Manual = 1 << 3
 }
 
 public sealed class BehaviorController : IDisposable
@@ -636,7 +633,7 @@ public sealed class BehaviorController : IDisposable
 
 
     public void SetThinking(
-    bool thinking)
+     bool thinking)
     {
         _thinking =
             thinking;
@@ -1111,13 +1108,6 @@ public sealed class BehaviorController : IDisposable
         _timer.Start();
     }
 
-    public void Pause()
-    {
-        Pause(
-            BehaviorPauseReason.Manual);
-    }
-
-
     public void Pause(
         BehaviorPauseReason reason)
     {
@@ -1153,14 +1143,6 @@ public sealed class BehaviorController : IDisposable
             $"[Lu-Knight] Pause +{reason} " +
             $"=> {_pauseReasons}");
     }
-
-
-    public void Resume()
-    {
-        Resume(
-            BehaviorPauseReason.Manual);
-    }
-
 
     public void Resume(
         BehaviorPauseReason reason)

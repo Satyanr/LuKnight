@@ -68,8 +68,7 @@ public sealed class SurfaceBehaviorController
     private nint _pendingJumpTargetHandle =
         nint.Zero;
 
-    private SurfaceNavigationIntent
-_adventureIntent =
+    private SurfaceNavigationIntent _adventureIntent =
     SurfaceNavigationIntent.Balanced;
 
 
@@ -922,13 +921,24 @@ _adventureIntent =
     }
 
     private bool BeginTargetJump(
-        DateTime now)
+    DateTime now,
+    bool thinking)
     {
+        // Jangan memulai autonomous
+        // navigation baru saat AI
+        // sedang berpikir.
+        if (thinking)
+        {
+            return false;
+        }
+
+
         if (_supportWindowHandle ==
                 nint.Zero ||
-            !DesktopWindowService.TryGetWindow(
-                _supportWindowHandle,
-                out DesktopWindowInfo support))
+            !DesktopWindowService
+                .TryGetWindow(
+                    _supportWindowHandle,
+                    out DesktopWindowInfo support))
         {
             return false;
         }
@@ -1043,7 +1053,9 @@ _adventureIntent =
 
                 // Coba langsung melompat jika ada window tujuan yang sesuai.
                 if (_random.NextDouble() < 0.70 &&
-                    BeginTargetJump(now))
+                    BeginTargetJump(
+                        now,
+                        thinking))
                 {
                     return true;
                 }
@@ -1084,7 +1096,9 @@ _adventureIntent =
 
 
                 // Coba target lain setelah jeda aksi selesai.
-                if (_random.NextDouble() < 0.45 && BeginTargetJump(now))
+                if (_random.NextDouble() < 0.45 && BeginTargetJump(
+    now,
+    thinking))
                 {
                     return true;
                 }
@@ -1114,7 +1128,9 @@ _adventureIntent =
 
 
                 // Coba target lain setelah jeda aksi selesai.
-                if (_random.NextDouble() < 0.35 && BeginTargetJump(now))
+                if (_random.NextDouble() < 0.35 && BeginTargetJump(
+    now,
+    thinking))
                 {
                     return true;
                 }
@@ -1144,7 +1160,9 @@ _adventureIntent =
                 // 30% coba lompat ke window lain
                 if (hangChoice < 0.90)
                 {
-                    if (BeginTargetJump(now))
+                    if (BeginTargetJump(
+    now,
+    thinking))
                     {
                         return true;
                     }
@@ -1194,7 +1212,9 @@ _adventureIntent =
                 else if (sideChoice < 0.85)
                 {
                     // 25% mencoba loncat
-                    if (BeginTargetJump(now))
+                    if (BeginTargetJump(
+    now,
+    thinking))
                     {
                         return true;
                     }
@@ -1485,7 +1505,7 @@ _adventureIntent =
         _lastSupportWindowBounds =
             Rect.Empty;
 
-
+        ResetNavigationAdventure();
 
         SupportLost?.Invoke();
     }

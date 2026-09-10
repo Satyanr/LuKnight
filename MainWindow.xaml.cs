@@ -232,7 +232,8 @@ public partial class MainWindow : Window
             if (!grabStarted)
             {
                 _behaviorController?
-                    .Resume();
+                    .Resume(
+                        BehaviorPauseReason.UserDrag);
 
                 return;
             }
