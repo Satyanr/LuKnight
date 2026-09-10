@@ -682,7 +682,7 @@ public partial class CharacterView : UserControl
             case CharacterState.Idle:
 
                 AnimateSpriteShadowTo(
-                    0.28,
+                    0.50,
                     1.00,
                     1.00,
                     0);
@@ -693,9 +693,9 @@ public partial class CharacterView : UserControl
             case CharacterState.Walk:
 
                 AnimateSpriteShadowTo(
-                    0.30,
+                    0.55,
                     1.08,
-                    0.92,
+                    0.90,
                     0);
 
                 break;
@@ -704,9 +704,9 @@ public partial class CharacterView : UserControl
             case CharacterState.Sleep:
 
                 AnimateSpriteShadowTo(
-                    0.22,
-                    1.16,
-                    0.88,
+                    0.42,
+                    1.18,
+                    0.86,
                     1);
 
                 break;
@@ -729,7 +729,6 @@ public partial class CharacterView : UserControl
                 break;
         }
     }
-
     private void CharacterView_Loaded(
         object sender,
         RoutedEventArgs e)
@@ -769,7 +768,7 @@ public partial class CharacterView : UserControl
         StopSpriteShadowAnimations();
 
 
-        SpriteShadow.Opacity = 0.28;
+        SpriteShadow.Opacity = 0.50;
 
         SpriteShadowScale.ScaleX = 1;
         SpriteShadowScale.ScaleY = 1;
@@ -780,11 +779,23 @@ public partial class CharacterView : UserControl
 
     public void SetState(CharacterState state)
     {
+        bool stateChanged =
+            CurrentState != state;
+
+
         StopCurrentAnimation();
         StopSpriteMotion();
         StopSpriteExpression();
         ResetSpriteAttention();
         ResetSpriteImpact();
+
+
+        if (stateChanged)
+        {
+            ResetSpriteAirMotion();
+        }
+
+
         CurrentState = state;
 
         if (_preferredRenderMode == CharacterRenderMode.Sprite &&

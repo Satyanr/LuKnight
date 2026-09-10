@@ -386,6 +386,10 @@ DateTime now)
         _velocityY +=
             Gravity * delta;
 
+        _character.SetAirborneVelocity(
+            _velocityX,
+            _velocityY);
+
 
         double nextLeft =
             windowBounds.Left +

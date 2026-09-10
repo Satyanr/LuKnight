@@ -22,6 +22,10 @@ public partial class CharacterView
 
     private bool _spriteCursorTracking;
 
+    private double _spriteAirAngle;
+    private double _spriteAirScaleX = 1;
+    private double _spriteAirScaleY = 1;
+
     private void PlaySpriteLandingShadow(
     double impactSpeed)
     {
@@ -43,7 +47,7 @@ public partial class CharacterView
 
 
         // Base state setelah animasi selesai.
-        SpriteShadow.Opacity = 0.28;
+        SpriteShadow.Opacity = 0.50;
 
         SpriteShadowScale.ScaleX = 1;
         SpriteShadowScale.ScaleY = 1;
@@ -61,8 +65,7 @@ public partial class CharacterView
 
         opacityAnimation.KeyFrames.Add(
             new LinearDoubleKeyFrame(
-                0.38 +
-                (0.18 * strength),
+                0.68 + (0.12 * strength),
 
                 KeyTime.FromTimeSpan(
                     TimeSpan.Zero)));
@@ -70,7 +73,7 @@ public partial class CharacterView
 
         opacityAnimation.KeyFrames.Add(
             new EasingDoubleKeyFrame(
-                0.28,
+                0.50,
 
                 KeyTime.FromTimeSpan(
                     TimeSpan.FromMilliseconds(
@@ -151,6 +154,113 @@ public partial class CharacterView
         SpriteShadowScale.BeginAnimation(
             ScaleTransform.ScaleYProperty,
             scaleY);
+    }
+
+    private void ResetSpriteAirMotion()
+    {
+        _spriteAirAngle = 0;
+
+        _spriteAirScaleX = 1;
+        _spriteAirScaleY = 1;
+
+
+        SpriteAirRotate.Angle = 0;
+
+        SpriteAirScale.ScaleX = 1;
+        SpriteAirScale.ScaleY = 1;
+    }
+
+    private void UpdateSpriteAirMotion(
+    double velocityX,
+    double velocityY)
+    {
+        if (_renderMode !=
+                CharacterRenderMode.Sprite ||
+            CurrentState !=
+                CharacterState.Falling)
+        {
+            return;
+        }
+
+
+        double horizontal =
+            Math.Clamp(
+                velocityX / 900.0,
+                -1,
+                1);
+
+
+        double vertical =
+            Math.Clamp(
+                velocityY / 900.0,
+                -1,
+                1);
+
+
+        // Saat naik, tubuh sedikit lebih miring.
+        // Saat mulai turun, tubuh perlahan tegak lagi.
+        double directionalStrength =
+            vertical < 0
+                ? 13.0
+                : 7.0;
+
+
+        double targetAngle =
+            horizontal *
+            directionalStrength;
+
+
+        double speed =
+            Math.Sqrt(
+                (velocityX * velocityX) +
+                (velocityY * velocityY));
+
+
+        double speedFactor =
+            Math.Clamp(
+                speed / 1450.0,
+                0,
+                1);
+
+
+        double targetScaleX =
+            1.0 -
+            (0.025 * speedFactor);
+
+
+        double targetScaleY =
+            1.0 +
+            (0.045 * speedFactor);
+
+
+        // smoothing
+        _spriteAirAngle +=
+            (targetAngle -
+             _spriteAirAngle) *
+            0.16;
+
+
+        _spriteAirScaleX +=
+            (targetScaleX -
+             _spriteAirScaleX) *
+            0.14;
+
+
+        _spriteAirScaleY +=
+            (targetScaleY -
+             _spriteAirScaleY) *
+            0.14;
+
+
+        SpriteAirRotate.Angle =
+            _spriteAirAngle;
+
+
+        SpriteAirScale.ScaleX =
+            _spriteAirScaleX;
+
+        SpriteAirScale.ScaleY =
+            _spriteAirScaleY;
     }
 
     private void StopSpriteAttentionAnimations()
@@ -236,6 +346,14 @@ public partial class CharacterView
                 1) * 1.1;
     }
 
+    public void SetAirborneVelocity(
+        double velocityX,
+        double velocityY)
+    {
+        UpdateSpriteAirMotion(
+            velocityX,
+            velocityY);
+    }
     private void StartSpriteStateMotion(
     CharacterState state)
     {
