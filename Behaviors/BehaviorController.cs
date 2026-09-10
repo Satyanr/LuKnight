@@ -30,7 +30,7 @@ public sealed class BehaviorController : IDisposable
 
     private int _direction = 1;
 
-    private const double WalkSpeed = 55.0;
+    private const double WalkSpeed = 70.0;
 
     private bool _cursorNearby;
     private bool _cursorVeryClose;
@@ -642,78 +642,141 @@ public sealed class BehaviorController : IDisposable
     }
 
     private void MoveCharacter(
-        double deltaSeconds)
+     double deltaSeconds)
     {
-        Rect workArea =
-            SystemParameters.WorkArea;
+        Rect windowBounds =
+            DesktopMonitorService
+                .GetWindowBounds(
+                    _window);
 
-        double characterWidth =
-            _window.ActualWidth;
+        DesktopMonitorInfo monitor =
+            DesktopMonitorService
+                .GetMonitorForWindow(
+                    _window);
 
-        double minLeft =
-            workArea.Left;
+        double width =
+            windowBounds.Width;
 
-        double maxLeft =
-            workArea.Right -
-            characterWidth;
 
         double newLeft =
-            _window.Left +
+            windowBounds.Left +
             (_direction *
              WalkSpeed *
              deltaSeconds);
 
+        double newTop =
+            monitor.WorkArea.Bottom -
+            windowBounds.Height;
+
+
+        double minLeft =
+            monitor.WorkArea.Left;
+
+        double maxLeft =
+            monitor.WorkArea.Right -
+            width;
+
+
         if (newLeft <= minLeft)
         {
-            newLeft = minLeft;
-            _direction = 1;
+            bool taskbarBlocks =
+                monitor.HasTaskbarLeft;
 
-            _character.SetFacingDirection(
-                _direction);
+            bool hasNeighbor =
+                DesktopMonitorService
+                    .TryGetNeighbor(
+                        monitor,
+                        MonitorDirection.Left,
+                        out _);
+
+            if (taskbarBlocks ||
+                !hasNeighbor)
+            {
+                newLeft =
+                    minLeft;
+
+                _direction = 1;
+
+                _character
+                    .SetFacingDirection(
+                        _direction);
+            }
         }
         else if (newLeft >= maxLeft)
         {
-            newLeft = maxLeft;
-            _direction = -1;
+            bool taskbarBlocks =
+                monitor.HasTaskbarRight;
 
-            _character.SetFacingDirection(
-                _direction);
+            bool hasNeighbor =
+                DesktopMonitorService
+                    .TryGetNeighbor(
+                        monitor,
+                        MonitorDirection.Right,
+                        out _);
+
+            if (taskbarBlocks ||
+                !hasNeighbor)
+            {
+                newLeft =
+                    maxLeft;
+
+                _direction = -1;
+
+                _character
+                    .SetFacingDirection(
+                        _direction);
+            }
         }
 
-        _window.Left = newLeft;
+
+        DesktopMonitorService
+            .SetWindowPosition(
+                _window,
+                newLeft,
+                newTop);
     }
 
     private void PlaceOnDesktopBottom()
     {
+        Rect windowBounds =
+            DesktopMonitorService
+                .GetWindowBounds(
+                    _window);
+
+        DesktopMonitorInfo monitor =
+            DesktopMonitorService
+                .GetMonitorForWindow(
+                    _window);
+
         Rect workArea =
-            SystemParameters.WorkArea;
+            monitor.WorkArea;
 
-        double width =
-            _window.ActualWidth > 0
-                ? _window.ActualWidth
-                : _window.Width;
-
-        double height =
-            _window.ActualHeight > 0
-                ? _window.ActualHeight
-                : _window.Height;
 
         double maxLeft =
             Math.Max(
                 workArea.Left,
-                workArea.Right - width);
+                workArea.Right -
+                windowBounds.Width);
 
-        _window.Left =
+
+        double left =
             Math.Clamp(
-                _window.Left,
+                windowBounds.Left,
                 workArea.Left,
                 maxLeft);
 
-        _window.Top =
-            workArea.Bottom -
-            height;
-    }
 
+        double top =
+            workArea.Bottom -
+            windowBounds.Height;
+
+
+        DesktopMonitorService
+            .SetWindowPosition(
+                _window,
+                left,
+                top);
+    }
     private void ScheduleNextDecision(
         double minSeconds,
         double maxSeconds)

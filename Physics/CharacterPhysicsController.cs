@@ -116,7 +116,7 @@ DateTime now)
 
 
         if (_lastShakeDirection != 0 &&
-            direction != _lastShakeDirection)
+             direction == -_lastShakeDirection)
         {
             _shakeReversalCount++;
         }
@@ -203,10 +203,17 @@ DateTime now)
         _velocityX = 0;
         _velocityY = 0;
 
+        Rect windowBounds =
+            DesktopMonitorService
+                .GetWindowBounds(
+                    _window);
+
         _grabOffset =
             new Point(
-                cursor.X - _window.Left,
-                cursor.Y - _window.Top);
+                cursor.X -
+                windowBounds.Left,
+                cursor.Y -
+                windowBounds.Top);
 
         _lastCursor = cursor;
         _lastCursorAt = DateTime.UtcNow;
@@ -277,13 +284,13 @@ DateTime now)
                     MaximumThrowSpeed);
         }
 
-        _window.Left =
-            cursor.X -
-            _grabOffset.X;
-
-        _window.Top =
-            cursor.Y -
-            _grabOffset.Y;
+        DesktopMonitorService
+            .SetWindowPosition(
+                _window,
+                cursor.X -
+                _grabOffset.X,
+                cursor.Y -
+                _grabOffset.Y);
 
         _lastCursor = cursor;
         _lastCursorAt = now;
@@ -338,108 +345,207 @@ DateTime now)
     }
 
     private void UpdateFalling(
-        double delta)
+    double delta)
     {
+        Rect windowBounds =
+            DesktopMonitorService
+                .GetWindowBounds(
+                    _window);
+
+        DesktopMonitorInfo monitor =
+            DesktopMonitorService
+                .GetMonitorForWindow(
+                    _window);
+
         Rect area =
-            SystemParameters.WorkArea;
+            monitor.WorkArea;
+
 
         double width =
-            GetWindowWidth();
+            windowBounds.Width;
 
         double height =
-            GetWindowHeight();
+            windowBounds.Height;
+
 
         _velocityY +=
             Gravity * delta;
 
+
         double nextLeft =
-            _window.Left +
+            windowBounds.Left +
             (_velocityX * delta);
 
         double nextTop =
-            _window.Top +
+            windowBounds.Top +
             (_velocityY * delta);
+
 
         double minLeft =
             area.Left;
 
         double maxLeft =
-            area.Right - width;
+            area.Right -
+            width;
+
+        double ceiling =
+            area.Top;
 
         double floor =
-            area.Bottom - height;
+            area.Bottom -
+            height;
 
 
-        // LEFT WALL
+        // =========================
+        // LEFT EDGE
+        // =========================
+
         if (nextLeft <= minLeft)
         {
-            nextLeft = minLeft;
+            bool canCross =
+                !monitor.HasTaskbarLeft &&
+                DesktopMonitorService
+                    .TryGetNeighbor(
+                        monitor,
+                        MonitorDirection.Left,
+                        out _);
 
-            _velocityX =
-                Math.Abs(_velocityX)
-                * WallBounce;
+            if (!canCross)
+            {
+                nextLeft =
+                    minLeft;
 
-            _character.SetFacingDirection(1);
+                _velocityX =
+                    Math.Abs(_velocityX) *
+                    WallBounce;
+
+                _character
+                    .SetFacingDirection(1);
+            }
         }
 
 
-        // RIGHT WALL
+        // =========================
+        // RIGHT EDGE
+        // =========================
+
         if (nextLeft >= maxLeft)
         {
-            nextLeft = maxLeft;
+            bool canCross =
+                !monitor.HasTaskbarRight &&
+                DesktopMonitorService
+                    .TryGetNeighbor(
+                        monitor,
+                        MonitorDirection.Right,
+                        out _);
 
-            _velocityX =
-                -Math.Abs(_velocityX)
-                * WallBounce;
+            if (!canCross)
+            {
+                nextLeft =
+                    maxLeft;
 
-            _character.SetFacingDirection(-1);
+                _velocityX =
+                    -Math.Abs(_velocityX) *
+                    WallBounce;
+
+                _character
+                    .SetFacingDirection(-1);
+            }
         }
 
 
+        // =========================
+        // TOP / CEILING
+        // =========================
+
+        if (nextTop <= ceiling)
+        {
+            bool canCross =
+                !monitor.HasTaskbarTop &&
+                DesktopMonitorService
+                    .TryGetNeighbor(
+                        monitor,
+                        MonitorDirection.Up,
+                        out _);
+
+            if (!canCross)
+            {
+                nextTop =
+                    ceiling;
+
+                _velocityY =
+                    Math.Abs(_velocityY) *
+                    0.25;
+            }
+        }
+
+
+        // =========================
         // FLOOR
+        // =========================
+
         if (nextTop >= floor)
         {
-            double impactSpeed =
-                Math.Abs(_velocityY);
-            _maximumImpactSpeed =
-                Math.Max(
-                    _maximumImpactSpeed,
-                    impactSpeed);
+            bool canCrossDown =
+                !monitor.HasTaskbarBottom &&
+                DesktopMonitorService
+                    .TryGetNeighbor(
+                        monitor,
+                        MonitorDirection.Down,
+                        out _);
 
-            nextTop = floor;
 
-            _bounceCount++;
-
-            if (impactSpeed >= 170 &&
-                _bounceCount <= 2)
+            if (!canCrossDown)
             {
-                _velocityY =
-                    -impactSpeed *
-                    FloorBounce;
+                double impactSpeed =
+                    Math.Abs(
+                        _velocityY);
 
-                _velocityX *=
-                    GroundFriction;
-            }
-            else
-            {
-                _window.Left =
-                    nextLeft;
 
-                _window.Top =
+                _maximumImpactSpeed =
+                    Math.Max(
+                        _maximumImpactSpeed,
+                        impactSpeed);
+
+
+                nextTop =
                     floor;
 
-                Settle(
-                    _maximumImpactSpeed);
+                _bounceCount++;
 
-                return;
+
+                if (impactSpeed >= 170 &&
+                    _bounceCount <= 2)
+                {
+                    _velocityY =
+                        -impactSpeed *
+                        FloorBounce;
+
+                    _velocityX *=
+                        GroundFriction;
+                }
+                else
+                {
+                    DesktopMonitorService
+                        .SetWindowPosition(
+                            _window,
+                            nextLeft,
+                            floor);
+
+                    Settle(
+                        _maximumImpactSpeed);
+
+                    return;
+                }
             }
         }
 
-        _window.Left =
-            nextLeft;
 
-        _window.Top =
-            nextTop;
+        DesktopMonitorService
+            .SetWindowPosition(
+                _window,
+                nextLeft,
+                nextTop);
     }
 
     private void Settle(
@@ -468,11 +574,10 @@ DateTime now)
     }
 
     private bool TryGetCursor(
-        out Point position)
+    out Point position)
     {
         return DesktopCursorService
-            .TryGetPositionDip(
-                _window,
+            .TryGetPosition(
                 out position);
     }
 
