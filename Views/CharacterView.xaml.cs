@@ -86,7 +86,17 @@ public partial class CharacterView : UserControl
     {
         InitializeComponent();
         EnsureSpritePlayer();
-        SetRenderMode(CharacterRenderMode.Vector);
+        RegisterSpriteClip(
+            CharacterState.Idle,
+            new SpriteAnimationClip(
+                "idle",
+                new[]
+                {
+                    "Assets/Characters/LuKnight/Idle/idle_000.png"
+                },
+                framesPerSecond: 12,
+                loop: true));
+        SetRenderMode(CharacterRenderMode.Sprite);
     }
 
     public CharacterRenderMode RenderMode => _renderMode;
