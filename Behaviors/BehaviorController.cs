@@ -885,8 +885,22 @@ public sealed class BehaviorController : IDisposable
     }
 
     private void MoveCharacter(
-     double deltaSeconds)
+    double deltaSeconds)
     {
+        // ====================================
+        // WALKING ON APPLICATION WINDOW
+        // ====================================
+
+        if (_supportWindowHandle !=
+            nint.Zero)
+        {
+            MoveOnSupportWindow(
+                deltaSeconds);
+
+            return;
+        }
+
+
         // ====================================
         // WALKING ON DESKTOP / TASKBAR
         // ====================================
@@ -926,10 +940,6 @@ public sealed class BehaviorController : IDisposable
             width;
 
 
-        // =========================
-        // LEFT EDGE
-        // =========================
-
         if (newLeft <= minLeft)
         {
             bool taskbarBlocks =
@@ -956,12 +966,6 @@ public sealed class BehaviorController : IDisposable
                         _direction);
             }
         }
-
-
-        // =========================
-        // RIGHT EDGE
-        // =========================
-
         else if (newLeft >= maxLeft)
         {
             bool taskbarBlocks =
