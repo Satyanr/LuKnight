@@ -27,6 +27,7 @@ internal static class Program
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
+        if (args.Contains("--physics")) { CheckThrowAndGrounding(output); Console.WriteLine($"PASS: {_checks} throw/input/grounding checks."); return; }
         if (args.Contains("--tray")) { CheckTray(); Console.WriteLine($"PASS: {_checks} tray checks."); return; }
         if (args.Contains("--attention")) { CheckAttentionAndIdle(output); Console.WriteLine($"PASS: {_checks} attention checks."); return; }
         CheckRigAndRendering(output);
@@ -42,10 +43,86 @@ internal static class Program
         CheckPuppet(output);
         CheckAttentionAndIdle(output);
         CheckTray();
+        CheckThrowAndGrounding(output);
         Console.WriteLine($"PASS: {_checks} checks (sprite scale, transparent bounds, state/mood transitions, cadence, lifecycle).");
     }
 
     private static T Get<T>(object obj, string name) => (T)obj.GetType().GetField(name, Private | BindingFlags.Public)!.GetValue(obj)!;
+
+    private static void CheckThrowAndGrounding(string output)
+    {
+        foreach (int hz in new[] { 30, 60, 120, 144, 1000 })
+        foreach (int direction in new[] { -1, 1 })
+        {
+            var tracker = new PointerVelocityTracker(); tracker.Reset(new Point(), 0);
+            for (int i = 1; i <= hz; i++) tracker.Add(new Point(direction * 900.0 * i / hz, -500.0 * i / hz), (double)i / hz);
+            tracker.Add(new Point(direction * 900, -500), 1.002);
+            Require(tracker.Velocity.X * direction > 850 && tracker.Velocity.Y < -450, $"Final stationary sample erased throw at {hz} Hz");
+            tracker.Add(new Point(direction * 900, -500), 1.2);
+            Require(tracker.Velocity.Length < .01, "Holding still before release retains stale throw momentum");
+        }
+        var view = new CharacterView(); Render(view);
+        var window = new Window { Left = 0, Top = 0, Width = 190, Height = 240 };
+        Point cursor = new(100, 100); double clock = 0;
+        using (var physics = new CharacterPhysicsController(window, view, () => cursor, () => clock))
+        {
+            view.SetState(CharacterState.Walk);
+            physics.PrepareGrab(cursor, clock);
+            clock = .006; cursor = new Point(108, 96); physics.SamplePointer(cursor);
+            Require(physics.BeginGrab(new Point(100, 100), 0), "Walking mascot cannot start a grab");
+            Require(view.CurrentState == CharacterState.Grabbed, "Grab does not own the physical state");
+            clock = .012; cursor = new Point(120, 88); physics.EndGrab();
+            Require(physics.IsFalling && !physics.IsGrabbed && view.CurrentState == CharacterState.Falling, "Release does not enter ballistic motion");
+            Require(Get<double>(physics, "_velocityX") > 900 && Get<double>(physics, "_velocityY") < -500, "A flick shorter than one render frame cannot throw");
+            clock = 1; cursor = new Point(100, 100); physics.PrepareGrab(cursor, clock);
+            Require(physics.BeginGrab(cursor, clock), "Second grab cannot start");
+            for (int i = 1; i <= 12; i++) { clock = 1 + i / 60.0; cursor = new Point(100 - 900 * i / 60.0, 100 - 500 * i / 60.0); physics.UpdateGrab(); }
+            clock += .002; physics.EndGrab();
+            Require(Get<double>(physics, "_velocityX") < -850 && Get<double>(physics, "_velocityY") < -450, "Left/up throw lost its direction or speed at release");
+            double airborneVelocity = Get<double>(physics, "_velocityY");
+            physics.PrepareGrab(cursor, clock); clock += .02; physics.SamplePointer(cursor); physics.CancelPreparedGrab();
+            Require(Get<double>(physics, "_velocityY") == airborneVelocity && !Get<bool>(physics, "_trackingPointer"), "Click without drag changes airborne momentum or leaves pending capture");
+        }
+
+        foreach (double dpi in new[] { 1, 1.25, 1.5, 2 })
+        {
+            double foot = CharacterGrounding.FootOffsetInPixels(10, 220, dpi);
+            double surface = 1000;
+            Require(Math.Abs((surface - foot) + (10 + 638.0 / 3) * dpi - surface) < .001, "Feet do not meet the desktop/window top at DPI " + dpi);
+            Require(240 * dpi - foot > 15 * dpi, "Transparent window padding was not removed from the floor anchor");
+        }
+        var samples = new List<(string Name, BitmapSource Image)>();
+        var rig = new SpritePuppet(SpritePuppetMotion.Walk);
+        for (int i = 0; i < 24; i++)
+        {
+            rig.Advance(i * .8 / 24);
+            var bitmap = Render(new Image { Source = rig.Image });
+            byte[] pixels = new byte[510 * 660 * 4]; bitmap.CopyPixels(pixels, 510 * 4, 0);
+            int bottom = -1;
+            for (int y = 0; y < 660; y++) for (int x = 0; x < 510; x++) if (pixels[(y * 510 + x) * 4 + 3] > 200) bottom = y;
+            Require(bottom >= 636 && bottom <= 639, $"Walking sole floats/sinks at phase {i}: y={bottom}");
+            if (i % 6 == 0)
+            {
+                var visual = new DrawingVisual();
+                using (var dc = visual.RenderOpen())
+                {
+                    dc.DrawImage(bitmap, new Rect(0, 0, 510, 660));
+                    dc.DrawLine(new Pen(Brushes.Turquoise, 2), new Point(20, 639), new Point(490, 639));
+                }
+                var grounded = new RenderTargetBitmap(510, 660, 96, 96, PixelFormats.Pbgra32); grounded.Render(visual);
+                samples.Add(($"Walk ground {i / 6}", grounded));
+            }
+        }
+        foreach (var state in new[] { CharacterState.Walk, CharacterState.Idle, CharacterState.Grabbed })
+        {
+            view.SetState(state);
+            Step(Get<SpriteAnimationPlayer>(view, "_spritePlayer"))(.025);
+            var bitmap = Render(view); byte[] pixels = new byte[510 * 660 * 4]; bitmap.CopyPixels(pixels, 510 * 4, 0);
+            Require(Enumerable.Range(0, 510 * 660).All(p => pixels[p * 4 + 3] > 0), "Layered-window input falls through transparent pixels during " + state);
+        }
+        SaveContactSheet(samples, Path.Combine(output, "ground-contact.png"));
+        view.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent)); window.Close();
+    }
 
     private static void CheckTray()
     {

@@ -28,9 +28,19 @@ Full-body PNG memakai kanvas 510 x 660 dan landmark kepala/titik pijak yang dika
 
 ## Cursor, klik, dan behavior
 
+Area input `CharacterView` memiliki alpha 1/255 yang tetap, terpisah dari siluet sprite. Pada layered window Windows, alpha nol meneruskan mouse ke window di bawahnya; mengaktifkan `IsHitTestVisible` saja tidak cukup. Dengan area input tetap, perubahan Walk ke Idle ketika hover tidak menghilangkan target klik/drag. Acuan: [Microsoft — Layered Windows](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features#layered-windows).
+
 `BehaviorController.ObservePointer` menerima event mouse WPF langsung, selain pembacaan cursor global. Koordinat dikonversi langsung ke `CharacterView` agar offset window dan DPI tetap tepat. Saat cursor mendekat, karakter berhenti berjalan, menatap cursor, dan bereaksi melalui mood serta telinga. Hover menjaga state Grabbed/Falling/Hanging/Climbing. Pandangan pada rig yang dimirror tetap mengikuti arah layar.
 
 LookSide, LookDown, dan EdgePeek menggerakkan mata, lalu kembali ke netral. Pause chat menghentikan gerak otonom tetapi perhatian, kedipan, dan durasi reaksi tetap berjalan. Sprite menerima hit testing; event mouse mencapai handler klik/drag. Jika capture gagal atau terlepas, pemilik pause UserDrag dilepas agar behavior tidak tertinggal dalam keadaan pause. Pelepasan ketika sedang drag menyerahkan kontrol kembali ke physics.
+
+## Lemparan dan pijakan
+
+`PointerVelocityTracker` menyimpan gerakan cursor dalam koordinat screen selama 80 ms terakhir. Sampling dimulai saat tombol ditekan, sebelum melewati ambang drag, dan dilengkapi oleh event mouse serta render clock. Sampel terakhir yang diam sesaat tidak menghapus momentum lemparan; menahan cursor diam selama 80 ms menghilangkan momentum lama. Posisi window tetap diperbarui sekali per render, dengan kecepatan lempar dibatasi 1450 pixel/detik per sumbu. Klik tanpa drag mempertahankan momentum physics sebelumnya.
+
+`CharacterGrounding` memakai baseline telapak Y=638 pada kanvas 510x660, termasuk posisi view di dalam window dan skala DPI. Acuan yang sama digunakan untuk lantai/taskbar, deteksi landing, pijakan window, akhir climb, dan rencana jump. Ruang transparan di bawah telapak tidak lagi dihitung sebagai tinggi badan. Rig jalan menyesuaikan tinggi tubuh berdasarkan outline kaki yang benar-benar terlihat sehingga telapak penopang tetap di baseline; napas idle tidak lagi mengangkat seluruh badan dari pijakan.
+
+Pemeriksaan khusus: `dotnet run --project tests/LuKnight.RenderChecks/LuKnight.RenderChecks.csproj -c Release -- --physics`. Preview `output/sprites/ground-contact.png` memperlihatkan telapak terhadap garis pijakan. Pengujian cursor menggunakan sampel deterministik, tanpa menggerakkan mouse desktop.
 
 ## Import dan preview
 
@@ -55,7 +65,7 @@ Preview runtime:
 
 ## Verifikasi
 
-329 pemeriksaan lolos pada build Release, termasuk 45 pemeriksaan khusus idle/perhatian/input. Hasil visual akhir ditinjau pada contact sheet runtime.
+409 pemeriksaan lolos pada build Release, termasuk 45 pemeriksaan idle/perhatian/input, 18 tray, dan 62 lemparan/input/pijakan. Hasil visual akhir ditinjau pada contact sheet runtime.
 
 Suite mencakup state/mood, arah, lifecycle, cadence 30/60/120/144 Hz, callback duplikat, stall, blend, phase boundary, alpha bounds, runtime rig, dan kedua kaki yang bergerak berlawanan. Kanvas rig diuji sepanjang 24 sampel siklus untuk kedua arah, tanpa clipping. Pemeriksaan perhatian mencakup alpha kepala pada sembilan arah pandangan saat berkedip, kestabilan tubuh idle, hover, glance, input routing, pelepasan capture, serta reaksi saat chat pause. Pemeriksaan WPF ini memakai render offscreen dan event sintetis.
 

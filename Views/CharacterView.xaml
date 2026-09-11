@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Width="170"
              Height="220"
-             Background="Transparent"
+             Background="#01000000"
              Cursor="SizeAll"
              Loaded="CharacterView_Loaded"
              Unloaded="CharacterView_Unloaded"
@@ -18,11 +18,6 @@
                              Storyboard.TargetProperty="ScaleY"
                              From="1"
                              To="1.018"
-                             Duration="0:0:1.6" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
-            <DoubleAnimation Storyboard.TargetName="SpriteTranslate"
-                             Storyboard.TargetProperty="Y"
-                             From="0"
-                             To="-1.8"
                              Duration="0:0:1.6" AccelerationRatio="0.5" DecelerationRatio="0.5"/>
             <DoubleAnimation Storyboard.TargetName="SpriteRotate"
                              Storyboard.TargetProperty="Angle"

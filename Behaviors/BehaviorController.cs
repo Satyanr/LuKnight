@@ -1693,7 +1693,7 @@ public sealed class BehaviorController : IDisposable
 
         double newTop =
             monitor.WorkArea.Bottom -
-            windowBounds.Height;
+            CharacterGrounding.GetFootOffset(_window, _character, windowBounds);
 
 
         double minLeft =
@@ -1796,7 +1796,7 @@ public sealed class BehaviorController : IDisposable
 
         double top =
             workArea.Bottom -
-            windowBounds.Height;
+            CharacterGrounding.GetFootOffset(_window, _character, windowBounds);
 
 
         DesktopMonitorService

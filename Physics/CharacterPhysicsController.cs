@@ -25,6 +25,33 @@ public sealed class CharacterPhysicsController : IDisposable
     private bool _isFalling;
 
     private Point _grabOffset;
+    private readonly PointerVelocityTracker _pointerVelocity = new();
+    private bool _trackingPointer;
+    private readonly Func<double> _pointerClock;
+    private readonly Func<Point?>? _cursorSource;
+    private double PointerTime => _pointerClock();
+
+    public void PrepareGrab(Point position, double time)
+    {
+        _trackingPointer = true;
+        _pointerVelocity.Reset(position, time);
+    }
+
+    public void CancelPreparedGrab()
+    {
+        _trackingPointer = false;
+        _lastTickAt = DateTime.UtcNow;
+    }
+
+    public void SamplePointer(Point position)
+    {
+        if (!_trackingPointer) return;
+        _pointerVelocity.Add(position, PointerTime);
+        if (!_isGrabbed) return;
+        Vector velocity = _pointerVelocity.Velocity;
+        _velocityX = Math.Clamp(velocity.X, -MaximumThrowSpeed, MaximumThrowSpeed);
+        _velocityY = Math.Clamp(velocity.Y, -MaximumThrowSpeed, MaximumThrowSpeed);
+    }
 
     private Point _lastCursor;
     private DateTime _lastCursorAt;
@@ -173,10 +200,14 @@ DateTime now)
 
     public CharacterPhysicsController(
         Window window,
-        CharacterView character)
+        CharacterView character,
+        Func<Point?>? cursorSource = null,
+        Func<double>? pointerClock = null)
     {
         _window = window;
         _character = character;
+        _cursorSource = cursorSource;
+        _pointerClock = pointerClock ?? (() => System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency);
 
         CompositionTarget.Rendering += OnRendering;
 
@@ -184,7 +215,7 @@ DateTime now)
             DateTime.UtcNow;
     }
 
-    public bool BeginGrab()
+    public bool BeginGrab(Point? anchor = null, double? anchorTime = null)
     {
         if (!TryGetCursor(out Point cursor))
             return false;
@@ -219,10 +250,13 @@ DateTime now)
 
         _grabOffset =
             new Point(
-                cursor.X -
+                (anchor ?? cursor).X -
                 windowBounds.Left,
-                cursor.Y -
+                (anchor ?? cursor).Y -
                 windowBounds.Top);
+
+        if (!_trackingPointer) PrepareGrab(anchor ?? cursor, anchorTime ?? PointerTime);
+        SamplePointer(cursor);
 
         _lastCursor = cursor;
         _lastCursorAt = DateTime.UtcNow;
@@ -273,32 +307,9 @@ DateTime now)
             instantVelocityY,
             now);
 
-            // Time-based smoothing keeps throw response consistent across refresh rates.
-            double velocityBlend = 1 - Math.Exp(-delta / .035);
-            _velocityX =
-                Lerp(
-                    _velocityX,
-                    instantVelocityX,
-                    velocityBlend);
-
-            _velocityY =
-                Lerp(
-                    _velocityY,
-                    instantVelocityY,
-                    velocityBlend);
-
-            _velocityX =
-                Math.Clamp(
-                    _velocityX,
-                    -MaximumThrowSpeed,
-                    MaximumThrowSpeed);
-
-            _velocityY =
-                Math.Clamp(
-                    _velocityY,
-                    -MaximumThrowSpeed,
-                    MaximumThrowSpeed);
         }
+
+        SamplePointer(cursor);
 
         DesktopMonitorService
             .SetWindowPosition(
@@ -321,6 +332,7 @@ DateTime now)
 
         // Include the final cursor sample before releasing into the ballistic path.
         UpdateGrab();
+        _trackingPointer = false;
         _isGrabbed = false;
         _isFalling = true;
 
@@ -342,6 +354,12 @@ DateTime now)
     private void OnRendering(object? sender, EventArgs e)
     {
         if (_suspended) return;
+        if (_trackingPointer && !_isGrabbed)
+        {
+            if (TryGetCursor(out Point cursor)) SamplePointer(cursor);
+            _lastTickAt = DateTime.UtcNow;
+            return;
+        }
         var time = ((RenderingEventArgs)e).RenderingTime;
         if (_lastRenderTime == time) return;
         _lastRenderTime = time;
@@ -400,7 +418,8 @@ DateTime now)
             windowBounds.Width;
 
         double height =
-            windowBounds.Height;
+            CharacterGrounding.GetFootOffset(_window, _character, windowBounds);
+        Rect collisionBounds = new(windowBounds.Left, windowBounds.Top, windowBounds.Width, height);
 
 
         _velocityY +=
@@ -545,7 +564,7 @@ DateTime now)
 
             bool reachesTargetHeight =
                 _velocityY > 0 &&
-                windowBounds.Bottom <= targetSurfaceTop + 1 &&
+                collisionBounds.Bottom <= targetSurfaceTop + 1 &&
                 nextBottom >= targetSurfaceTop;
 
             if (reachesTargetHeight)
@@ -572,7 +591,7 @@ DateTime now)
                 _targetWindowHandle = nint.Zero;
             }
             else if (_velocityY > 0 &&
-                     windowBounds.Bottom > targetSurfaceTop + 1)
+                     collisionBounds.Bottom > targetSurfaceTop + 1)
             {
                 // Target bergerak hingga permukaannya sudah terlewati.
                 _targetWindowHandle = nint.Zero;
@@ -590,7 +609,7 @@ DateTime now)
         if (_velocityY > 0 &&
             DesktopWindowService
                 .TryFindLandingSurface(
-                    windowBounds,
+                    collisionBounds,
                     nextLeft,
                     nextTop,
                     out DesktopWindowInfo
@@ -822,6 +841,12 @@ DateTime now)
     private bool TryGetCursor(
     out Point position)
     {
+        if (_cursorSource is not null)
+        {
+            Point? sample = _cursorSource();
+            position = sample ?? default;
+            return sample.HasValue;
+        }
         return DesktopCursorService
             .TryGetPosition(
                 out position);
@@ -839,15 +864,6 @@ DateTime now)
         return _window.ActualHeight > 0
             ? _window.ActualHeight
             : _window.Height;
-    }
-
-    private static double Lerp(
-        double from,
-        double to,
-        double amount)
-    {
-        return from +
-               ((to - from) * amount);
     }
 
     public void Dispose()

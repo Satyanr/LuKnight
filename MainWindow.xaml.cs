@@ -20,6 +20,8 @@ public partial class MainWindow : Window
     private bool _isSending;
 
     private Point _mouseDownPosition;
+    private Point _mouseDownScreenPosition;
+    private double _mouseDownTime;
     private bool _leftMouseDown;
     private bool _dragStarted;
 
@@ -168,12 +170,15 @@ public partial class MainWindow : Window
 
         _mouseDownPosition =
             e.GetPosition(this);
+        _mouseDownScreenPosition = PointToScreen(_mouseDownPosition);
+        _mouseDownTime = System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
 
         if (!CharacterControl.CaptureMouse())
         {
             _leftMouseDown = false;
             _behaviorController?.Resume(BehaviorPauseReason.UserDrag);
         }
+        else _physicsController?.PrepareGrab(_mouseDownScreenPosition, _mouseDownTime);
 
         e.Handled = true;
     }
@@ -194,6 +199,7 @@ public partial class MainWindow : Window
 
         Point currentPosition =
             e.GetPosition(this);
+        _physicsController?.SamplePointer(PointToScreen(currentPosition));
 
         double horizontalDistance =
             Math.Abs(
@@ -233,7 +239,7 @@ public partial class MainWindow : Window
 
             bool grabStarted =
                 _physicsController?
-                    .BeginGrab() == true;
+                    .BeginGrab(_mouseDownScreenPosition, _mouseDownTime) == true;
 
             if (!grabStarted)
             {
@@ -251,8 +257,7 @@ public partial class MainWindow : Window
         }
 
 
-        // Physics samples the global cursor once per rendered frame. Mouse events only
-        // start the grab; high polling-rate mice no longer trigger redundant window moves.
+        // Actual window movement remains on the render clock.
 
         e.Handled = true;
     }
@@ -290,6 +295,7 @@ public partial class MainWindow : Window
         }
         else
         {
+            _physicsController?.CancelPreparedGrab();
             _behaviorController?
                 .Resume(
                     BehaviorPauseReason.UserDrag);
@@ -320,6 +326,7 @@ public partial class MainWindow : Window
             _behaviorController?.Pause(BehaviorPauseReason.Physics);
             _physicsController?.EndGrab();
         }
+        else _physicsController?.CancelPreparedGrab();
         _behaviorController?.Resume(BehaviorPauseReason.UserDrag);
     }
 

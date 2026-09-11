@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using LuKnight.Services;
 
 namespace LuKnight.Visuals;
 
@@ -14,14 +15,33 @@ public sealed class SpritePuppet
     {
         public readonly RotateTransform Rotation;
         public readonly ScaleTransform Stretch;
+        private readonly TransformGroup _transforms;
+        private readonly List<Point> _outline = new();
         public Limb(DrawingGroup scene, ImageSource image, Rect bounds, Point joint)
         {
             Stretch = new ScaleTransform(1, 1, joint.X, joint.Y);
             Rotation = new RotateTransform(0, joint.X, joint.Y);
             var transforms = new TransformGroup(); transforms.Children.Add(Stretch); transforms.Children.Add(Rotation);
+            _transforms = transforms;
             var group = new DrawingGroup { Transform = transforms };
             group.Children.Add(new ImageDrawing(image, bounds)); scene.Children.Add(group);
+            if (image is BitmapSource bitmap)
+            {
+                int w = bitmap.PixelWidth, h = bitmap.PixelHeight;
+                byte[] pixels = new byte[w * h * 4];
+                new FormatConvertedBitmap(bitmap, PixelFormats.Pbgra32, null, 0).CopyPixels(pixels, w * 4, 0);
+                // Row endpoints follow the actual fur/sole outline, not transparent PNG corners.
+                for (int y = 0; y < h; y++)
+                {
+                    int left = w, right = -1;
+                    for (int x = 0; x < w; x++) if (pixels[(y * w + x) * 4 + 3] > 128) { left = Math.Min(left, x); right = x; }
+                    if (right < 0) continue;
+                    _outline.Add(new Point(bounds.Left + bounds.Width * left / w, bounds.Top + bounds.Height * (y + 1) / h));
+                    _outline.Add(new Point(bounds.Left + bounds.Width * (right + 1) / w, bounds.Top + bounds.Height * (y + 1) / h));
+                }
+            }
         }
+        public double Bottom => _outline.Max(p => _transforms.Transform(p).Y);
     }
     private readonly DrawingGroup _scene = new();
     private readonly TranslateTransform _bounce = new();
@@ -73,7 +93,8 @@ public sealed class SpritePuppet
             // The swing leg lifts, the opposite stance leg stays extended.
             _nearLeg.Stretch.ScaleY = 1 - .14 * Math.Max(0, Math.Cos(phase));
             _farLeg.Stretch.ScaleY = 1 - .14 * Math.Max(0, -Math.Cos(phase));
-            _bounce.Y = -1.5 * (1 - Math.Cos(phase * 2));
+            // Keep the planted sole on the shared ground line throughout the stride.
+            _bounce.Y = CharacterGrounding.SpriteSoleY - Math.Max(_nearLeg.Bottom, _farLeg.Bottom);
         }
         else
         {

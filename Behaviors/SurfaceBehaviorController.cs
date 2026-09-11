@@ -583,7 +583,7 @@ public sealed class SurfaceBehaviorController
 
         double standingTop =
             support.Bounds.Top -
-            characterBounds.Height;
+            CharacterGrounding.GetFootOffset(_window, _character, characterBounds);
 
 
         double left =
@@ -960,7 +960,7 @@ public sealed class SurfaceBehaviorController
                     GetHangingLeft(support.Bounds, characterBounds.Width),
                     support.Bounds.Top + _sideGripOffsetY - HangGripOffsetY,
                     characterBounds.Width,
-                    characterBounds.Height),
+                    CharacterGrounding.GetFootOffset(_window, _character, characterBounds)),
                 _surfaceEdgeDirection,
                 _environmentMemory,
                 navigationIntent,
@@ -1416,7 +1416,7 @@ public sealed class SurfaceBehaviorController
                   _sideGripOffsetY -
                   HangGripOffsetY
                 : support.Bounds.Top -
-                  characterBounds.Height;
+                  CharacterGrounding.GetFootOffset(_window, _character, characterBounds);
 
 
         DesktopMonitorService
@@ -1554,7 +1554,7 @@ public sealed class SurfaceBehaviorController
 
         double supportTop =
             support.Bounds.Top -
-            characterBounds.Height;
+            CharacterGrounding.GetFootOffset(_window, _character, characterBounds);
 
 
         // Phase 3D-A:
