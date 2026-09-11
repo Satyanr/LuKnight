@@ -425,6 +425,72 @@ public partial class MainWindow : Window
         }
     }
 
+    public void ShowFromTray()
+    {
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+
+        _behaviorController?
+            .Resume(
+                BehaviorPauseReason.Hidden);
+
+
+        Activate();
+    }
+
+    public void HideToTray()
+    {
+        // Popup adalah window terpisah.
+        // Tutup supaya tidak tertinggal
+        // ketika mascot disembunyikan.
+        if (ChatPopup.IsOpen)
+        {
+            ChatPopup.IsOpen =
+                false;
+
+
+            _behaviorController?
+                .Resume(
+                    BehaviorPauseReason.Chat);
+        }
+
+
+        _behaviorController?
+            .Pause(
+                BehaviorPauseReason.Hidden);
+
+
+        Hide();
+    }
+
+    public void OpenChatFromTray()
+    {
+        ShowFromTray();
+
+
+        _behaviorController?
+            .NotifyUserInteraction();
+
+
+        if (!ChatPopup.IsOpen)
+        {
+            ChatPopup.IsOpen =
+                true;
+
+
+            _behaviorController?
+                .Pause(
+                    BehaviorPauseReason.Chat);
+        }
+
+
+        Dispatcher.BeginInvoke(
+            ChatPanelControl.FocusInput);
+    }
+
     protected override void OnClosed(
     EventArgs e)
     {

@@ -13,7 +13,7 @@
 
         ResizeMode="NoResize"
         Topmost="True"
-        ShowInTaskbar="True"
+        ShowInTaskbar="False"
         WindowStartupLocation="CenterScreen">
 
     <Grid Background="Transparent">

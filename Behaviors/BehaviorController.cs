@@ -15,8 +15,8 @@ public enum BehaviorPauseReason
 
     Chat = 1 << 0,
     UserDrag = 1 << 1,
-    Physics = 1 << 2
-
+    Physics = 1 << 2,
+    Hidden = 1 << 3
 }
 
 public sealed class BehaviorController : IDisposable
