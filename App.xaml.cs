@@ -20,6 +20,7 @@ public partial class App : Application
     {
         if (_isExiting || _character is null) return;
         var settings = GetOrCreateSettingsWindow();
+        settings.Topmost = true;
         if (settings.WindowState == WindowState.Minimized) settings.WindowState = WindowState.Normal;
         if (!settings.IsVisible) settings.Show();
         settings.Activate();

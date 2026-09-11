@@ -87,6 +87,7 @@ public sealed class TrayIconService : IDisposable
                     show();
                 }
             };
+
     }
     private Forms.ToolStripMenuItem Add(string text, Action command)
     {
