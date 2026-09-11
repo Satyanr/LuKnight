@@ -83,10 +83,21 @@ public sealed class SpriteAnimationPlayer : IDisposable
                 _subscribed = true;
             }
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine(
+                $"[Lu-Knight][Sprite] LOAD FAILED: {ex}");
+
+            MessageBox.Show(
+                ex.ToString(),
+                "Lu-Knight Sprite Load Failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+
             Stop();
+
             _image.Source = null;
+
             FrameLoadFailed?.Invoke();
         }
     }

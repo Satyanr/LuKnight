@@ -64,6 +64,9 @@ public partial class App : Application
 
 
         _mainWindow.Show();
+
+        System.Diagnostics.Debug.WriteLine(
+            "[Lu-Knight][App] Startup complete");
     }
 
 
@@ -178,6 +181,9 @@ public partial class App : Application
                 Dispatcher.Invoke(
                     ToggleCharacterVisibility);
             };
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[Lu-Knight][Tray] Created. Visible={_trayIcon.Visible}");
     }
 
 
