@@ -27,6 +27,7 @@ internal static class Program
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
+        if (args.Contains("--tray")) { CheckTray(); Console.WriteLine($"PASS: {_checks} tray checks."); return; }
         if (args.Contains("--attention")) { CheckAttentionAndIdle(output); Console.WriteLine($"PASS: {_checks} attention checks."); return; }
         CheckRigAndRendering(output);
         CheckLifecycle();
@@ -40,10 +41,79 @@ internal static class Program
         CheckHeadRegistration();
         CheckPuppet(output);
         CheckAttentionAndIdle(output);
+        CheckTray();
         Console.WriteLine($"PASS: {_checks} checks (sprite scale, transparent bounds, state/mood transitions, cadence, lifecycle).");
     }
 
     private static T Get<T>(object obj, string name) => (T)obj.GetType().GetField(name, Private | BindingFlags.Public)!.GetValue(obj)!;
+
+    private static void CheckTray()
+    {
+        int toggled = 0, shown = 0, chat = 0, restarted = 0, exited = 0;
+        using var tray = new TrayIconService(() => toggled++, () => shown++, () => chat++, () => restarted++, () => exited++);
+        var items = tray.Menu.Items.OfType<System.Windows.Forms.ToolStripMenuItem>().ToArray();
+        Require(items.Select(i => i.Text).SequenceEqual(new[] { "Hide Lu-Knight", "Open Chat", "Restart Lu-Knight", "Exit" }), "Tray commands are missing or out of order");
+        foreach (var item in items) item.PerformClick();
+        Require(toggled == 1 && chat == 1 && restarted == 1 && exited == 1, "Tray menu does not dispatch each command exactly once");
+        tray.SetCharacterVisible(false);
+        Require(items[0].Text == "Show Lu-Knight", "Hidden mascot cannot be restored from menu");
+        tray.SetCharacterVisible(true);
+        Require(items[0].Text == "Hide Lu-Knight", "Tray visibility label is stale");
+        var icon = Get<System.Windows.Forms.NotifyIcon>(tray, "_icon");
+        Require(icon.Icon is not null && icon.Text == "Lu-Knight", "Shell icon/tooltip is missing");
+        var doubleClick = typeof(System.Windows.Forms.NotifyIcon).GetMethod("OnMouseDoubleClick", Private)!;
+        doubleClick.Invoke(icon, new object[] { new System.Windows.Forms.MouseEventArgs(System.Windows.Forms.MouseButtons.Left, 2, 0, 0, 0) });
+        doubleClick.Invoke(icon, new object[] { new System.Windows.Forms.MouseEventArgs(System.Windows.Forms.MouseButtons.Right, 2, 0, 0, 0) });
+        Require(shown == 1 && toggled == 1, "Double click must restore the mascot, not hide it or react to right clicks");
+        tray.Dispose(); tray.Dispose();
+        Require(tray.Menu.IsDisposed && !icon.Visible, "Tray shutdown leaks menu/icon");
+
+        var native = ApplicationRestart.CreateStartInfo(@"C:\My App\LuKnight.exe", @"C:\My App\LuKnight.dll", new[] { "--example", "value with spaces" });
+        Require(native.ArgumentList.SequenceEqual(new[] { "--example", "value with spaces" }), "Restart loses/incorrectly quotes application arguments");
+        var hosted = ApplicationRestart.CreateStartInfo(@"C:\dotnet\dotnet.exe", @"C:\My App\LuKnight.dll", Array.Empty<string>());
+        Require(hosted.ArgumentList.SequenceEqual(new[] { @"C:\My App\LuKnight.dll" }), "Framework-dependent restart launches dotnet without the application");
+        Require(!hosted.UseShellExecute && hosted.CreateNoWindow && hosted.WindowStyle == ProcessWindowStyle.Hidden, "Restart exposes a console window");
+
+        var view = new CharacterView(); Render(view);
+        var window = new Window();
+        using (var behavior = new BehaviorController(window, view))
+        using (var physics = new CharacterPhysicsController(window, view))
+        {
+            view.SetState(CharacterState.Walk);
+            behavior.Resume(BehaviorPauseReason.Hidden);
+            Require(view.CurrentState == CharacterState.Walk, "Show on an already visible mascot resets its behavior");
+            behavior.Pause(BehaviorPauseReason.Hidden);
+            behavior.Pause(BehaviorPauseReason.Chat);
+            behavior.Resume(BehaviorPauseReason.Chat);
+            Require(Get<BehaviorPauseReason>(behavior, "_pauseReasons") == BehaviorPauseReason.Hidden, "Closing chat resumes a hidden mascot");
+            view.SetState(CharacterState.Falling); view.SetMood(CharacterMood.Surprised);
+            typeof(BehaviorController).GetMethod("OnTick", Private)!.Invoke(behavior, new object?[] { null, EventArgs.Empty });
+            Require(view.CurrentState == CharacterState.Falling && view.CurrentMood == CharacterMood.Surprised, "Hidden behavior still reacts to cursor/moods");
+            behavior.Resume(BehaviorPauseReason.Hidden);
+            Require(!behavior.IsPaused && view.CurrentState == CharacterState.Falling, "Restore replaces the physical pose/repositions the mascot");
+            physics.SetSuspended(true);
+            typeof(CharacterPhysicsController).GetField("_isFalling", Private)!.SetValue(physics, true);
+            typeof(CharacterPhysicsController).GetField("_velocityY", Private)!.SetValue(physics, 300.0);
+            typeof(CharacterPhysicsController).GetMethod("OnRendering", Private)!.Invoke(physics, new object?[] { null, RenderAt(20) });
+            Require(Get<double>(physics, "_velocityY") == 300 && Get<TimeSpan?>(physics, "_lastRenderTime") is null, "Hidden physics continues falling");
+            physics.SetSuspended(false);
+            Require(!Get<bool>(physics, "_suspended"), "Physics cannot resume after showing the mascot");
+        }
+        view.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent)); window.Close();
+        var host = new LuKnight.MainWindow();
+        var hostView = Get<CharacterView>(host, "CharacterControl"); Render(hostView);
+        var hostBehavior = new BehaviorController(host, hostView);
+        var hostPhysics = new CharacterPhysicsController(host, hostView);
+        typeof(LuKnight.MainWindow).GetField("_behaviorController", Private)!.SetValue(host, hostBehavior);
+        typeof(LuKnight.MainWindow).GetField("_physicsController", Private)!.SetValue(host, hostPhysics);
+        host.HideToTray();
+        Require(Get<BehaviorPauseReason>(hostBehavior, "_pauseReasons") == BehaviorPauseReason.Hidden && Get<bool>(hostPhysics, "_suspended"), "HideToTray does not suspend both controllers");
+        host.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+        Require(ReferenceEquals(hostBehavior, Get<BehaviorController>(host, "_behaviorController")) &&
+            ReferenceEquals(hostPhysics, Get<CharacterPhysicsController>(host, "_physicsController")), "Reload duplicates controllers/render subscriptions");
+        hostView.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent)); host.Close();
+        Console.WriteLine("Tray menu/event/lifecycle checks use synthetic events; shell display and native clicks are not verified.");
+    }
     private static void Require(bool value, string message)
     {
         if (!value) throw new InvalidOperationException(message);

@@ -88,12 +88,6 @@ public sealed class SpriteAnimationPlayer : IDisposable
             System.Diagnostics.Debug.WriteLine(
                 $"[Lu-Knight][Sprite] LOAD FAILED: {ex}");
 
-            MessageBox.Show(
-                ex.ToString(),
-                "Lu-Knight Sprite Load Failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-
             Stop();
 
             _image.Source = null;

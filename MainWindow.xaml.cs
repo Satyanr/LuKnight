@@ -95,6 +95,7 @@ public partial class MainWindow : Window
     object sender,
     RoutedEventArgs e)
     {
+        if (_behaviorController is not null) return;
         _behaviorController =
             new BehaviorController(
                 this,
@@ -427,12 +428,13 @@ public partial class MainWindow : Window
 
     public void ShowFromTray()
     {
+        WindowState = WindowState.Normal;
         if (!IsVisible)
         {
             Show();
         }
 
-
+        _physicsController?.SetSuspended(false);
         _behaviorController?
             .Resume(
                 BehaviorPauseReason.Hidden);
@@ -443,6 +445,10 @@ public partial class MainWindow : Window
 
     public void HideToTray()
     {
+        // Acquire Hidden first: closing chat/releasing capture must not resume movement.
+        _behaviorController?.Pause(BehaviorPauseReason.Hidden);
+        if (CharacterControl.IsMouseCaptured) CharacterControl.ReleaseMouseCapture();
+        _physicsController?.SetSuspended(true);
         // Popup adalah window terpisah.
         // Tutup supaya tidak tertinggal
         // ketika mascot disembunyikan.
@@ -456,11 +462,6 @@ public partial class MainWindow : Window
                 .Resume(
                     BehaviorPauseReason.Chat);
         }
-
-
-        _behaviorController?
-            .Pause(
-                BehaviorPauseReason.Hidden);
 
 
         Hide();

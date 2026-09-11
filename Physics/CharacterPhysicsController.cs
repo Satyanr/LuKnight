@@ -12,6 +12,14 @@ public sealed class CharacterPhysicsController : IDisposable
     private readonly CharacterView _character;
 
     private TimeSpan? _lastRenderTime;
+    private bool _suspended;
+
+    public void SetSuspended(bool suspended)
+    {
+        _suspended = suspended;
+        _lastRenderTime = null;
+        _lastTickAt = DateTime.UtcNow;
+    }
 
     private bool _isGrabbed;
     private bool _isFalling;
@@ -333,6 +341,7 @@ DateTime now)
 
     private void OnRendering(object? sender, EventArgs e)
     {
+        if (_suspended) return;
         var time = ((RenderingEventArgs)e).RenderingTime;
         if (_lastRenderTime == time) return;
         _lastRenderTime = time;

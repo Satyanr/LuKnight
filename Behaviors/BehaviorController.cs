@@ -1141,8 +1141,7 @@ public sealed class BehaviorController : IDisposable
     public void Resume(
         BehaviorPauseReason reason)
     {
-        if (reason ==
-            BehaviorPauseReason.None)
+        if (reason == BehaviorPauseReason.None || (_pauseReasons & reason) == 0)
         {
             return;
         }
@@ -1164,6 +1163,13 @@ public sealed class BehaviorController : IDisposable
             return;
         }
 
+        if (reason == BehaviorPauseReason.Hidden)
+        {
+            // Showing the mascot must preserve its support/airborne position.
+            _lastInteractionAt = DateTime.UtcNow;
+            ScheduleNextDecision(0.8, 2.0);
+            return;
+        }
 
         _walking = false;
 
@@ -1212,6 +1218,7 @@ public sealed class BehaviorController : IDisposable
             DateTime.UtcNow;
 
         _canWalkOnRender = false;
+        if ((_pauseReasons & BehaviorPauseReason.Hidden) != 0) return;
         UpdateMood(now);
         if (IsPaused)
         {
@@ -1308,6 +1315,7 @@ public sealed class BehaviorController : IDisposable
         if (_lastWalkRenderTime == time) return;
         double delta = _lastWalkRenderTime is { } previous ? (time - previous).TotalSeconds : 0;
         _lastWalkRenderTime = time;
+        if ((_pauseReasons & BehaviorPauseReason.Hidden) != 0) return;
         // Follow support and animate climbing at the same cadence as walking/physics.
         if (_surfaceController.HasSupport && !_surfaceController.UpdateSupportWindow()) return;
         if (!IsPaused && _surfaceController.Update(DateTime.UtcNow, _thinking)) return;
