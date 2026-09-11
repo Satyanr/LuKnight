@@ -1805,6 +1805,22 @@ public sealed class BehaviorController : IDisposable
                 left,
                 top);
     }
+
+    public void ResetToDesktop()
+    {
+        ClearSupportWindow();
+        _walking = _canWalkOnRender = _sleeping = false;
+        _pauseReasons &= ~(BehaviorPauseReason.Physics | BehaviorPauseReason.UserDrag);
+        _character.SetState(CharacterState.Idle);
+        _character.SetMood(_thinking ? CharacterMood.Thinking : CharacterMood.Neutral);
+        _lastInteractionAt = DateTime.UtcNow;
+        var bounds = DesktopMonitorService.GetWindowBounds(_window);
+        var area = DesktopMonitorService.GetMonitorForWindow(_window).WorkArea;
+        DesktopMonitorService.SetWindowPosition(_window,
+            area.Left + Math.Max(0, (area.Width - bounds.Width) / 2),
+            area.Bottom - CharacterGrounding.GetFootOffset(_window, _character, bounds));
+        ScheduleNextDecision(1.5, 3.5);
+    }
     private void ScheduleNextDecision(
         double minSeconds,
         double maxSeconds)

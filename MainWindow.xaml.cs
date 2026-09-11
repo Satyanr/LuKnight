@@ -6,11 +6,27 @@ using LuKnight.Services;
 using LuKnight.Views;
 using LuKnight.Behaviors;
 using LuKnight.Physics;
+using LuKnight.ViewModels;
 
 namespace LuKnight;
 
 public partial class MainWindow : Window
 {
+    public SettingsRuntime GetSettingsRuntime() => new(Topmost, IsVisible,
+        CharacterControl.RenderMode.ToString(), CharacterControl.CurrentState.ToString(),
+        _usesGemini, _usesGemini ? GeminiChatService.ModelName : "", ChatPanelControl.CurrentStatus,
+        _isSending, _behaviorController is not null);
+
+    public void ResetCharacterPosition()
+    {
+        ShowFromTray();
+        _leftMouseDown = false;
+        _dragStarted = false;
+        CharacterControl.ReleaseMouseCapture();
+        _physicsController?.ResetMotion();
+        _behaviorController?.ResetToDesktop();
+    }
+
     private readonly IChatService _chatService;
     private readonly bool _usesGemini;
 

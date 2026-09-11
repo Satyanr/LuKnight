@@ -18,6 +18,7 @@ public enum ChatStatus
 public partial class ChatPanel : UserControl
 {
     public event Action<string>? MessageSubmitted;
+    public ChatStatus CurrentStatus { get; private set; } = ChatStatus.Local;
 
     public ChatPanel()
     {
@@ -84,6 +85,7 @@ public partial class ChatPanel : UserControl
 
     public void SetStatus(string text, ChatStatus status)
     {
+        CurrentStatus = status;
         StatusText.Text = text;
 
         StatusDot.Fill = status switch

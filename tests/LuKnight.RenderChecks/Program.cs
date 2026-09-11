@@ -12,6 +12,7 @@ using LuKnight.Behaviors;
 using LuKnight.Services;
 using LuKnight.Views;
 using LuKnight.Visuals;
+using LuKnight.ViewModels;
 
 internal static class Program
 {
@@ -27,6 +28,7 @@ internal static class Program
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
+        if (args.Contains("--settings")) { CheckSettings(output); Console.WriteLine($"PASS: {_checks} settings checks."); return; }
         if (args.Contains("--physics")) { CheckThrowAndGrounding(output); Console.WriteLine($"PASS: {_checks} throw/input/grounding checks."); return; }
         if (args.Contains("--tray")) { CheckTray(); Console.WriteLine($"PASS: {_checks} tray checks."); return; }
         if (args.Contains("--attention")) { CheckAttentionAndIdle(output); Console.WriteLine($"PASS: {_checks} attention checks."); return; }
@@ -44,10 +46,103 @@ internal static class Program
         CheckAttentionAndIdle(output);
         CheckTray();
         CheckThrowAndGrounding(output);
+        CheckSettings(output);
         Console.WriteLine($"PASS: {_checks} checks (sprite scale, transparent bounds, state/mood transitions, cadence, lifecycle).");
     }
 
     private static T Get<T>(object obj, string name) => (T)obj.GetType().GetField(name, Private | BindingFlags.Public)!.GetValue(obj)!;
+
+    private static void CheckSettings(string output)
+    {
+        var runtime = new SettingsRuntime(true, false, "Sprite", "Idle", false, "", ChatStatus.Local, false, true);
+        int topChanges = 0, visibilityChanges = 0, resets = 0;
+        var model = new SettingsViewModel(() => runtime,
+            value => { topChanges++; runtime = runtime with { AlwaysOnTop = value }; },
+            value => { visibilityChanges++; runtime = runtime with { Visible = value }; },
+            () => { resets++; runtime = runtime with { Visible = true, State = "Idle" }; });
+        Require(model.Provider == "Local fallback" && model.ApiStatus.Contains("belum dikonfigurasi"), "Settings misreports unconfigured AI as connected");
+        Require(model.ApplicationStatus.Contains("Hidden"), "Settings does not report hidden mascot");
+        var settings = new SettingsWindow(model);
+        var root = Get<Grid>(settings, "SettingsRoot");
+        void Layout(double width = 860, double height = 640)
+        {
+            root.Measure(new Size(width, height)); root.Arrange(new Rect(0, 0, width, height)); root.UpdateLayout();
+        }
+        Layout();
+        Get<CheckBox>(settings, "AlwaysOnTopCheck").IsChecked = false;
+        Require(!runtime.AlwaysOnTop && topChanges == 1, "Always-on-top checkbox is not connected to runtime");
+        Get<CheckBox>(settings, "ShowCharacterCheck").IsChecked = true;
+        Require(runtime.Visible && visibilityChanges == 1, "Show checkbox does not restore the mascot");
+        runtime = runtime with { AlwaysOnTop = true, Visible = false, Renderer = "Vector" }; model.Refresh(); Layout();
+        Require(Get<CheckBox>(settings, "AlwaysOnTopCheck").IsChecked == true && Get<CheckBox>(settings, "ShowCharacterCheck").IsChecked == false,
+            "Settings controls do not reflect changes made outside the window");
+        Require(topChanges == 1 && visibilityChanges == 1, "Refreshing status triggers setting commands recursively");
+        Require(Get<TextBlock>(settings, "RendererText").Text == "Vector", "Renderer status is hard-coded instead of showing fallback");
+        model.ResetPositionCommand.Execute(null);
+        Require(resets == 1 && runtime.Visible, "Reset position command is not wired");
+        runtime = runtime with { CanReset = false }; model.Refresh(); model.ResetPositionCommand.Execute(null);
+        Require(resets == 1 && !model.ResetPositionCommand.CanExecute(null), "Reset runs before mascot controllers are ready");
+        runtime = runtime with { UsesGemini = true, Model = "test-model", ChatStatus = ChatStatus.Ready, CanReset = true }; model.Refresh();
+        Require(model.Model == "test-model" && model.ApiStatus.Contains("belum terverifikasi"), "Configured key is falsely treated as a verified API connection");
+        runtime = runtime with { Sending = true }; model.Refresh();
+        Require(model.AiStatus.Contains("memproses"), "AI busy state is stale");
+        runtime = runtime with { Sending = false, ChatStatus = ChatStatus.Error }; model.Refresh();
+        Require(model.AiStatus.Contains("gagal") && model.Provider == "Gemini", "AI error claims that unimplemented fallback is active");
+        runtime = runtime with { ChatStatus = ChatStatus.Connected }; model.Refresh();
+        Require(model.ApiStatus.Contains("terakhir berhasil"), "Settings does not reflect a successful API response");
+        Require(!Get<CheckBox>(settings, "StartupCheck").IsEnabled && !Get<CheckBox>(settings, "StartHiddenCheck").IsEnabled &&
+            !Get<Button>(settings, "CheckUpdatesButton").IsEnabled, "Deferred startup/update features appear active in 6B");
+        Require(!string.IsNullOrWhiteSpace(model.Version) && !string.IsNullOrWhiteSpace(model.Build) &&
+            model.RepositoryUrl == "https://github.com/Satyanr/LuKnight", "About metadata is missing");
+
+        runtime = runtime with { UsesGemini = false, ChatStatus = ChatStatus.Local, Model = "", Renderer = "Sprite" }; model.Refresh();
+        string[] sections = { "General", "Behavior", "AI & Chat", "About" };
+        string[] panels = { "GeneralPanel", "BehaviorPanel", "AiPanel", "AboutPanel" };
+        var navigation = Get<ListBox>(settings, "Navigation");
+        for (int i = 0; i < sections.Length; i++)
+        {
+            navigation.SelectedValue = sections[i]; Layout();
+            Require(model.SelectedSection == sections[i] && panels.Count(p => Get<StackPanel>(settings, p).Visibility == Visibility.Visible) == 1,
+                "Settings navigation shows incorrect/multiple pages: " + sections[i]);
+            Require(Get<StackPanel>(settings, panels[i]).Visibility == Visibility.Visible, "Selected page is not visible");
+            var bitmap = new RenderTargetBitmap(860, 640, 96, 96, PixelFormats.Pbgra32); bitmap.Render(root);
+            Save(bitmap, Path.Combine(output, "settings-" + i + ".png"));
+        }
+        navigation.SelectedValue = "General"; Layout(760, 520);
+        var scroll = Get<ScrollViewer>(settings, "PageScroll"); scroll.ScrollToEnd(); Layout(760, 520);
+        Require(scroll.ScrollableHeight > 0 && scroll.VerticalOffset > 0, "General page becomes inaccessible at minimum window size");
+        var timer = Get<System.Windows.Threading.DispatcherTimer>(settings, "_refreshTimer");
+        timer.Start(); settings.Close();
+        Require(!timer.IsEnabled, "Closing Settings leaks its refresh timer");
+
+        var app = new LuKnight.App { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var mascot = new LuKnight.MainWindow(); bool mascotClosed = false; mascot.Closed += (_, _) => mascotClosed = true;
+        typeof(LuKnight.App).GetField("_character", Private)!.SetValue(app, mascot); app.MainWindow = mascot;
+        var create = typeof(LuKnight.App).GetMethod("GetOrCreateSettingsWindow", Private)!;
+        var first = (SettingsWindow)create.Invoke(app, null)!;
+        var second = (SettingsWindow)create.Invoke(app, null)!;
+        Require(ReferenceEquals(first, second), "Opening Settings creates duplicate windows");
+        Require(first.Owner is null && !mascot.IsVisible, "Settings is owned by/shows the hidden mascot");
+        first.Close();
+        Require(!mascotClosed && Get<SettingsWindow?>(app, "_settingsWindow") is null, "Closing Settings closes the mascot or leaves a stale singleton");
+        var reopened = (SettingsWindow)create.Invoke(app, null)!;
+        Require(!ReferenceEquals(first, reopened), "Closed Settings cannot be reopened");
+        reopened.Close();
+        Get<CharacterView>(mascot, "CharacterControl").RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent)); mascot.Close();
+
+        var view = new CharacterView();
+        using (var physics = new CharacterPhysicsController(new Window(), view))
+        {
+            typeof(CharacterPhysicsController).GetField("_isFalling", Private)!.SetValue(physics, true);
+            typeof(CharacterPhysicsController).GetField("_velocityY", Private)!.SetValue(physics, 900.0);
+            typeof(CharacterPhysicsController).GetField("_targetWindowHandle", Private)!.SetValue(physics, new IntPtr(123));
+            physics.ResetMotion();
+            Require(!physics.IsActive && Get<double>(physics, "_velocityY") == 0 && Get<nint>(physics, "_targetWindowHandle") == nint.Zero,
+                "Position reset leaves an active airborne trajectory");
+        }
+        view.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+        app.Shutdown();
+    }
 
     private static void CheckThrowAndGrounding(string output)
     {
@@ -126,12 +221,12 @@ internal static class Program
 
     private static void CheckTray()
     {
-        int toggled = 0, shown = 0, chat = 0, restarted = 0, exited = 0;
-        using var tray = new TrayIconService(() => toggled++, () => shown++, () => chat++, () => restarted++, () => exited++);
+        int toggled = 0, shown = 0, chat = 0, settings = 0, restarted = 0, exited = 0;
+        using var tray = new TrayIconService(() => toggled++, () => shown++, () => chat++, () => settings++, () => restarted++, () => exited++);
         var items = tray.Menu.Items.OfType<System.Windows.Forms.ToolStripMenuItem>().ToArray();
-        Require(items.Select(i => i.Text).SequenceEqual(new[] { "Hide Lu-Knight", "Open Chat", "Restart Lu-Knight", "Exit" }), "Tray commands are missing or out of order");
+        Require(items.Select(i => i.Text).SequenceEqual(new[] { "Hide Lu-Knight", "Open Chat", "Settings", "Restart Lu-Knight", "Exit" }), "Tray commands are missing or out of order");
         foreach (var item in items) item.PerformClick();
-        Require(toggled == 1 && chat == 1 && restarted == 1 && exited == 1, "Tray menu does not dispatch each command exactly once");
+        Require(toggled == 1 && chat == 1 && settings == 1 && restarted == 1 && exited == 1, "Tray menu does not dispatch each command exactly once");
         tray.SetCharacterVisible(false);
         Require(items[0].Text == "Show Lu-Knight", "Hidden mascot cannot be restored from menu");
         tray.SetCharacterVisible(true);

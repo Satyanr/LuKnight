@@ -6,6 +6,7 @@ Klik kanan ikon untuk membuka menu:
 
 - **Hide / Show Lu-Knight**: sembunyikan atau tampilkan karakter. Label mengikuti visibility window.
 - **Open Chat**: tampilkan karakter dan buka chat tanpa menutup chat yang sudah terbuka.
+- **Settings**: buka control center General, Behavior, AI & Chat, dan About. Instance yang sudah terbuka dipulihkan dan difokuskan, termasuk ketika karakter tersembunyi.
 - **Restart Lu-Knight**: jalankan ulang executable dengan argumen yang sama, lalu tutup proses lama. Launch melalui `dotnet LuKnight.dll` juga didukung.
 - **Exit**: tutup aplikasi, batalkan permintaan chat aktif, dan bersihkan ikon/menu tray.
 

@@ -43,6 +43,17 @@ public sealed class CharacterPhysicsController : IDisposable
         _lastTickAt = DateTime.UtcNow;
     }
 
+    public void ResetMotion()
+    {
+        CancelPreparedGrab();
+        _isGrabbed = _isFalling = _suspended = false;
+        _velocityX = _velocityY = _maximumImpactSpeed = 0;
+        _targetWindowHandle = nint.Zero;
+        _bounceCount = _shakeReversalCount = _lastShakeDirection = 0;
+        _wasShakenDuringGrab = false;
+        _lastRenderTime = null;
+    }
+
     public void SamplePointer(Point position)
     {
         if (!_trackingPointer) return;

@@ -14,19 +14,80 @@ public sealed class TrayIconService : IDisposable
     private bool _disposed;
     public Forms.ContextMenuStrip Menu { get; } = new();
 
-    public TrayIconService(Action toggle, Action show, Action chat, Action restart, Action exit)
+    public TrayIconService(
+    Action toggle,
+    Action show,
+    Action chat,
+    Action settings,
+    Action restart,
+    Action exit)
     {
-        _visibility = Add("Hide Lu-Knight", toggle);
-        Add("Open Chat", chat);
-        Menu.Items.Add(new Forms.ToolStripSeparator());
-        Add("Restart Lu-Knight", restart);
-        Menu.Items.Add(new Forms.ToolStripSeparator());
-        Add("Exit", exit);
-        _art = CreateIcon();
-        _icon = new Forms.NotifyIcon { Text = "Lu-Knight", Icon = _art, ContextMenuStrip = Menu };
-        _icon.MouseDoubleClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) show(); };
-    }
+        _visibility =
+            Add(
+                "Hide Lu-Knight",
+                toggle);
 
+
+        Add(
+            "Open Chat",
+            chat);
+
+
+        Add(
+            "Settings",
+            settings);
+
+
+        Menu.Items.Add(
+            new Forms.ToolStripSeparator());
+
+
+        Add(
+            "Restart Lu-Knight",
+            restart);
+
+
+        Menu.Items.Add(
+            new Forms.ToolStripSeparator());
+
+
+        Add(
+            "Exit",
+            exit);
+
+
+        // =============================
+        // TRAY ICON INITIALIZATION
+        // =============================
+
+        _art =
+            CreateIcon();
+
+
+        _icon =
+            new Forms.NotifyIcon
+            {
+                Text =
+                    "Lu-Knight",
+
+                Icon =
+                    _art,
+
+                ContextMenuStrip =
+                    Menu
+            };
+
+
+        _icon.MouseDoubleClick +=
+            (_, e) =>
+            {
+                if (e.Button ==
+                    Forms.MouseButtons.Left)
+                {
+                    show();
+                }
+            };
+    }
     private Forms.ToolStripMenuItem Add(string text, Action command)
     {
         var item = new Forms.ToolStripMenuItem(text);

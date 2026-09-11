@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
 using LuKnight.Services;
+using LuKnight.Views;
 
 namespace LuKnight;
 
@@ -10,7 +11,49 @@ public partial class App : Application
 {
     private TrayIconService? _tray;
     private MainWindow? _character;
+
+    private SettingsWindow?
+    _settingsWindow;
     private bool _isExiting;
+
+    private void OpenSettingsWindow()
+    {
+        if (_isExiting || _character is null) return;
+        var settings = GetOrCreateSettingsWindow();
+        if (settings.WindowState == WindowState.Minimized) settings.WindowState = WindowState.Normal;
+        if (!settings.IsVisible) settings.Show();
+        settings.Activate();
+    }
+
+    private SettingsWindow GetOrCreateSettingsWindow()
+    {
+        if (_settingsWindow is null)
+        {
+            _settingsWindow =
+                new SettingsWindow(_character ?? throw new InvalidOperationException("Character is not initialized."));
+
+
+            _settingsWindow.Closed +=
+                SettingsWindow_Closed;
+        }
+        return _settingsWindow;
+    }
+
+
+    private void SettingsWindow_Closed(
+        object? sender,
+        EventArgs e)
+    {
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.Closed -=
+                SettingsWindow_Closed;
+        }
+
+
+        _settingsWindow =
+            null;
+    }
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -22,12 +65,28 @@ public partial class App : Application
         _character.IsVisibleChanged += Character_VisibilityChanged;
         try
         {
-            _tray = new TrayIconService(ToggleCharacterVisibility, _character.ShowFromTray,
-                _character.OpenChatFromTray, RestartApplication, ExitApplication);
+            _tray =
+                new TrayIconService(
+                    ToggleCharacterVisibility,
+                    _character.ShowFromTray,
+                    _character.OpenChatFromTray,
+                    OpenSettingsWindow,
+                    RestartApplication,
+                    ExitApplication);
             _tray.Show();
         }
         catch (Exception ex)
         {
+            if (_settingsWindow is not null)
+            {
+                _settingsWindow.Closed -=
+                    SettingsWindow_Closed;
+
+
+                _settingsWindow =
+                    null;
+            }
+
             _tray?.Dispose();
             _tray = null;
             // A failed shell icon must never leave an unreachable application.
@@ -89,6 +148,11 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.Closed -= SettingsWindow_Closed;
+            _settingsWindow = null;
+        }
         if (_character is not null)
         {
             _character.Closing -= Character_Closing;

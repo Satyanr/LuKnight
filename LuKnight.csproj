@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <Copyright>Copyright © 2026 Lu-Knight contributors</Copyright>
     <UseWindowsForms>true</UseWindowsForms>
     <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;tools\**</DefaultItemExcludes>
   </PropertyGroup>
