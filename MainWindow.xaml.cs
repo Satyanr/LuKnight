@@ -168,7 +168,11 @@ public partial class MainWindow : Window
         _mouseDownPosition =
             e.GetPosition(this);
 
-        CharacterControl.CaptureMouse();
+        if (!CharacterControl.CaptureMouse())
+        {
+            _leftMouseDown = false;
+            _behaviorController?.Resume(BehaviorPauseReason.UserDrag);
+        }
 
         e.Handled = true;
     }
@@ -177,6 +181,7 @@ public partial class MainWindow : Window
      object sender,
      MouseEventArgs e)
     {
+        _behaviorController?.ObservePointer(e.GetPosition(CharacterControl));
         if (!_leftMouseDown)
             return;
 
@@ -258,10 +263,8 @@ public partial class MainWindow : Window
         if (!_leftMouseDown)
             return;
 
-        CharacterControl
-            .ReleaseMouseCapture();
-
         _leftMouseDown = false;
+        CharacterControl.ReleaseMouseCapture();
 
         if (_dragStarted)
         {
@@ -300,6 +303,25 @@ public partial class MainWindow : Window
 
         e.Handled = true;
     }
+    private void Character_MouseEnter(object sender, MouseEventArgs e) =>
+        _behaviorController?.ObservePointer(e.GetPosition(CharacterControl));
+
+    private void Character_MouseLeave(object sender, MouseEventArgs e) =>
+        _behaviorController?.PointerLeft();
+
+    private void Character_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (!_leftMouseDown) return;
+        _leftMouseDown = false;
+        if (_dragStarted)
+        {
+            _dragStarted = false;
+            _behaviorController?.Pause(BehaviorPauseReason.Physics);
+            _physicsController?.EndGrab();
+        }
+        _behaviorController?.Resume(BehaviorPauseReason.UserDrag);
+    }
+
     private void ToggleChat()
     {
         _behaviorController?

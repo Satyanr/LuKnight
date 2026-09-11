@@ -17,6 +17,14 @@ public sealed class SpriteAnimationPlayer : IDisposable
     private byte[] _blendPixels = [];
     private SpriteAnimationClip? _clip;
     private SpritePuppet? _puppet;
+    private SpriteFace? _face;
+    private double _lookX, _lookY;
+    public SpriteFace? Face => _puppet?.Face ?? _face;
+    public void Look(double x, double y) { _lookX = x; _lookY = y; Face?.Look(x, y); }
+    public void Glance(double x, double y, double seconds) => Face?.Glance(x, y, seconds);
+    public void Blink() => Face?.Blink();
+    public void Twitch() => Face?.Twitch();
+    public void SetExpression(string? path) => _face?.SetExpression(path is null ? null : Load(path));
     private BitmapSource[] _frames = [];
     private TimeSpan? _lastRender;
     private double _elapsed;
@@ -49,6 +57,8 @@ public sealed class SpriteAnimationPlayer : IDisposable
                 _previous.Opacity = _image.Source is null ? 0 : 1;
             }
             _puppet = clip.PuppetMotion is { } motion ? new SpritePuppet(motion) : null;
+            _face = clip.StableFace ? new SpriteFace(frames[0], blinkFrame: Load("Assets/Characters/LuKnight/Idle/idle_003.png")) : null;
+            Face?.Look(_lookX, _lookY);
             _clip = clip;
             _frames = frames;
             _interpolated = _puppet is null && frames.Length > 1 ? new WriteableBitmap(510, 660, 96, 96, PixelFormats.Pbgra32, null) : null;
@@ -64,7 +74,7 @@ public sealed class SpriteAnimationPlayer : IDisposable
             _elapsed = 0;
             _frameIndex = 0;
             _transition = _image.Source is null || _previous is null ? BlendDuration : 0;
-            _image.Source = _puppet is null ? frames[0] : _puppet.Image;
+            _image.Source = _puppet is not null ? _puppet.Image : _face is not null ? _face.Image : frames[0];
             _image.Opacity = _transition == 0 ? 0 : 1;
             _lastRender = null;
             if (!_subscribed)
@@ -123,6 +133,8 @@ public sealed class SpriteAnimationPlayer : IDisposable
         int index = absoluteIndex;
         index = _clip.Loop ? index % _frames.Length : Math.Min(index, _frames.Length - 1);
         _frameIndex = index;
+        Face?.Advance(delta);
+        if (_face is not null) { _image.Source = _face.Image; return; }
         if (_puppet is not null)
         {
             _puppet.Advance(_elapsed);
@@ -151,6 +163,7 @@ public sealed class SpriteAnimationPlayer : IDisposable
         _subscribed = false;
         _clip = null;
         _puppet = null;
+        _face = null;
         _frames = [];
         _interpolated = null;
         _blendPixels = [];

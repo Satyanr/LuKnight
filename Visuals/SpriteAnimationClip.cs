@@ -12,6 +12,7 @@ public sealed class SpriteAnimationClip
     public double FramesPerSecond { get; }
 
     public bool Loop { get; }
+    public bool StableFace { get; }
 
     public SpritePuppetMotion? PuppetMotion { get; }
 
@@ -21,7 +22,7 @@ public sealed class SpriteAnimationClip
         IReadOnlyList<string> frames,
         double framesPerSecond,
         bool loop,
-        SpritePuppetMotion? puppetMotion = null)
+        SpritePuppetMotion? puppetMotion = null, bool stableFace = false)
     {
         Name = name;
 
@@ -34,5 +35,6 @@ public sealed class SpriteAnimationClip
 
         Loop = loop;
         PuppetMotion = puppetMotion;
+        StableFace = stableFace;
     }
 }

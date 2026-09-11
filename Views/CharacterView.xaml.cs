@@ -134,8 +134,7 @@ public partial class CharacterView : UserControl
     {
         if (_renderMode == CharacterRenderMode.Sprite)
         {
-            if (CurrentMood == CharacterMood.Neutral || CurrentMood == CharacterMood.Happy)
-                PlaySpriteBlink();
+            PlaySpriteBlink();
             return;
         }
 
@@ -357,6 +356,7 @@ public partial class CharacterView : UserControl
 
     public void SetMood(CharacterMood mood)
     {
+        if (CurrentMood == mood) return;
         if (CurrentState == CharacterState.Sleep &&
             mood != CharacterMood.Neutral)
         {
@@ -369,8 +369,8 @@ public partial class CharacterView : UserControl
 
         if (_renderMode == CharacterRenderMode.Sprite)
         {
-            StopSpriteExpression();
             PlaySpriteForCurrentState();
+            if (CurrentState is CharacterState.Walk or CharacterState.Climbing) _spritePlayer?.Twitch();
             return;
         }
 
@@ -790,7 +790,6 @@ public partial class CharacterView : UserControl
 
         StopCurrentAnimation();
         StopSpriteMotion();
-        StopSpriteExpression();
         ResetSpriteAttention();
         ResetSpriteImpact();
 

@@ -28,6 +28,7 @@ public sealed class SpritePuppet
     private readonly Limb _nearLeg, _farLeg, _nearArm, _farArm;
     private readonly SpritePuppetMotion _motion;
     public DrawingImage Image { get; }
+    public SpriteFace Face { get; }
     public double NearLegAngle => _nearLeg.Rotation.Angle;
     public double FarLegAngle => _farLeg.Rotation.Angle;
     public double NearArmAngle => _nearArm.Rotation.Angle;
@@ -44,7 +45,8 @@ public sealed class SpritePuppet
         _farArm = new Limb(_scene, Load("far-arm"), new Rect(267, 435, 61, 76), new Point(286, 435));
         _farLeg = new Limb(_scene, Load("far-leg"), new Rect(262, 537, 72, 98), new Point(285, 537));
         _nearLeg = new Limb(_scene, Load("near-leg"), new Rect(245, 537, 72, 98), new Point(265, 537));
-        _scene.Children.Add(new ImageDrawing(Load("body"), new Rect(9, 150, 406, 398)));
+        Face = new SpriteFace(Load("body"), profile: true);
+        _scene.Children.Add(new ImageDrawing(Face.Image, new Rect(9, 150, 406, 398)));
         _nearArm = new Limb(_scene, Load("near-arm"), new Rect(247, 435, 61, 76), new Point(266, 435));
         Image = new DrawingImage(root);
         Advance(0);

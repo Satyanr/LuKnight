@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Media.Animation;
-using System.Windows.Threading;
 using LuKnight.Visuals;
 using System.Windows.Media;
 
@@ -291,6 +290,7 @@ public partial class CharacterView
         _spriteLookY = 0;
 
         _spriteCursorTracking = false;
+        _spritePlayer?.Look(0, 0);
 
 
         SpriteAttentionTranslate.X = 0;
@@ -307,6 +307,7 @@ public partial class CharacterView
 
 
         _spriteCursorTracking = true;
+        _spritePlayer?.Look(horizontal * _facingDirection, vertical);
 
 
         double targetX =
@@ -426,6 +427,7 @@ public partial class CharacterView
     {
         if (!_spriteCursorTracking)
             return;
+        _spritePlayer?.Look(0, 0);
 
 
         StopSpriteAttentionAnimations();
@@ -468,6 +470,7 @@ public partial class CharacterView
         int direction)
     {
         ResetSpriteAttention();
+        _spritePlayer?.Glance(direction * _facingDirection, 0, .9);
 
 
         double targetX =
@@ -553,6 +556,7 @@ public partial class CharacterView
     private void PlaySpriteLookDown()
     {
         ResetSpriteAttention();
+        _spritePlayer?.Glance(0, 1, .9);
 
 
         var animation =
@@ -604,6 +608,7 @@ public partial class CharacterView
         int direction)
     {
         ResetSpriteAttention();
+        _spritePlayer?.Glance(direction * .65 * _facingDirection, 1, .9);
 
 
         double targetX =
@@ -932,9 +937,9 @@ public partial class CharacterView
     private void PlaySpriteTwitch()
     {
         if (CurrentState == CharacterState.Sleep) return;
-        if (CurrentState == CharacterState.Idle && _spriteTwitchClip is not null)
+        if (_spritePlayer?.Face is not null)
         {
-            PlaySpriteTransient(_spriteTwitchClip, 440);
+            _spritePlayer.Twitch();
             return;
         }
         var animation =
@@ -1001,13 +1006,9 @@ public partial class CharacterView
             CharacterState.Climbing => SpritePuppetMotion.Climb,
             _ => null
         };
-        if (state == CharacterState.Idle)
-        {
-            _spriteBlinkClip = new SpriteAnimationClip("blink-both-eyes", new[] { frames[2], frames[3], frames[4] }, 18, false);
-            _spriteTwitchClip = new SpriteAnimationClip("ear-twitch", new[] { frames[0], frames[5], frames[6], frames[7], frames[0] }, 12, false);
-            frames = new[] { 0, 1, 4, 5, 6, 7, 6, 5, 4, 1 }.Select(i => frames[i]).ToArray();
-        }
-        RegisterSpriteClip(state, new SpriteAnimationClip(name, frames, framesPerSecond, true, motion));
+        if (state == CharacterState.Idle) frames = new[] { frames[0] };
+        RegisterSpriteClip(state, new SpriteAnimationClip(name, frames, framesPerSecond, true, motion,
+            stableFace: state == CharacterState.Idle));
     }
 
     private void RegisterDefaultSpriteClips()
@@ -1058,7 +1059,6 @@ public partial class CharacterView
         {
             _spritePlayer?.Stop();
             StopSpriteMotion();
-            StopSpriteExpression();
             if (changed)
             {
                 SetFacingDirection(_facingDirection);
@@ -1096,13 +1096,10 @@ public partial class CharacterView
             return;
         }
 
-        // Expression PNGs contain a whole body: physical action clips take priority.
-        if (CurrentState == CharacterState.Idle &&
-            _spriteMoodClips.TryGetValue(CurrentMood, out SpriteAnimationClip? expression))
-        {
-            clip = expression;
-        }
         _spritePlayer?.Play(clip);
+        string? expressionPath = CurrentState == CharacterState.Idle &&
+            _spriteMoodClips.TryGetValue(CurrentMood, out var expression) ? expression.Frames[0] : null;
+        _spritePlayer?.SetExpression(expressionPath);
     }
 
     private void CharacterView_Unloaded(object sender, RoutedEventArgs e)
@@ -1110,14 +1107,8 @@ public partial class CharacterView
         StopCurrentAnimation();
         StopMoodStoryboard();
         StopSpriteMotion();
-        StopSpriteExpression();
         ResetSpriteImpact();
         ResetSpriteShadow();
-        if (_spriteExpressionTimer is not null)
-        {
-            _spriteExpressionTimer.Tick -= SpriteExpressionTimer_Tick;
-            _spriteExpressionTimer = null;
-        }
         if (_spritePlayer is null)
             return;
 
@@ -1148,7 +1139,6 @@ public partial class CharacterView
     }
 
     private readonly Dictionary<CharacterMood, SpriteAnimationClip> _spriteMoodClips = new();
-    private DispatcherTimer? _spriteExpressionTimer;
 
     private void RegisterDefaultSpriteExpressions()
     {
@@ -1172,37 +1162,8 @@ public partial class CharacterView
         }
     }
 
-    private SpriteAnimationClip? _spriteBlinkClip;
-    private SpriteAnimationClip? _spriteTwitchClip;
-
     private void PlaySpriteBlink()
     {
-        if (CurrentState != CharacterState.Idle || _spriteBlinkClip is null) return;
-        PlaySpriteTransient(_spriteBlinkClip, 190);
-    }
-
-    private void PlaySpriteTransient(SpriteAnimationClip clip, double milliseconds)
-    {
-        StopSpriteExpression();
-        _spritePlayer?.Play(clip);
-        if (_renderMode != CharacterRenderMode.Sprite) return;
-        if (_spriteExpressionTimer is null)
-        {
-            _spriteExpressionTimer = new DispatcherTimer();
-            _spriteExpressionTimer.Tick += SpriteExpressionTimer_Tick;
-        }
-        _spriteExpressionTimer.Interval = TimeSpan.FromMilliseconds(milliseconds);
-        _spriteExpressionTimer.Start();
-    }
-
-    private void StopSpriteExpression()
-    {
-        _spriteExpressionTimer?.Stop();
-    }
-
-    private void SpriteExpressionTimer_Tick(object? sender, EventArgs e)
-    {
-        StopSpriteExpression();
-        PlaySpriteForCurrentState();
+        if (CurrentState != CharacterState.Sleep) _spritePlayer?.Blink();
     }
 }

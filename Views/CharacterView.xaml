@@ -672,7 +672,7 @@
         <!-- REFERENCE SPRITE RENDERER -->
         <Grid x:Name="SpriteLayer"
               Visibility="Collapsed"
-              IsHitTestVisible="False">
+              IsHitTestVisible="True">
 
             <Ellipse x:Name="SpriteShadow"
                      Width="90"

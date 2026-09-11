@@ -27,6 +27,7 @@ internal static class Program
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
+        if (args.Contains("--attention")) { CheckAttentionAndIdle(output); Console.WriteLine($"PASS: {_checks} attention checks."); return; }
         CheckRigAndRendering(output);
         CheckLifecycle();
         if (args.Contains("--desktop"))
@@ -38,6 +39,7 @@ internal static class Program
         CheckCadence();
         CheckHeadRegistration();
         CheckPuppet(output);
+        CheckAttentionAndIdle(output);
         Console.WriteLine($"PASS: {_checks} checks (sprite scale, transparent bounds, state/mood transitions, cadence, lifecycle).");
     }
 
@@ -271,9 +273,136 @@ internal static class Program
         SaveContactSheet(samples, Path.Combine(output, "directional-motion.png"));
         var view = new CharacterView(); view.SetState(CharacterState.Idle);
         view.Blink();
-        Require(Get<SpriteAnimationClip>(Get<SpriteAnimationPlayer>(view, "_spritePlayer"), "_clip").Name == "blink-both-eyes", "Blink must close both eyes instead of winking");
+        Require(Get<SpriteAnimationPlayer>(view, "_spritePlayer").Face?.IsBlinking == true, "Blink must animate the face without changing the clip");
         view.SetState(CharacterState.Walk);
         Require(Get<SpritePuppet>(Get<SpriteAnimationPlayer>(view, "_spritePlayer"), "_puppet") is not null, "Runtime walking must use the two-leg rig");
+        view.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+    }
+
+    private static void CheckAttentionAndIdle(string output)
+    {
+        // Smooth color must remain smooth even when adjacent source pixels have different alpha.
+        // Otherwise gaze resampling leaves alternating stationary/moving pixels around the eyes.
+        byte[] gradient = new byte[510 * 660 * 4];
+        for (int y = 0; y < 660; y++) for (int x = 0; x < 510; x++)
+        {
+            int p = (y * 510 + x) * 4;
+            byte alpha = (byte)((x + y) % 2 == 0 ? 240 : 255);
+            for (int c = 0; c < 3; c++) gradient[p + c] = (byte)Math.Round(x * .45 * alpha / 255);
+            gradient[p + 3] = alpha;
+        }
+        var smoothFace = new SpriteFace(BitmapSource.Create(510, 660, 96, 96, PixelFormats.Pbgra32, null, gradient, 510 * 4));
+        smoothFace.Look(.85, 0); smoothFace.Advance(1); smoothFace.Image.CopyPixels(gradient, 510 * 4, 0);
+        double maxStep = 0;
+        for (int x = 176; x < 216; x++)
+        {
+            int p = (384 * 510 + x) * 4;
+            maxStep = Math.Max(maxStep, Math.Abs(gradient[p] * 255.0 / gradient[p + 3] - gradient[p - 4] * 255.0 / gradient[p - 1]));
+        }
+        Require(maxStep < 2, "Gaze creates speckled/discontinuous color on partially opaque fur");
+        // Gaze and lids must never punch transparency into the head or shift its silhouette.
+        foreach (bool profile in new[] { false, true })
+        {
+            string asset = profile ? "Rig/body.png" : "Idle/idle_000.png";
+            var source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets/Characters/LuKnight", asset)));
+            var closed = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets/Characters/LuKnight/Idle/idle_003.png")));
+            var subject = new SpriteFace(source, profile, profile ? null : closed);
+            int stride = source.PixelWidth * 4;
+            byte[] baseline = new byte[stride * source.PixelHeight], actual = new byte[baseline.Length];
+            subject.Image.CopyPixels(baseline, stride, 0);
+            foreach (int x in new[] { -1, 0, 1 }) foreach (int y in new[] { -1, 0, 1 })
+            {
+                subject.Look(x, y); subject.Advance(1); subject.Blink(); subject.Advance(.1);
+                subject.Image.CopyPixels(actual, stride, 0);
+                Require(Enumerable.Range(0, baseline.Length / 4).All(i => baseline[i * 4 + 3] == actual[i * 4 + 3]),
+                    $"Gaze/blink changes head alpha: profile={profile}, gaze={x},{y}");
+            }
+        }
+        var view = new CharacterView(); Render(view);
+        var player = Get<SpriteAnimationPlayer>(view, "_spritePlayer");
+        var step = Step(player); step(.3);
+        var face = player.Face!;
+        byte[] original = new byte[510 * 660 * 4]; face.Image.CopyPixels(original, 510 * 4, 0);
+        var pictures = new List<(string Name, BitmapSource Image)>();
+        foreach (var target in new[] { new Point(-1, -.6), new Point(1, .6), new Point(0, 0) })
+        {
+            view.TrackCursor(target.X, target.Y); Settle(step, .5);
+            Require(Math.Abs(face.LookX - target.X) < .005, "Idle eyes do not follow cursor");
+            pictures.Add(($"Idle look {target.X}", Render(view)));
+        }
+        view.Blink(); step(.1); pictures.Add(("Idle blink", Render(view)));
+        Require(ReferenceEquals(face, player.Face), "Blink replaced the idle body/clip");
+        foreach (var mood in new[] { CharacterMood.Happy, CharacterMood.Surprised, CharacterMood.Neutral })
+        {
+            view.SetMood(mood); view.TwitchEars(); step(.06);
+            var pixels = new byte[original.Length]; face.Image.CopyPixels(pixels, 510 * 4, 0);
+            Require(original.AsSpan(510 * 4 * 500).SequenceEqual(pixels.AsSpan(510 * 4 * 500)), "Idle interaction changes torso/foot pixels (glitch)");
+        }
+        view.SetState(CharacterState.Walk); player = Get<SpriteAnimationPlayer>(view, "_spritePlayer"); step = Step(player);
+        step(.2); double phase = Get<double>(player, "_elapsed");
+        view.TrackCursor(1, -.7); view.Blink(); view.TwitchEars(); step(.1);
+        Require(Get<double>(player, "_elapsed") > phase && view.CurrentState == CharacterState.Walk, "Interaction stopped/restarted walking clip");
+        Require(player.Face!.LookX > .7 && player.Face.IsBlinking, "Walking face ignores cursor/blink");
+        pictures.Add(("Walk blink / look", Render(view)));
+        view.SetFacingDirection(-1); view.TrackCursor(1, .5); Settle(step, .5);
+        Require(player.Face.LookX < -.9, "Mirrored walking gaze follows wrong screen direction");
+        pictures.Add(("Walk left / look right", Render(view)));
+        using (var behavior = new BehaviorController(new Window(), view))
+        {
+            typeof(BehaviorController).GetField("_walking", Private)!.SetValue(behavior, true);
+            behavior.ObservePointer(new Point(90, 120));
+            Require(view.CurrentState == CharacterState.Idle && !Get<bool>(behavior, "_walking"), "Hover cannot interrupt walking");
+            Require(view.CurrentMood == CharacterMood.Curious, "Hover does not trigger curious mood");
+            behavior.Pause(BehaviorPauseReason.Chat);
+            behavior.ObservePointer(new Point(150, 100)); Settle(Step(Get<SpriteAnimationPlayer>(view, "_spritePlayer")), .3);
+            Require(Math.Abs(Get<SpriteAnimationPlayer>(view, "_spritePlayer").Face!.LookX) > .2, "Chat pause freezes attention");
+            foreach (var state in new[] { CharacterState.Grabbed, CharacterState.Falling, CharacterState.Hanging, CharacterState.Climbing })
+            {
+                view.SetState(state); behavior.ObservePointer(new Point(90, 100));
+                Require(view.CurrentState == state, "Hover interrupts physical state " + state);
+            }
+            behavior.PointerLeft();
+        }
+        view.SetState(CharacterState.Walk); Render(view);
+        Require(Get<Grid>(view, "SpriteLayer").IsHitTestVisible, "Sprite layer is excluded from pointer input");
+        bool routed = false; view.MouseMove += (_, _) => routed = true;
+        Get<Image>(view, "SpriteImage").RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0)
+            { RoutedEvent = System.Windows.Input.Mouse.MouseMoveEvent });
+        Require(routed, "Sprite mouse events do not reach CharacterView");
+        view.SetState(CharacterState.Idle); view.SetFacingDirection(1); view.LookSide(1); view.RelaxCursorLook();
+        player = Get<SpriteAnimationPlayer>(view, "_spritePlayer"); Settle(Step(player), .3);
+        Require(player.Face!.LookX > .8, "Ambient LookSide was canceled by far cursor relaxation");
+        Settle(Step(player), 1.0);
+        Require(Math.Abs(player.Face.LookX) < .02, "Ambient glance never relaxes");
+        view.LookDown(); view.RelaxCursorLook(); Settle(Step(player), .3);
+        Require(player.Face.LookY > .8, "LookDown gaze was canceled before rendering");
+        view.PlayEdgePeek(-1); view.RelaxCursorLook(); Settle(Step(player), .3);
+        Require(player.Face.LookY > .8 && player.Face.LookX < -.5, "Edge peek does not look down toward the edge");
+        Settle(Step(player), 1);
+        foreach (var mood in Enum.GetValues<CharacterMood>().Where(m => m is not CharacterMood.Neutral and not CharacterMood.Curious))
+        {
+            view.SetMood(mood); Settle(Step(player), .3);
+            pictures.Add((mood.ToString(), Render(view)));
+        }
+        var host = new LuKnight.MainWindow();
+        var hostView = Get<CharacterView>(host, "CharacterControl"); Render(hostView);
+        using (var behavior = new BehaviorController(host, hostView))
+        {
+            typeof(LuKnight.MainWindow).GetField("_behaviorController", Private)!.SetValue(host, behavior);
+            behavior.Pause(BehaviorPauseReason.Chat); behavior.Pause(BehaviorPauseReason.UserDrag);
+            typeof(LuKnight.MainWindow).GetField("_leftMouseDown", Private)!.SetValue(host, true);
+            hostView.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0)
+                { RoutedEvent = System.Windows.Input.Mouse.LostMouseCaptureEvent });
+            Require(!Get<bool>(host, "_leftMouseDown"), "Capture loss leaves a stuck mouse button");
+            Require(Get<BehaviorPauseReason>(behavior, "_pauseReasons") == BehaviorPauseReason.Chat,
+                "Capture loss must release UserDrag while preserving other pause owners");
+            behavior.SetThinking(true); behavior.ReactDizzy();
+            typeof(BehaviorController).GetField("_temporaryMoodUntil", Private)!.SetValue(behavior, DateTime.UtcNow.AddSeconds(-1));
+            typeof(BehaviorController).GetMethod("OnTick", Private)!.Invoke(behavior, new object?[] { null, EventArgs.Empty });
+            Require(hostView.CurrentMood == CharacterMood.Thinking, "Chat pause prevents temporary reaction from returning to thinking");
+        }
+        hostView.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent)); host.Close();
+        SaveContactSheet(pictures, Path.Combine(output, "attention-check.png"));
         view.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
     }
 

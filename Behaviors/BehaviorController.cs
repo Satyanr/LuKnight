@@ -375,57 +375,38 @@ public sealed class BehaviorController : IDisposable
     private bool UpdateCursorAwareness(
         DateTime now)
     {
-        if (!DesktopCursorService.TryGetPosition(
-                out Point cursorScreen))
+        Point? local = _localPointer;
+        if (DesktopCursorService.TryGetPosition(out Point screen))
         {
-            _character.RelaxCursorLook();
-            return false;
+            try { local = _character.PointFromScreen(screen); }
+            catch (InvalidOperationException) { /* WPF events remain a usable local input source. */ }
         }
+        if (local is not { } point) { _character.RelaxCursorLook(); return false; }
+        return HandleCursorPosition(now, point);
+    }
 
-        // GetCursorPos menggunakan screen pixels.
-        // WPF mengubahnya menjadi coordinate system
-        // window/DPI yang benar.
-        Point cursorInWindow;
+    private Point? _localPointer;
 
-        try
-        {
-            cursorInWindow =
-                _window.PointFromScreen(
-                    cursorScreen);
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
+    public void ObservePointer(Point positionInCharacter)
+    {
+        _localPointer = positionInCharacter;
+        HandleCursorPosition(DateTime.UtcNow, positionInCharacter);
+    }
 
-        double characterWidth =
-            _character.ActualWidth;
+    public void PointerLeft()
+    {
+        _localPointer = null;
+        _character.RelaxCursorLook();
+    }
 
-        double characterHeight =
-            _character.ActualHeight;
-
-        if (characterWidth <= 0 ||
-            characterHeight <= 0)
-        {
-            return false;
-        }
-
-        // Posisi kira-kira pusat wajah Lu-Knight.
-        Point faceCenter =
-            _character.TranslatePoint(
-                new Point(
-                    characterWidth * 0.50,
-                    characterHeight * 0.50),
-                _window);
-
-        double deltaX =
-            cursorInWindow.X -
-            faceCenter.X;
-
-        double deltaY =
-            cursorInWindow.Y -
-            faceCenter.Y;
-
+    private bool HandleCursorPosition(DateTime now, Point cursor)
+    {
+        double width = _character.ActualWidth, height = _character.ActualHeight;
+        if (width <= 0 || height <= 0) return false;
+        // Sprite face sits lower than the old vector face on the fixed canvas.
+        double faceY = _character.RenderMode == LuKnight.Visuals.CharacterRenderMode.Sprite ? .60 : .50;
+        double deltaX = cursor.X - width * .50;
+        double deltaY = cursor.Y - height * faceY;
         double distance =
             Math.Sqrt(
                 (deltaX * deltaX) +
@@ -490,14 +471,12 @@ public sealed class BehaviorController : IDisposable
                 now);
 
             // Lu-Knight berhenti untuk melihat user.
-            _walking = false;
-
-            _character.SetState(
-                CharacterState.Idle);
-
-            _character.SetFacingDirection(
-                _direction);
-
+            if (_character.CurrentState == CharacterState.Walk)
+            {
+                _walking = false;
+                _canWalkOnRender = false;
+                _character.SetState(CharacterState.Idle);
+            }
             _character.TwitchEars();
 
             _nextCursorReactionAt =
@@ -508,6 +487,13 @@ public sealed class BehaviorController : IDisposable
         // =========================
         // EYE TRACKING
         // =========================
+
+        if (_character.CurrentState == CharacterState.Walk)
+        {
+            _walking = false;
+            _canWalkOnRender = false;
+            _character.SetState(CharacterState.Idle);
+        }
 
         double normalizedX =
             Math.Clamp(
@@ -1226,13 +1212,18 @@ public sealed class BehaviorController : IDisposable
             DateTime.UtcNow;
 
         _canWalkOnRender = false;
-
-
+        UpdateMood(now);
         if (IsPaused)
+        {
+            // Pausing autonomous movement (e.g. chat) must not freeze attention.
+            UpdateCursorAwareness(now);
+            if (now >= _nextBlinkAt) { _character.Blink(); ScheduleNextBlink(); }
             return;
+        }
 
         if (_surfaceController.IsBusy)
         {
+            UpdateCursorAwareness(now);
             if (now >= _nextBlinkAt)
             {
                 _character.Blink();
@@ -1242,10 +1233,6 @@ public sealed class BehaviorController : IDisposable
 
             return;
         }
-
-        UpdateMood(
-                now);
-
 
         bool cursorHasAttention =
             UpdateCursorAwareness(
