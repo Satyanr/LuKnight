@@ -11,9 +11,18 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+
+  <ItemGroup>
     <Content Include="Assets\Characters\LuKnight\**\*.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>
+        PreserveNewest
+      </CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
 
 </Project>
