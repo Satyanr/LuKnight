@@ -48,7 +48,8 @@ public sealed class AssistantController
         ContextSources = contextSources ?? new AssistantContextSourceRouter(new IAssistantContextSource[]
         {
             new LocalTextFileContextSource(() => _chat.Options.UseFileContext),
-            new ClipboardTextContextSource(() => _chat.Options.UseClipboardContext)
+            new ClipboardTextContextSource(() => _chat.Options.UseClipboardContext),
+            new SystemStatusContextSource(() => _chat.Options.UseSystemContext)
         });
         Actions = actions ?? new AssistantActionRouter(new IAssistantAction[]
         {

@@ -41,6 +41,17 @@ public sealed class AssistantIntentRouter
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)));
         }
 
+        SystemContextCommand? systemCommand = SystemContextCommandParser.Parse(input);
+        if (systemCommand is not null)
+        {
+            return AssistantIntent.UseContext(new ContextInvocation(
+                BuiltInContextNames.SystemStatus,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["scope"] = systemCommand.Scope.ToString()
+                }));
+        }
+
         if (IsApplicationAwarenessQuery(input))
         {
             return AssistantIntent.UseTool(new ToolInvocation(BuiltInToolNames.DesktopListApplications, new Dictionary<string, string>()));

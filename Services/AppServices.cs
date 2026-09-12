@@ -34,7 +34,8 @@ public sealed class AppServices
         ContextSources = new AssistantContextSourceRouter(new IAssistantContextSource[]
         {
             new LocalTextFileContextSource(() => Chat.Options.UseFileContext),
-            new ClipboardTextContextSource(() => Chat.Options.UseClipboardContext)
+            new ClipboardTextContextSource(() => Chat.Options.UseClipboardContext),
+            new SystemStatusContextSource(() => Chat.Options.UseSystemContext)
         });
         Actions = new AssistantActionRouter(new IAssistantAction[]
         {

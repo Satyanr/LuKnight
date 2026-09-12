@@ -140,6 +140,15 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
             Change(_services.Chat.Options with { UseClipboardContext = value });
         }
     }
+    public bool UseSystemContext
+    {
+        get => _services.Chat.Options.UseSystemContext;
+        set
+        {
+            if (value == _services.Chat.Options.UseSystemContext) return;
+            Change(_services.Chat.Options with { UseSystemContext = value });
+        }
+    }
     public bool UseDesktopActions
     {
         get => _services.Chat.Options.UseDesktopActions;

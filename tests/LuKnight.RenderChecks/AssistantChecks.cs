@@ -338,6 +338,87 @@ internal static partial class Program
         Require(clipboardAssistant.Memory.Count == 0,
             "Clipboard content leaked into long-term memory.");
 
+        var fakeSystem = new SystemContextSnapshot(
+            OperatingSystem: "TEST-WINDOWS-SYS-742",
+            OsArchitecture: "X64",
+            ProcessArchitecture: "X64",
+            LogicalProcessorCount: 8,
+            TotalPhysicalMemoryBytes: 16UL * 1024 * 1024 * 1024,
+            AvailablePhysicalMemoryBytes: 6UL * 1024 * 1024 * 1024,
+            MemoryLoadPercent: 62,
+            NetworkInterfaceAvailable: true,
+            AcPowerConnected: true,
+            BatteryPresent: true,
+            BatteryPercent: 74,
+            Uptime: TimeSpan.FromHours(53));
+
+        var systemIntentRouter = new AssistantIntentRouter();
+        Require(systemIntentRouter.Route("status sistem").Context?.Name == BuiltInContextNames.SystemStatus,
+            "System status was not routed as context.");
+        Require(systemIntentRouter.Route("cek baterai").Context?.Arguments["scope"] == SystemContextScope.Battery.ToString(),
+            "Battery query has incorrect scope.");
+        Require(systemIntentRouter.Route("cek ram").Context?.Arguments["scope"] == SystemContextScope.Memory.ToString(),
+            "RAM query has incorrect scope.");
+        Require(systemIntentRouter.Route("restart komputer").Kind == AssistantIntentKind.Conversation,
+            "Restart was exposed during read-only System Context phase.");
+        Require(systemIntentRouter.Route("matikan komputer").Kind == AssistantIntentKind.Conversation,
+            "Shutdown was exposed during read-only System Context phase.");
+        Require(systemIntentRouter.Route("matikan wifi").Kind == AssistantIntentKind.Conversation,
+            "Wi-Fi mutation was exposed during System Context phase.");
+
+        var systemSource = new SystemStatusContextSource(() => true, () => fakeSystem);
+        ContextCaptureResult batteryResult = await systemSource.CaptureAsync(new ContextInvocation(
+            BuiltInContextNames.SystemStatus,
+            new Dictionary<string, string>
+            {
+                ["scope"] = SystemContextScope.Battery.ToString()
+            }));
+        Require(batteryResult.Success && batteryResult.Reference!.Content.Contains("74%") &&
+            !batteryResult.Reference.Content.Contains("Physical memory", StringComparison.OrdinalIgnoreCase) &&
+            !batteryResult.Reference.Content.Contains("TEST-WINDOWS-SYS-742", StringComparison.Ordinal),
+            "Battery scope leaked unrelated system information.");
+
+        var disabledSystem = new SystemStatusContextSource(
+            () => false,
+            () => throw new Exception("System must not be captured when disabled"));
+        ContextCaptureResult disabledResult = await disabledSystem.CaptureAsync(new ContextInvocation(
+            BuiltInContextNames.SystemStatus,
+            new Dictionary<string, string>
+            {
+                ["scope"] = SystemContextScope.Summary.ToString()
+            }));
+        Require(!disabledResult.Success,
+            "Disabled system context still captured system information.");
+
+        var systemPayloads = new List<string>();
+        using var systemHandler = new FakeHttp(async (request, token) =>
+        {
+            systemPayloads.Add(await request.Content!.ReadAsStringAsync(token));
+            return JsonResponse(new { candidates = new[] { new { content = new { parts = new[] { new { text = "system safe" } } } } } });
+        });
+        using var systemClient = new HttpClient(systemHandler);
+        var systemAssistant = new AssistantController(
+            new ChatCoordinator(new FakeCredentials { Key = "system-context-key" }, new() { UseSystemContext = true }, () => null, systemClient),
+            memory: new MemoryService(),
+            contextSources: new AssistantContextSourceRouter(new IAssistantContextSource[]
+            {
+                new SystemStatusContextSource(() => true, () => fakeSystem)
+            }));
+        await systemAssistant.SendAsync(new("status sistem"));
+        using (var systemPayload = JsonDocument.Parse(systemPayloads[^1]))
+        {
+            string instruction = systemPayload.RootElement.GetProperty("system_instruction").GetProperty("parts")[0].GetProperty("text").GetString()!;
+            JsonElement contents = systemPayload.RootElement.GetProperty("contents");
+            JsonElement current = contents[contents.GetArrayLength() - 1];
+            string referenceText = current.GetProperty("parts")[0].GetProperty("text").GetString()!;
+            Require(!instruction.Contains("TEST-WINDOWS-SYS-742", StringComparison.Ordinal) &&
+                referenceText.Contains("TEST-WINDOWS-SYS-742", StringComparison.Ordinal),
+                "System status escaped the untrusted reference channel.");
+        }
+        Require(systemAssistant.Conversation.Turns.All(turn => !turn.Text.Contains("TEST-WINDOWS-SYS-742", StringComparison.Ordinal)) &&
+            systemAssistant.Memory.Count == 0,
+            "System status leaked into conversation transcript or long-term memory.");
+
         var fakeDesktop = new FakeDesktopActionExecutor();
         var actionRouter = new AssistantActionRouter(new IAssistantAction[]
         {
