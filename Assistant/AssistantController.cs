@@ -12,6 +12,7 @@ public sealed class AssistantController
     public AssistantContextProvider Context { get; }
     public AssistantIntentRouter IntentRouter { get; }
     public AssistantToolRouter Tools { get; }
+    public AssistantEmotionEngine Emotions { get; }
     public bool IsBusy => _chat.IsBusy;
     public string DisplayName => _chat.DisplayName;
 
@@ -21,7 +22,8 @@ public sealed class AssistantController
         MemoryService? memory = null,
         AssistantContextProvider? context = null,
         AssistantIntentRouter? intentRouter = null,
-        AssistantToolRouter? tools = null)
+        AssistantToolRouter? tools = null,
+        AssistantEmotionEngine? emotions = null)
     {
         _chat = chat ?? throw new ArgumentNullException(nameof(chat));
         Personality = personality ?? new PersonalityEngine();
@@ -33,6 +35,7 @@ public sealed class AssistantController
             new RememberMemoryTool(Memory),
             new ForgetMemoryTool(Memory)
         });
+        Emotions = emotions ?? new AssistantEmotionEngine();
     }
 
     public async Task<AssistantReply> SendAsync(
@@ -77,7 +80,12 @@ public sealed class AssistantController
             Conversation.AddAssistant(reply);
 
             AssistantBackend backend = _chat.LastReplyWasGemini ? AssistantBackend.Gemini : AssistantBackend.Local;
-            return new AssistantReply(reply, backend, DateTimeOffset.UtcNow);
+            AssistantEmotion emotion = Emotions.EvaluateConversation(
+                request.Text,
+                reply,
+                backend,
+                _chat.Options.Style);
+            return new AssistantReply(reply, backend, DateTimeOffset.UtcNow, emotion);
         }
         catch
         {
@@ -96,7 +104,8 @@ public sealed class AssistantController
         {
             ToolExecutionResult result = await Tools.ExecuteAsync(invocation, cancellationToken);
             Conversation.AddAssistant(result.Message);
-            return new AssistantReply(result.Message, AssistantBackend.Local, DateTimeOffset.UtcNow);
+            AssistantEmotion emotion = Emotions.EvaluateTool(invocation, result);
+            return new AssistantReply(result.Message, AssistantBackend.Local, DateTimeOffset.UtcNow, emotion);
         }
         catch
         {

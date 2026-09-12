@@ -123,6 +123,23 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ReactToAssistantEmotion(AssistantEmotion emotion)
+    {
+        CharacterMood mood = emotion switch
+        {
+            AssistantEmotion.Curious => CharacterMood.Curious,
+            AssistantEmotion.Happy => CharacterMood.Happy,
+            AssistantEmotion.Surprised => CharacterMood.Surprised,
+            AssistantEmotion.Confused => CharacterMood.Confused,
+            AssistantEmotion.Sad => CharacterMood.Sad,
+            AssistantEmotion.Determined => CharacterMood.Determined,
+            AssistantEmotion.Wink => CharacterMood.Wink,
+            _ => CharacterMood.Neutral
+        };
+
+        _behaviorController?.ReactMood(mood);
+    }
+
     private void BehaviorController_SupportLost()
     {
         _physicsController?
@@ -616,8 +633,7 @@ public partial class MainWindow : Window
             _behaviorController?
                 .SetThinking(false);
 
-            _behaviorController?
-                .ReactHappy();
+            ReactToAssistantEmotion(reply.Emotion);
 
             ChatPanelControl.AddAssistantMessage(reply.Text);
 

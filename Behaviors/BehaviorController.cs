@@ -635,9 +635,7 @@ public sealed class BehaviorController : IDisposable
 
     public void ReactHappy()
     {
-        SetTemporaryMood(
-            CharacterMood.Happy,
-            0.90);
+        ReactMood(CharacterMood.Happy);
     }
 
     public void ReactDizzy()
@@ -651,10 +649,31 @@ public sealed class BehaviorController : IDisposable
 
     public void ReactConfused()
     {
-        SetTemporaryMood(
-            CharacterMood.Confused,
-            1.20,
-            allowDuringThinking: true);
+        ReactMood(CharacterMood.Confused);
+    }
+
+    public void ReactMood(CharacterMood mood)
+    {
+        if (mood == CharacterMood.Neutral)
+        {
+            _temporaryMoodUntil = DateTime.MinValue;
+            RestoreContextMood();
+            return;
+        }
+
+        double duration = mood switch
+        {
+            CharacterMood.Curious => 1.10,
+            CharacterMood.Happy => 0.90,
+            CharacterMood.Surprised => 0.65,
+            CharacterMood.Confused => 1.20,
+            CharacterMood.Sad => 1.35,
+            CharacterMood.Determined => 1.10,
+            CharacterMood.Wink => 0.75,
+            _ => 0.90
+        };
+
+        SetTemporaryMood(mood, duration, allowDuringThinking: true);
     }
 
 

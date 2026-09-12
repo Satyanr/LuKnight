@@ -27,7 +27,8 @@ public sealed record AssistantRequest(
 public sealed record AssistantReply(
     string Text,
     AssistantBackend Backend,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    AssistantEmotion Emotion = AssistantEmotion.Neutral);
 
 public sealed record ConversationTurn(
     ConversationRole Role,

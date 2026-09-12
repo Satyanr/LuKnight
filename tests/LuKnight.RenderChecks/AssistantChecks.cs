@@ -42,6 +42,26 @@ internal static partial class Program
 
     private static async Task CheckAssistantAsync()
     {
+        var emotionEngine = new AssistantEmotionEngine();
+        Require(emotionEngine.EvaluateConversation(
+            "apa itu Lu-Knight?",
+            "Lu-Knight adalah asisten desktop.",
+            AssistantBackend.Gemini,
+            ResponseStyle.Friendly) == AssistantEmotion.Curious,
+            "Question does not produce Curious emotion.");
+        Require(emotionEngine.EvaluateConversation(
+            "halo",
+            "AI online belum tersedia.",
+            AssistantBackend.Local,
+            ResponseStyle.Friendly) == AssistantEmotion.Confused,
+            "Local AI failure does not produce Confused emotion.");
+        Require(emotionEngine.EvaluateConversation(
+            "lanjut perbaiki bug",
+            "Baik.",
+            AssistantBackend.Gemini,
+            ResponseStyle.Friendly) == AssistantEmotion.Determined,
+            "Task continuation does not produce Determined emotion.");
+
         await CheckToolRouterAsync();
         await CheckPersonalityAsync();
         var conversation = new ConversationManager();
@@ -112,6 +132,8 @@ internal static partial class Program
         var localReply = await local.SendAsync(new("halo", AssistantInputSource.System));
         Require(localReply.Backend == AssistantBackend.Local && localReply.Text.Length > 0 && local.Conversation.Count == 2,
             "Assistant local reply or transcript is incorrect");
+        Require(localReply.Emotion == AssistantEmotion.Confused,
+            "Local fallback emotion is incorrect");
         Require(local.Conversation.Turns[0].Source == AssistantInputSource.System && local.DisplayName == noKey.DisplayName,
             "Assistant loses input source or coordinator display name");
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
@@ -148,6 +170,8 @@ internal static partial class Program
         AssistantReply memoryReply = await assistant.SendAsync(new("ingat bahwa kode proyek saya ORBIT-742"));
         Require(memoryReply.Backend == AssistantBackend.Local && assistantMemory.Count == 1 &&
             payloads.Count == requestCountBeforeMemoryCommands, "Remember command used Gemini or was not persisted");
+        Require(memoryReply.Emotion == AssistantEmotion.Happy,
+            "Remember tool does not produce Happy emotion");
         assistant.ClearConversation();
         Require(assistant.Conversation.Count == 0 && assistantMemory.Count == 1,
             "Clear Conversation incorrectly erased long-term memory");
@@ -155,7 +179,10 @@ internal static partial class Program
         Require(onlineReply.Backend == AssistantBackend.Gemini && onlineReply.Text == "Gemini test reply" && assistant.Conversation.Count == 2,
             "Assistant mislabels a successful Gemini reply");
         Require(onlineReply.CreatedAt >= assistant.Conversation.Turns[^1].CreatedAt, "Reply timestamp predates its transcript entry");
-        await assistant.SendAsync(new("apa kode proyek saya?"));
+        AssistantReply questionReply = await assistant.SendAsync(new("apa kode proyek saya?"));
+        Require(questionReply.Emotion == AssistantEmotion.Curious &&
+            assistant.Conversation.Turns[^1].Role == ConversationRole.Assistant,
+            "Assistant reply lost its conversation emotion");
         using (var memoryPayload = JsonDocument.Parse(payloads[^1]))
         {
             string instruction = memoryPayload.RootElement.GetProperty("system_instruction").GetProperty("parts")[0].GetProperty("text").GetString()!;
