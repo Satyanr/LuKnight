@@ -1,0 +1,40 @@
+name: Windows release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version (for example 1.0.0)
+        required: true
+        default: '1.0.0'
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Test
+        shell: pwsh
+        run: dotnet run --project tests/LuKnight.RenderChecks/LuKnight.RenderChecks.csproj -c Release
+      - name: Build installer and manifest
+        shell: pwsh
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { $env:INPUT_VERSION }
+          ./tools/Build-Release.ps1 -Version $version -Iscc 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LuKnight-release
+          path: artifacts/release/*
+      - name: Prepare draft GitHub Release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME artifacts/release/* --draft --verify-tag --title "Lu-Knight $env:GITHUB_REF_NAME" --generate-notes

@@ -1,4 +1,4 @@
-﻿<Window x:Class="LuKnight.Views.SettingsWindow"
+<Window x:Class="LuKnight.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Lu-Knight Settings" Width="860" Height="680" MinWidth="760" MinHeight="560"
@@ -52,6 +52,11 @@
                     <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.48"/><Setter Property="Cursor" Value="Arrow"/></Trigger>
                 </ControlTemplate.Triggers>
             </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="#0F172A"/><Setter Property="Background" Value="#E2E8F0"/>
+            <Setter Property="Padding" Value="10,6"/><Setter Property="MinHeight" Value="34"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
         </Style>
         <Style TargetType="CheckBox">
             <Setter Property="Foreground" Value="#E2E8F0"/><Setter Property="Margin" Value="0,5,0,8"/>
@@ -126,9 +131,10 @@
                             <StackPanel Grid.Column="1"><TextBlock Text="Application status" Style="{StaticResource Muted}"/><TextBlock Text="{Binding ApplicationStatus}" Foreground="#D7E8F8" Margin="0,6,0,0"/></StackPanel>
                         </Grid></Border>
                         <Border Style="{StaticResource Card}" Padding="16"><StackPanel>
-                            <TextBlock Text="Startup · segera hadir" Style="{StaticResource CardTitle}"/>
-                            <CheckBox x:Name="StartupCheck" Content="Start Lu-Knight with Windows" IsEnabled="False"/>
-                            <CheckBox x:Name="StartHiddenCheck" Content="Start hidden in System Tray" IsEnabled="False"/>
+                            <TextBlock Text="Startup" Style="{StaticResource CardTitle}"/>
+                            <CheckBox x:Name="StartupCheck" Content="Start Lu-Knight with Windows" IsEnabled="{Binding StartupAvailable}" IsChecked="{Binding StartWithWindows, Mode=TwoWay}"/>
+                            <CheckBox x:Name="StartHiddenCheck" Content="Start hidden in System Tray" IsEnabled="{Binding StartupAvailable}" IsChecked="{Binding StartHidden, Mode=TwoWay}" ToolTip="Mulai tersembunyi hanya berlaku saat login Windows. Membuka aplikasi secara manual tetap menampilkan karakter."/>
+                            <TextBlock Text="{Binding StartupMessage}" Style="{StaticResource Muted}" Margin="0,6,0,0"/>
                         </StackPanel></Border>
                     </StackPanel>
                     <StackPanel x:Name="BehaviorPanel">
@@ -136,17 +142,37 @@
                         <TextBlock Text="Behavior" Style="{StaticResource Title}"/>
                         <TextBlock Text="Cara Lu-Knight bergerak, beristirahat, dan bereaksi." Style="{StaticResource Muted}" Margin="0,0,0,22"/>
                         <Border Style="{StaticResource Card}"><StackPanel>
-                            <TextBlock Text="Kontrol behavior segera hadir" Style="{StaticResource CardTitle}"/>
-                            <TextBlock Text="Saat ini Lu-Knight memakai perilaku bawaan. Pilihan berikut akan tersedia pada pembaruan selanjutnya." Style="{StaticResource Muted}"/>
+                            <CheckBox x:Name="AutonomousCheck" Content="Enable autonomous behavior" IsChecked="{Binding AutonomousEnabled}"/>
+                            <TextBlock Text="Saat nonaktif, drag, lempar, klik, chat, dan interaksi cursor tetap tersedia." Style="{StaticResource Muted}"/>
+                            <Grid Margin="0,16,0,0" IsEnabled="{Binding AutonomousEnabled}">
+                                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="20"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                <StackPanel><TextBlock Text="Activity level" Margin="0,0,0,6"/><ComboBox x:Name="ActivityCombo" ItemsSource="{Binding ActivityChoices}" SelectedItem="{Binding Activity}" ToolTip="Calm lebih sering diam; Active lebih sering berjalan dan menjelajah."/></StackPanel>
+                                <StackPanel Grid.Column="2"><TextBlock Text="Movement speed" Margin="0,0,0,6"/><ComboBox x:Name="SpeedCombo" ItemsSource="{Binding SpeedChoices}" SelectedItem="{Binding Speed}"/></StackPanel>
+                            </Grid>
                         </StackPanel></Border>
                         <Border Style="{StaticResource Card}"><StackPanel>
-                            <TextBlock Text="Activity &amp; movement" Style="{StaticResource CardTitle}"/>
-                            <TextBlock Text="Perilaku otonom, tingkat aktivitas, dan kecepatan berjalan." Style="{StaticResource Muted}"/>
-                            <TextBlock Text="Sleep &amp; window adventures" Style="{StaticResource CardTitle}" Margin="0,22,0,10"/>
-                            <TextBlock Text="Waktu istirahat, eksplorasi jendela, serta gerakan melompat dan memanjat." Style="{StaticResource Muted}"/>
-                            <TextBlock Text="Cursor interaction" Style="{StaticResource CardTitle}" Margin="0,22,0,10"/>
-                            <TextBlock Text="Arah pandangan, reaksi saat cursor mendekat, dan bangun dari tidur." Style="{StaticResource Muted}"/>
+                            <TextBlock Text="Sleep" Style="{StaticResource CardTitle}"/>
+                            <CheckBox x:Name="AllowSleepCheck" Content="Allow Lu-Knight to sleep" IsEnabled="{Binding AutonomousEnabled}" IsChecked="{Binding AllowSleep}"/>
+                            <Grid Margin="0,8,0,0" IsEnabled="{Binding SleepControlsEnabled}">
+                                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="20"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                <StackPanel><TextBlock Text="Sleep after" Margin="0,0,0,6"/><ComboBox x:Name="SleepAfterCombo" ItemsSource="{Binding SleepChoices}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SleepAfter}"/></StackPanel>
+                                <StackPanel Grid.Column="2"><TextBlock Text="Nap duration" Margin="0,0,0,6"/><ComboBox x:Name="NapCombo" ItemsSource="{Binding NapChoices}" SelectedItem="{Binding Nap}"/></StackPanel>
+                            </Grid>
                         </StackPanel></Border>
+                        <Border Style="{StaticResource Card}"><StackPanel>
+                            <TextBlock Text="Window adventures" Style="{StaticResource CardTitle}"/>
+                            <CheckBox x:Name="ExploreWindowsCheck" Content="Explore application windows" IsEnabled="{Binding AutonomousEnabled}" IsChecked="{Binding ExploreWindows}"/>
+                            <CheckBox x:Name="JumpWindowsCheck" Content="Jump between windows" IsEnabled="{Binding AdventureControlsEnabled}" IsChecked="{Binding JumpBetweenWindows}"/>
+                            <CheckBox x:Name="HangingCheck" Content="Hanging / climbing" IsEnabled="{Binding AdventureControlsEnabled}" IsChecked="{Binding HangingClimbing}"/>
+                        </StackPanel></Border>
+                        <Border Style="{StaticResource Card}"><StackPanel>
+                            <TextBlock Text="Cursor interaction" Style="{StaticResource CardTitle}"/>
+                            <CheckBox x:Name="LookCursorCheck" Content="Look at cursor" IsChecked="{Binding LookAtCursor}"/>
+                            <CheckBox x:Name="ReactCursorCheck" Content="React when cursor approaches" IsChecked="{Binding ReactToCursor}"/>
+                            <CheckBox x:Name="WakeCursorCheck" Content="Wake when cursor approaches" IsChecked="{Binding WakeAtCursor}"/>
+                        </StackPanel></Border>
+                        <Button x:Name="ResetBehaviorButton" Content="Reset Behavior to Default" Command="{Binding ResetBehaviorCommand}" HorizontalAlignment="Left"/>
+                        <TextBlock Text="Perubahan langsung berlaku dan tersimpan otomatis." Style="{StaticResource Muted}" Margin="0,12,0,16"/>
                     </StackPanel>
                     <StackPanel x:Name="AiPanel">
                         <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding SelectedSection}" Value="AI &amp; Chat"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>
@@ -154,15 +180,27 @@
                         <TextBlock Text="Status layanan yang sedang digunakan oleh Lu-Knight." Style="{StaticResource Muted}" Margin="0,0,0,22"/>
                         <Border Style="{StaticResource Card}"><StackPanel>
                             <TextBlock Text="AI status" Style="{StaticResource CardTitle}"/>
-                            <TextBlock x:Name="AiStatusText" Text="{Binding AiStatus}" Foreground="#67E8F9" FontSize="18" FontWeight="SemiBold"/>
-                            <TextBlock Text="API status" Style="{StaticResource Muted}" Margin="0,18,0,6"/>
-                            <TextBlock Text="{Binding ApiStatus}" Foreground="#E2E8F0"/>
+                            <TextBlock x:Name="AiStatusText" Text="{Binding Product.ChatStatus}" Foreground="#67E8F9" TextWrapping="Wrap"/>
+                            <StackPanel IsEnabled="{Binding Product.CanEditChat}" Margin="0,16,0,0">
+                                <TextBlock Text="Provider" Margin="0,0,0,6"/><ComboBox x:Name="ProviderCombo" ItemsSource="{Binding Product.Providers}" SelectedItem="{Binding Product.Provider}"/>
+                                <TextBlock Text="AI model" Margin="0,14,0,6"/><TextBox x:Name="ModelInput" Text="{Binding Product.Model, UpdateSourceTrigger=LostFocus}" Padding="10,7" Foreground="#0F172A"/>
+                            </StackPanel>
                         </StackPanel></Border>
-                        <Border Style="{StaticResource Card}"><StackPanel>
-                            <TextBlock Text="Current provider" Style="{StaticResource Muted}"/><TextBlock Text="{Binding Provider}" Margin="0,6,0,18"/>
-                            <TextBlock Text="Current model" Style="{StaticResource Muted}"/><TextBlock Text="{Binding Model}" Margin="0,6,0,0"/>
+                        <Border Style="{StaticResource Card}"><StackPanel IsEnabled="{Binding Product.CanEditChat}">
+                            <TextBlock Text="API key" Style="{StaticResource CardTitle}"/>
+                            <TextBlock Text="{Binding Product.CredentialStatus}" Style="{StaticResource Muted}"/>
+                            <PasswordBox x:Name="ApiKeyInput" Margin="0,12,0,10" Padding="10,7" Foreground="#0F172A" ToolTip="Masukkan key baru. Key yang tersimpan tidak ditampilkan kembali."/>
+                            <WrapPanel><Button Content="Update Key" Click="UpdateKey_Click" Margin="0,0,8,8"/><Button Content="Remove Key" Command="{Binding Product.RemoveKeyCommand}" Margin="0,0,8,8"/><Button Content="Test Connection" Command="{Binding Product.TestCommand}" Margin="0,0,0,8"/></WrapPanel>
+                            <TextBlock Text="Key tersimpan di Windows Credential Manager. Jika key tersimpan dihapus, environment GEMINI_API_KEY tetap dapat dipakai sebagai fallback." Style="{StaticResource Muted}" FontSize="12"/>
                         </StackPanel></Border>
-                        <TextBlock Text="Pilihan provider, pengelolaan API key, dan preferensi chat akan tersedia pada pembaruan selanjutnya." Style="{StaticResource Muted}"/>
+                        <Border Style="{StaticResource Card}"><StackPanel IsEnabled="{Binding Product.CanEditChat}">
+                            <TextBlock Text="Conversation" Style="{StaticResource CardTitle}"/>
+                            <TextBlock Text="Language" Margin="0,0,0,6"/><ComboBox ItemsSource="{Binding Product.Languages}" SelectedItem="{Binding Product.Language}"/>
+                            <TextBlock Text="Response length" Margin="0,14,0,6"/><ComboBox ItemsSource="{Binding Product.Lengths}" SelectedItem="{Binding Product.Length}"/>
+                            <TextBlock Text="Response style" Margin="0,14,0,6"/><ComboBox ItemsSource="{Binding Product.Styles}" SelectedItem="{Binding Product.Style}"/>
+                            <CheckBox Content="Remember conversation during session" IsChecked="{Binding Product.Remember}" Margin="0,18,0,12"/>
+                            <Button Content="Clear Conversation" Command="{Binding Product.ClearCommand}" HorizontalAlignment="Left"/>
+                        </StackPanel></Border>
                     </StackPanel>
                     <StackPanel x:Name="AboutPanel">
                         <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding SelectedSection}" Value="About"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>
@@ -176,12 +214,18 @@
                             <TextBlock><Hyperlink NavigateUri="{Binding RepositoryUrl}" RequestNavigate="Repository_RequestNavigate" Foreground="#67E8F9">GitHub · Satyanr/LuKnight</Hyperlink></TextBlock>
                             <TextBlock Text="{Binding Copyright}" Style="{StaticResource Muted}" Margin="0,20,0,0"/>
                         </StackPanel></Border>
-                        <Button x:Name="CheckUpdatesButton" Content="Check for Updates" IsEnabled="False" HorizontalAlignment="Left"/>
-                        <TextBlock Text="Pemeriksaan pembaruan otomatis belum tersedia." Style="{StaticResource Muted}" Margin="0,12,0,0"/>
+                        <WrapPanel>
+                            <Button x:Name="CheckUpdatesButton" Content="Check for Updates" Command="{Binding Product.CheckCommand}" IsEnabled="{Binding Product.CanCheck, FallbackValue=False}" HorizontalAlignment="Left" Margin="0,0,8,8"/>
+                            <Button Content="Download Update" Command="{Binding Product.DownloadCommand}" Margin="0,0,8,8"/>
+                            <Button Content="Install &amp; Restart" Command="{Binding Product.InstallCommand}" Margin="0,0,8,8"/>
+                            <Button Content="Later" Command="{Binding Product.LaterCommand}" Margin="0,0,0,8"/>
+                        </WrapPanel>
+                        <TextBlock Text="{Binding Product.UpdateStatus}" Style="{StaticResource Muted}" Margin="0,8,0,0"/>
+                        <TextBlock Text="Pemeriksaan otomatis maksimal sekali sehari. Update hanya dipasang saat Anda memilih Install &amp; Restart dan karakter tidak sedang drag, jatuh, atau chat." Style="{StaticResource Muted}" Margin="0,12,0,0"/>
                     </StackPanel>
                 </Grid>
             </ScrollViewer>
-            <TextBlock Grid.Row="1" Text="Perubahan berlaku untuk sesi ini. Menutup Settings tidak menutup Lu-Knight." Style="{StaticResource Muted}" FontSize="11" Margin="0,16,0,0"/>
+            <DockPanel Grid.Row="1" Margin="0,12,0,0"><Button Content="Save" Command="{Binding Product.SaveCommand}" DockPanel.Dock="Right" Padding="12,5"/><TextBlock Text="{Binding Product.SaveStatus, FallbackValue='Pengaturan sesi'}" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0"/></DockPanel>
         </Grid>
     </Grid>
 </Window>

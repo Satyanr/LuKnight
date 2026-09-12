@@ -4,3 +4,10 @@ obj/
 *.user
 *.suo
 *_wpftmp.csproj
+.tools/
+artifacts/
+publish/
+.env
+.env.*
+*.pfx
+*.p12

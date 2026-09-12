@@ -2,6 +2,9 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
+using System.IO;
+using System.Threading;
+using System.Windows.Threading;
 using LuKnight.Services;
 using LuKnight.Views;
 
@@ -11,6 +14,13 @@ public partial class App : Application
 {
     private TrayIconService? _tray;
     private MainWindow? _character;
+    private StartupService _startup = new();
+    private AppServices? _services;
+    private Mutex? _instance;
+    private EventWaitHandle? _showRequest;
+    private DispatcherTimer? _instanceTimer;
+    private readonly CancellationTokenSource _lifetime = new();
+    public void ExitForUpdate() => ExitApplication();
 
     private SettingsWindow?
     _settingsWindow;
@@ -31,7 +41,7 @@ public partial class App : Application
         if (_settingsWindow is null)
         {
             _settingsWindow =
-                new SettingsWindow(_character ?? throw new InvalidOperationException("Character is not initialized."));
+                new SettingsWindow(_character ?? throw new InvalidOperationException("Character is not initialized."), _startup);
 
 
             _settingsWindow.Closed +=
@@ -60,7 +70,24 @@ public partial class App : Application
     {
         base.OnStartup(e);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        _character = new MainWindow();
+        string? wait = e.Args.FirstOrDefault(a => a.StartsWith("--wait-for-pid="));
+        if (wait is not null && int.TryParse(wait.Split('=')[1], out int pid))
+        { try { using var old = Process.GetProcessById(pid); old.WaitForExit(15000); } catch (ArgumentException) { } }
+        _instance = new Mutex(false, @"Local\LuKnight-App", out bool firstInstance);
+        _showRequest = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\LuKnight-Show");
+        if (!firstInstance) { _showRequest.Set(); Shutdown(); return; }
+        string configPath = Path.Combine(SettingsService.UserDirectory, "settings.json");
+        var config = new SettingsService(configPath); config.Load();
+        if (!File.Exists(configPath))
+        {
+            try { config.Update(config.Current with { General = config.Current.General with { StartHidden = new RegistryStartupStore().ReadStartHidden() } }); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
+        }
+        _services = new AppServices(config);
+        _startup = new StartupService(new PersistentStartupStore(config), Environment.ProcessPath ?? "", Assembly.GetExecutingAssembly().Location, File.Exists);
+        try { _startup.Validate(); }
+        catch (Exception ex) { Trace.WriteLine($"[Lu-Knight] Startup registration could not be repaired: {ex.Message}"); }
+        _character = new MainWindow(_services);
         MainWindow = _character;
         _character.Closing += Character_Closing;
         _character.IsVisibleChanged += Character_VisibilityChanged;
@@ -96,7 +123,23 @@ public partial class App : Application
             Trace.WriteLine($"[Lu-Knight] Tray unavailable: {ex}");
             MessageBox.Show("System tray tidak dapat dibuat. Lu-Knight tetap tersedia di taskbar.", "Lu-Knight", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-        _character.Show();
+        // Do not Show/Hide: creating a hidden startup window must not flash or steal focus.
+        if (!StartupService.ShouldStartHidden(e.Args, _startup.ReadStatus().StartHidden, _tray is not null))
+            _character.Show();
+        _tray?.SetCharacterVisible(_character.IsVisible);
+        _instanceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _instanceTimer.Tick += (_, _) => { if (_showRequest.WaitOne(0)) _character.ShowFromTray(); };
+        _instanceTimer.Start();
+        _ = CheckUpdatesAtStartup();
+    }
+    private async Task CheckUpdatesAtStartup()
+    {
+        try
+        {
+            if (_services is not null && await _services.Updates.CheckForUpdate(true, _lifetime.Token) is { } update && !_isExiting)
+                _tray?.NotifyUpdate(update.Version);
+        }
+        catch (OperationCanceledException) { }
     }
 
     private void ToggleCharacterVisibility()
@@ -111,7 +154,8 @@ public partial class App : Application
 
     private void Character_Closing(object? sender, CancelEventArgs e)
     {
-        if (_isExiting || _tray is null) return;
+        if (_isExiting) return;
+        if (_tray is null) { _character?.SaveSession(); return; }
         e.Cancel = true;
         _character?.HideToTray();
     }
@@ -121,7 +165,9 @@ public partial class App : Application
         try
         {
             var start = ApplicationRestart.CreateStartInfo(Environment.ProcessPath ?? "",
-                Assembly.GetExecutingAssembly().Location, Environment.GetCommandLineArgs().Skip(1));
+                Assembly.GetExecutingAssembly().Location, Environment.GetCommandLineArgs().Skip(1)
+                    .Where(argument => !argument.Equals("--startup", StringComparison.OrdinalIgnoreCase) && !argument.StartsWith("--wait-for-pid="))
+                    .Append("--wait-for-pid=" + Environment.ProcessId));
             using var process = Process.Start(start);
             if (process is null) throw new InvalidOperationException("Proses baru tidak dapat dijalankan.");
             ExitApplication();
@@ -135,6 +181,8 @@ public partial class App : Application
     private void ExitApplication()
     {
         if (_isExiting) return;
+        _settingsWindow?.SavePlacement();
+        _character?.SaveSession();
         _isExiting = true;
         _tray?.Dispose();
         _tray = null;
@@ -144,11 +192,12 @@ public partial class App : Application
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
     {
         base.OnSessionEnding(e);
-        if (!e.Cancel) _isExiting = true;
+        if (!e.Cancel) { _settingsWindow?.SavePlacement(); _character?.SaveSession(); _isExiting = true; }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _lifetime.Cancel(); _instanceTimer?.Stop(); _showRequest?.Dispose(); _instance?.Dispose();
         if (_settingsWindow is not null)
         {
             _settingsWindow.Closed -= SettingsWindow_Closed;

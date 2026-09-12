@@ -7,14 +7,17 @@ using LuKnight.Views;
 using LuKnight.Behaviors;
 using LuKnight.Physics;
 using LuKnight.ViewModels;
+using LuKnight.Models;
 
 namespace LuKnight;
 
 public partial class MainWindow : Window
 {
+    public BehaviorSettings BehaviorSettings { get; } = new();
+
     public SettingsRuntime GetSettingsRuntime() => new(Topmost, IsVisible,
         CharacterControl.RenderMode.ToString(), CharacterControl.CurrentState.ToString(),
-        _usesGemini, _usesGemini ? GeminiChatService.ModelName : "", ChatPanelControl.CurrentStatus,
+        _usesGemini, _usesGemini ? Services.Chat.Options.Model : "", ChatPanelControl.CurrentStatus,
         _isSending, _behaviorController is not null);
 
     public void ResetCharacterPosition()
@@ -22,13 +25,43 @@ public partial class MainWindow : Window
         ShowFromTray();
         _leftMouseDown = false;
         _dragStarted = false;
-        CharacterControl.ReleaseMouseCapture();
+        ReleaseMouseCapture();
         _physicsController?.ResetMotion();
         _behaviorController?.ResetToDesktop();
     }
 
-    private readonly IChatService _chatService;
-    private readonly bool _usesGemini;
+    public AppServices Services { get; }
+    private IChatService _chatService => Services.Chat;
+    private bool _usesGemini => Services.Chat.UsesGemini;
+    public bool CanInstallUpdate => !_leftMouseDown && !_dragStarted && !_isSending && !Services.Chat.IsBusy && !(_physicsController?.IsActive ?? false);
+    public void SetAlwaysOnTop(bool value)
+    {
+        Topmost = value;
+        Services.Settings.Update(Services.Settings.Current with { General = Services.Settings.Current.General with { AlwaysOnTop = value } });
+    }
+    public void ClearConversation()
+    { Services.Chat.ClearConversation(); ChatPanelControl.ClearConversation(); }
+    public bool SaveSession()
+    {
+        var config = Services.Settings.Current;
+        if (_behaviorController is not null && !(_physicsController?.IsActive ?? false))
+        {
+            var area = DesktopMonitorService.GetMonitorForWindow(this).WorkArea;
+            var bounds = DesktopMonitorService.GetWindowBounds(this);
+            config = config with { Mascot = new MascotPlacement(bounds.Left, area.Left, area.Top) };
+        }
+        return Services.Settings.Update(config with { General = config.General with { AlwaysOnTop = Topmost }, Behavior = BehaviorSettings.Current });
+    }
+    private void RestorePlacement()
+    {
+        if (Services.Settings.Current.Mascot is not { } saved) return;
+        var monitors = DesktopMonitorService.GetAllMonitors();
+        var monitor = monitors.FirstOrDefault(m => Math.Abs(m.WorkArea.Left - saved.MonitorLeft) < 1 && Math.Abs(m.WorkArea.Top - saved.MonitorTop) < 1);
+        if (monitor.Handle == nint.Zero) monitor = DesktopMonitorService.GetMonitorForWindow(this);
+        var bounds = DesktopMonitorService.GetWindowBounds(this);
+        DesktopMonitorService.SetWindowPosition(this, Math.Clamp(saved.Left, monitor.WorkArea.Left, Math.Max(monitor.WorkArea.Left, monitor.WorkArea.Right - bounds.Width)),
+            monitor.WorkArea.Bottom - CharacterGrounding.GetFootOffset(this, CharacterControl, bounds));
+    }
 
     private BehaviorController? _behaviorController;
 
@@ -119,7 +152,9 @@ public partial class MainWindow : Window
                 this,
                 CharacterControl);
 
+        _behaviorController.ApplySettings(BehaviorSettings.Current);
         _behaviorController.Start();
+        RestorePlacement();
         _physicsController =
     new CharacterPhysicsController(
         this,
@@ -137,26 +172,32 @@ public partial class MainWindow : Window
             BehaviorController_SurfaceLaunchRequested;
     }
 
-    public MainWindow()
+    public MainWindow() : this(null) { }
+    public MainWindow(AppServices? services)
     {
+        Services = services ?? new AppServices();
         InitializeComponent();
+        Topmost = Services.Settings.Current.General.AlwaysOnTop;
+        BehaviorSettings.Apply(Services.Settings.Current.Behavior);
+        BehaviorSettings.Changed += options =>
+        {
+            _behaviorController?.ApplySettings(options);
+            Services.Settings.Update(Services.Settings.Current with { Behavior = options });
+        };
+        AddHandler(PreviewMouseLeftButtonDownEvent,
+            new MouseButtonEventHandler(Character_PreviewMouseLeftButtonDown), true);
+        AddHandler(PreviewMouseMoveEvent,
+            new MouseEventHandler(Character_PreviewMouseMove), true);
+        AddHandler(PreviewMouseLeftButtonUpEvent,
+            new MouseButtonEventHandler(Character_PreviewMouseLeftButtonUp), true);
         Loaded += MainWindow_Loaded;
-
-        string? geminiApiKey =
-            Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-
-        _usesGemini = !string.IsNullOrWhiteSpace(geminiApiKey);
-
-        _chatService = _usesGemini
-            ? new GeminiChatService()
-            : new LocalChatService();
 
         ChatPanelControl.MessageSubmitted += ChatPanel_MessageSubmitted;
 
         if (_usesGemini)
         {
             ChatPanelControl.SetStatus(
-                $"Gemini siap • {GeminiChatService.ModelName}",
+                $"Gemini siap • {Services.Chat.Options.Model}",
                 ChatStatus.Ready);
 
             ChatPanelControl.AddAssistantMessage(
@@ -166,7 +207,7 @@ public partial class MainWindow : Window
         {
             ChatPanelControl.SetStatus("Local mode • GEMINI_API_KEY belum ada", ChatStatus.Local);
             ChatPanelControl.AddAssistantMessage(
-                "Halo! Aku Lu-Knight. Aku sedang berjalan dalam local mode karena GEMINI_API_KEY belum terbaca.");
+                "Halo! Aku Lu-Knight. Mode lokal aktif. Kamu dapat mengatur Gemini melalui Settings ? AI & Chat.");
         }
     }
 
@@ -189,7 +230,7 @@ public partial class MainWindow : Window
         _mouseDownScreenPosition = PointToScreen(_mouseDownPosition);
         _mouseDownTime = System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
 
-        if (!CharacterControl.CaptureMouse())
+        if (!CaptureMouse())
         {
             _leftMouseDown = false;
             _behaviorController?.Resume(BehaviorPauseReason.UserDrag);
@@ -286,7 +327,7 @@ public partial class MainWindow : Window
             return;
 
         _leftMouseDown = false;
-        CharacterControl.ReleaseMouseCapture();
+        ReleaseMouseCapture();
 
         if (_dragStarted)
         {
@@ -410,11 +451,8 @@ public partial class MainWindow : Window
 
             ChatPanelControl.AddAssistantMessage(reply);
 
-            ChatPanelControl.SetStatus(
-                _usesGemini
-                    ? $"Gemini terhubung • {GeminiChatService.ModelName}"
-                    : _chatService.DisplayName,
-                _usesGemini ? ChatStatus.Connected : ChatStatus.Local);
+            ChatPanelControl.SetStatus(Services.Chat.Status,
+                Services.Chat.LastReplyWasGemini ? ChatStatus.Connected : ChatStatus.Local);
         }
         catch (OperationCanceledException)
         {
@@ -470,7 +508,7 @@ public partial class MainWindow : Window
     {
         // Acquire Hidden first: closing chat/releasing capture must not resume movement.
         _behaviorController?.Pause(BehaviorPauseReason.Hidden);
-        if (CharacterControl.IsMouseCaptured) CharacterControl.ReleaseMouseCapture();
+        if (IsMouseCaptured) ReleaseMouseCapture();
         _physicsController?.SetSuspended(true);
         // Popup adalah window terpisah.
         // Tutup supaya tidak tertinggal

@@ -8,6 +8,22 @@ namespace LuKnight.Behaviors;
 
 public sealed class SurfaceBehaviorController
 {
+    private BehaviorOptions _options = new();
+    public void ApplySettings(BehaviorOptions options)
+    {
+        _options = options;
+        bool sideAttachment = _surfaceAction is SurfaceAction.Hanging or SurfaceAction.SideClimbingDown
+            or SurfaceAction.SideHolding or SurfaceAction.SideClimbingUp or SurfaceAction.ClimbingUp;
+        bool cancel = !options.CanExplore || (!options.HangingClimbing && sideAttachment) ||
+            (!options.JumpBetweenWindows && _surfaceAction == SurfaceAction.JumpPreparing);
+        if (!cancel || !IsBusy) return;
+        ResetNavigationAdventure();
+        if (_surfaceAction is SurfaceAction.EdgePause or SurfaceAction.Peeking)
+            TurnBackFromEdge(false);
+        else
+            LoseWindowSupport(); // Let normal gravity finish a cancelled side attachment safely.
+    }
+
     private readonly Window _window;
     private readonly CharacterView _character;
     private readonly Random _random;
@@ -236,6 +252,7 @@ public sealed class SurfaceBehaviorController
                 : 1;
 
 
+        if (!_options.CanExplore) { _surfaceEdgeDirection = edgeDirection; TurnBackFromEdge(false); return; }
         _surfaceAction =
             SurfaceAction.EdgePause;
 
@@ -286,6 +303,7 @@ public sealed class SurfaceBehaviorController
     private void BeginHanging(
     DateTime now)
     {
+        if (!_options.CanExplore || !_options.HangingClimbing) { TurnBackFromEdge(false); return; }
 
 
         _surfaceAction =
@@ -924,6 +942,7 @@ public sealed class SurfaceBehaviorController
     DateTime now,
     bool thinking)
     {
+        if (!_options.CanExplore || !_options.JumpBetweenWindows) return false;
         // Jangan memulai autonomous
         // navigation baru saat AI
         // sedang berpikir.
@@ -1035,6 +1054,7 @@ public sealed class SurfaceBehaviorController
     DateTime now,
     bool thinking)
     {
+        if (!_options.CanExplore) return false;
         switch (_surfaceAction)
         {
             case SurfaceAction.None:
@@ -1052,7 +1072,7 @@ public sealed class SurfaceBehaviorController
 
 
                 // Coba langsung melompat jika ada window tujuan yang sesuai.
-                if (_random.NextDouble() < 0.70 &&
+                if (_random.NextDouble() < _options.AdventureChance &&
                     BeginTargetJump(
                         now,
                         thinking))

@@ -15,9 +15,7 @@
         Topmost="True"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterScreen"
-        PreviewMouseLeftButtonDown="Character_PreviewMouseLeftButtonDown"
-        PreviewMouseMove="Character_PreviewMouseMove"
-        PreviewMouseLeftButtonUp="Character_PreviewMouseLeftButtonUp">
+        LostMouseCapture="Character_LostMouseCapture">
 
     <Grid Background="Transparent">
 
@@ -27,8 +25,7 @@
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
             MouseEnter="Character_MouseEnter"
-            MouseLeave="Character_MouseLeave"
-            LostMouseCapture="Character_LostMouseCapture"/>
+            MouseLeave="Character_MouseLeave"/>
 
 
         <!--

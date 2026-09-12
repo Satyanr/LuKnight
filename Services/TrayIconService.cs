@@ -87,6 +87,7 @@ public sealed class TrayIconService : IDisposable
                     show();
                 }
             };
+        _icon.BalloonTipClicked += (_, _) => settings();
 
     }
     private Forms.ToolStripMenuItem Add(string text, Action command)
@@ -98,10 +99,20 @@ public sealed class TrayIconService : IDisposable
     }
 
     public void Show() { ObjectDisposedException.ThrowIf(_disposed, this); _icon.Visible = true; }
+    public void NotifyUpdate(string version)
+    {
+        if (!_disposed) _icon.ShowBalloonTip(5000, "Lu-Knight update", $"Versi {version} tersedia. Buka Settings → About untuk memperbarui.", Forms.ToolTipIcon.Info);
+    }
     public void SetCharacterVisible(bool visible) => _visibility.Text = visible ? "Hide Lu-Knight" : "Show Lu-Knight";
 
     private static Icon CreateIcon()
     {
+        string official = Path.Combine(AppContext.BaseDirectory, "Assets", "LuKnight.ico");
+        if (File.Exists(official))
+        {
+            try { using var icon = new Icon(official, 32, 32); return (Icon)icon.Clone(); }
+            catch (Exception ex) when (ex is IOException or ArgumentException) { }
+        }
         try
         {
             using var source = new Bitmap(Path.Combine(AppContext.BaseDirectory, "Assets/Characters/LuKnight/Idle/idle_000.png"));

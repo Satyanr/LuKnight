@@ -14,7 +14,7 @@ using LuKnight.Views;
 using LuKnight.Visuals;
 using LuKnight.ViewModels;
 
-internal static class Program
+internal static partial class Program
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
     private static readonly MethodInfo AdvanceMethod = typeof(SpriteAnimationPlayer).GetMethod("Advance", Private)!;
@@ -28,6 +28,9 @@ internal static class Program
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
+        if (args.Contains("--behavior-settings")) { CheckBehaviorSettings(); Console.WriteLine($"PASS: {_checks} behavior settings checks."); return; }
+        if (args.Contains("--product")) { CheckProducts(); Console.WriteLine($"PASS: {_checks} product checks."); return; }
+        if (args.Contains("--startup")) { CheckStartup(); Console.WriteLine($"PASS: {_checks} startup checks."); return; }
         if (args.Contains("--settings")) { CheckSettings(output); Console.WriteLine($"PASS: {_checks} settings checks."); return; }
         if (args.Contains("--physics")) { CheckThrowAndGrounding(output); Console.WriteLine($"PASS: {_checks} throw/input/grounding checks."); return; }
         if (args.Contains("--tray")) { CheckTray(); Console.WriteLine($"PASS: {_checks} tray checks."); return; }
@@ -46,20 +49,219 @@ internal static class Program
         CheckAttentionAndIdle(output);
         CheckTray();
         CheckThrowAndGrounding(output);
+        CheckStartup();
+        CheckBehaviorSettings();
+        CheckProducts();
         CheckSettings(output);
         Console.WriteLine($"PASS: {_checks} checks (sprite scale, transparent bounds, state/mood transitions, cadence, lifecycle).");
     }
 
     private static T Get<T>(object obj, string name) => (T)obj.GetType().GetField(name, Private | BindingFlags.Public)!.GetValue(obj)!;
 
+    private sealed class MemoryStartupStore : IStartupStore
+    {
+        public string? Command;
+        public bool Hidden, DenyWrites, DenyReads;
+        public int Writes;
+        public string? ReadCommand() { if (DenyReads) throw new UnauthorizedAccessException("Test read denied"); return Command; }
+        public void WriteCommand(string command) { CheckWrite(); Command = command; }
+        public void DeleteCommand() { CheckWrite(); Command = null; }
+        public bool ReadStartHidden() => Hidden;
+        public void WriteStartHidden(bool hidden) { CheckWrite(); Hidden = hidden; }
+        private void CheckWrite() { if (DenyWrites) throw new UnauthorizedAccessException("Test write denied"); Writes++; }
+    }
+
+    private static void CheckBehaviorSettings()
+    {
+        static void Set(object owner, string field, object value) => owner.GetType().GetField(field, Private)!.SetValue(owner, value);
+        static object? Call(object owner, string method, params object?[] arguments) => owner.GetType().GetMethod(method, Private)!.Invoke(owner, arguments);
+        var defaults = new BehaviorOptions();
+        var preferences = new BehaviorSettings(); int changes = 0; preferences.Changed += _ => changes++;
+        preferences.Apply(defaults); Require(changes == 0, "Reading/applying defaults emits changes");
+        preferences.Apply(defaults with { Enabled = false }); preferences.Reset();
+        Require(changes == 2 && preferences.Current == defaults, "Reset behavior does not restore every preference");
+        try { preferences.Apply(defaults with { Speed = (MovementSpeed)99 }); throw new Exception("Invalid speed accepted"); }
+        catch (ArgumentOutOfRangeException) { Require(preferences.Current == defaults, "Invalid options changed runtime"); }
+        var view = new CharacterView(); Render(view);
+        var window = new Window { Width = 190, Height = 240 };
+        using (var controller = new BehaviorController(window, view))
+        {
+            Call(controller, "StartWalking"); Require(view.CurrentState == CharacterState.Walk, "Default walking disabled");
+            controller.ApplySettings(defaults with { Enabled = false });
+            Require(view.CurrentState == CharacterState.Idle && !Get<bool>(controller, "_walking"), "Disabling autonomy does not stop current walk");
+            for (int i = 0; i < 10; i++) Call(controller, "ChooseNextBehavior");
+            Require(view.CurrentState == CharacterState.Idle && !controller.IsPaused, "Autonomy switch hijacks pause flags or starts decisions");
+            controller.ReactToClick(); Require(view.CurrentMood == CharacterMood.Surprised, "Autonomy OFF blocks click reaction");
+            controller.SetThinking(true); Require(view.CurrentMood == CharacterMood.Thinking, "Autonomy OFF blocks chat thinking"); controller.SetThinking(false);
+            controller.ObservePointer(new Point(180, 100));
+            Settle(Step(Get<SpriteAnimationPlayer>(view, "_spritePlayer")), .5);
+            Require(Math.Abs(Get<SpriteAnimationPlayer>(view, "_spritePlayer").Face!.LookX) > .2, "Autonomy OFF blocks cursor tracking");
+            foreach (var state in new[] { CharacterState.Grabbed, CharacterState.Falling })
+            {
+                view.SetState(state); controller.Pause(BehaviorPauseReason.Physics);
+                controller.ApplySettings(defaults with { Enabled = false, Speed = MovementSpeed.Fast });
+                Require(view.CurrentState == state && controller.IsPaused, "Settings interrupted physics/drag: " + state);
+            }
+            // Remove synthetic pause without invoking native grounding.
+            Set(controller, "_pauseReasons", BehaviorPauseReason.None); view.SetState(CharacterState.Idle);
+            controller.ApplySettings(defaults with { ReactToCursor = false });
+            Call(controller, "StartWalking"); controller.ObservePointer(new Point(180, 100));
+            Require(view.CurrentState == CharacterState.Walk && !Get<bool>(controller, "_cursorNearby"), "Look-only cursor mode stops walking/reacts");
+            controller.ApplySettings(defaults with { LookAtCursor = false, ReactToCursor = true });
+            controller.ObservePointer(new Point(180, 100));
+            Require(view.CurrentState == CharacterState.Idle && Get<bool>(controller, "_cursorNearby"), "React-only cursor mode is disabled with gaze");
+            controller.ApplySettings(defaults with { LookAtCursor = false, ReactToCursor = false });
+            Settle(Step(Get<SpriteAnimationPlayer>(view, "_spritePlayer")), 1.5);
+            controller.ObservePointer(new Point(180, 100));
+            Settle(Step(Get<SpriteAnimationPlayer>(view, "_spritePlayer")), .5);
+            Require(Math.Abs(Get<SpriteAnimationPlayer>(view, "_spritePlayer").Face!.LookX) < .02, "Disabled gaze keeps following the pointer");
+            foreach (var delay in Enum.GetValues<SleepDelay>())
+            {
+                controller.ApplySettings(defaults with { SleepAfter = delay, WakeAtCursor = false });
+                Require(Get<TimeSpan>(controller, "_sleepAfter") == (defaults with { SleepAfter = delay }).SleepThreshold, "Sleep threshold not applied: " + delay);
+                Call(controller, "EnterSleep");
+                Require(Get<bool>(controller, "_sleeping") == (delay != SleepDelay.Never), "Sleep Never is ignored");
+                if (delay != SleepDelay.Never)
+                {
+                    controller.ObservePointer(new Point(view.ActualWidth / 2, view.ActualHeight * .6));
+                    Require(Get<bool>(controller, "_sleeping"), "Disabled cursor wake still wakes");
+                    controller.ApplySettings(controller.Options with { WakeAtCursor = true, ReactToCursor = false, LookAtCursor = false });
+                    controller.ObservePointer(new Point(view.ActualWidth / 2, view.ActualHeight * .6));
+                    Require(!Get<bool>(controller, "_sleeping"), "Cursor wake incorrectly depends on gaze/reaction");
+                }
+            }
+            foreach (var nap in Enum.GetValues<NapDuration>())
+            {
+                controller.ApplySettings(defaults with { Nap = nap }); Call(controller, "EnterSleep");
+                double seconds = (Get<DateTime>(controller, "_sleepUntil") - DateTime.UtcNow).TotalSeconds;
+                double factor = (defaults with { Nap = nap }).NapFactor;
+                Require(seconds >= 7 * factor - .2 && seconds <= 15 * factor, "Nap duration not applied: " + nap);
+                controller.ApplySettings(controller.Options with { AllowSleep = false });
+                Require(!Get<bool>(controller, "_sleeping") && view.CurrentState == CharacterState.Idle, "Disabling sleep does not wake the pet");
+            }
+            foreach (var speed in Enum.GetValues<MovementSpeed>())
+            {
+                controller.ApplySettings(defaults with { Speed = speed });
+                var actual = (double)typeof(BehaviorController).GetProperty("CurrentWalkSpeed", Private)!.GetValue(controller)!;
+                Require(Math.Abs(actual - 70 * (defaults with { Speed = speed }).SpeedFactor) < .001, "Movement speed is not connected: " + speed);
+            }
+            Require((defaults with { Activity = ActivityLevel.Calm }).ActivityDelay > defaults.ActivityDelay &&
+                (defaults with { Activity = ActivityLevel.Active }).ActivityDelay < defaults.ActivityDelay, "Activity pacing order is reversed");
+            var surface = Get<SurfaceBehaviorController>(controller, "_surfaceController");
+            var actionType = surface.GetType().GetField("_surfaceAction", Private)!.FieldType;
+            void Action(string action) => Set(surface, "_surfaceAction", Enum.Parse(actionType, action));
+            int falls = 0; controller.SupportLost += () => falls++;
+            foreach (string action in new[] { "Hanging", "SideClimbingDown", "SideHolding", "SideClimbingUp", "ClimbingUp", "JumpPreparing" })
+            {
+                controller.ApplySettings(defaults); Set(surface, "_supportWindowHandle", new IntPtr(123)); Action(action);
+                controller.ApplySettings(defaults with { Enabled = false });
+                Require(!surface.IsBusy && !surface.HasSupport, "Cancelled attachment is stuck: " + action);
+            }
+            Require(falls == 6, "Cancelled side attachments do not hand off to physics");
+            controller.ApplySettings(defaults with { ExploreWindows = false });
+            Call(surface, "BeginEdgePause", 1);
+            Require(!surface.IsBusy, "Explore OFF still begins an edge adventure");
+            Require(!(bool)Call(surface, "BeginTargetJump", DateTime.UtcNow, false)!, "Explore OFF permits a jump");
+            controller.ApplySettings(defaults with { JumpBetweenWindows = false });
+            Require(!(bool)Call(surface, "BeginTargetJump", DateTime.UtcNow, false)!, "Jump OFF permits a jump");
+            controller.ApplySettings(defaults with { HangingClimbing = false }); Call(surface, "BeginHanging", DateTime.UtcNow);
+            Require(!surface.IsBusy, "Climbing OFF permits hanging");
+            Set(surface, "_supportWindowHandle", new IntPtr(123)); Action("JumpPreparing");
+            controller.ApplySettings(defaults with { HangingClimbing = false, Speed = MovementSpeed.Fast });
+            Require(surface.IsBusy && surface.HasSupport, "Changing speed with climbing OFF cancels an allowed jump");
+            controller.ApplySettings(defaults with { JumpBetweenWindows = false });
+            Require(!surface.IsBusy && !surface.HasSupport, "Jump OFF leaves a prepared jump pending");
+            Set(controller, "_lastInteractionAt", DateTime.UtcNow.AddHours(-1));
+            controller.ApplySettings(defaults with { Enabled = false }); controller.ApplySettings(defaults);
+            Require((DateTime.UtcNow - Get<DateTime>(controller, "_lastInteractionAt")).TotalSeconds < 1, "Re-enabling autonomy immediately falls asleep from stale inactivity");
+        }
+        view.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent)); window.Close();
+        var host = new LuKnight.MainWindow(); var hostView = Get<CharacterView>(host, "CharacterControl"); Render(hostView);
+        using (var behavior = new BehaviorController(host, hostView))
+        using (var physics = new CharacterPhysicsController(host, hostView))
+        {
+            Set(host, "_behaviorController", behavior); Set(host, "_physicsController", physics);
+            physics.StartFall(420, -300, new IntPtr(123)); behavior.Pause(BehaviorPauseReason.Physics);
+            host.BehaviorSettings.Apply(defaults with { Enabled = false, Speed = MovementSpeed.Fast, JumpBetweenWindows = false });
+            Require(!behavior.Options.Enabled && behavior.Options.Speed == MovementSpeed.Fast, "MainWindow does not apply live preferences to its controller");
+            Require(physics.IsActive && Get<double>(physics, "_velocityX") == 420 && Get<double>(physics, "_velocityY") == -300 &&
+                Get<nint>(physics, "_targetWindowHandle") == new IntPtr(123) && hostView.CurrentState == CharacterState.Falling,
+                "Live behavior settings alter an airborne trajectory");
+            host.BehaviorSettings.Reset(); Require(behavior.Options == defaults, "Runtime reset leaves stale behavior options");
+        }
+        hostView.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent)); host.Close();
+    }
+
+    private static void CheckStartup()
+    {
+        var store = new MemoryStartupStore();
+        const string exe = @"C:\My Apps\LuKnight\LuKnight.exe";
+        var startup = new StartupService(store, exe, @"C:\My Apps\LuKnight\LuKnight.dll", _ => true);
+        Require(!startup.IsEnabled() && !startup.ReadStatus().StartHidden, "Startup must be opt-in by default");
+        Require(!startup.Validate() && store.Writes == 0, "Validation silently enables autostart");
+        startup.SetStartHidden(true);
+        Require(!startup.IsEnabled() && startup.ReadStatus().StartHidden, "Hidden preference unexpectedly enables login startup");
+        startup.Enable();
+        Require(store.Command == "\"" + exe + "\" --startup", "Run command is not absolute/quoted or lacks --startup");
+        int writes = store.Writes;
+        Require(!startup.Validate() && writes == store.Writes, "Validation rewrites a correct entry");
+        store.Command = "\"C:\\Old Version\\LuKnight.exe\" --startup";
+        Require(startup.Validate() && store.Command!.Contains(exe) && store.Hidden, "Moved executable path was not repaired");
+        var reloaded = new StartupService(store, exe, "unused.dll", _ => true);
+        Require(reloaded.IsEnabled() && reloaded.ReadStatus().StartHidden, "Startup preferences do not survive service recreation");
+        startup.Disable();
+        Require(store.Command is null && store.Hidden, "Disable removes the hidden preference or retains startup registration");
+        Require(!startup.Validate() && !startup.IsEnabled(), "Validation re-enables a user-disabled startup entry");
+
+        foreach (var args in new[] { Array.Empty<string>(), new[] { "--start" }, new[] { "--startup=false" } })
+            Require(!StartupService.ShouldStartHidden(args, true, true), "Manual/unrecognized launch is hidden");
+        Require(StartupService.ShouldStartHidden(new[] { "--STARTUP" }, true, true), "Login launch ignores hidden preference");
+        Require(!StartupService.ShouldStartHidden(new[] { "--startup" }, false, true), "Visible startup preference is ignored");
+        Require(!StartupService.ShouldStartHidden(new[] { "--startup" }, true, false), "Failed tray creates an inaccessible hidden application");
+        Require(StartupService.BuildCommand(@"C:\Program Files\dotnet\dotnet.exe", @"C:\My Apps\LuKnight.dll") ==
+            "\"C:\\Program Files\\dotnet\\dotnet.exe\" \"C:\\My Apps\\LuKnight.dll\" --startup", "Hosted launch omits/incorrectly quotes the assembly");
+        foreach (string path in new[] { "LuKnight.exe", "C:\\bad\"path\\LuKnight.exe", "C:\\" + new string('a', 260) + "\\LuKnight.exe" })
+        {
+            bool rejected = false; try { StartupService.BuildCommand(path, "unused"); } catch (InvalidOperationException) { rejected = true; }
+            Require(rejected, "Invalid/overlong startup command was accepted");
+        }
+        var missing = new StartupService(store, exe, "unused", _ => false);
+        bool missingRejected = false; try { missing.Enable(); } catch (InvalidOperationException) { missingRejected = true; }
+        Require(missingRejected && store.Command is null, "Missing executable gets registered for login");
+        var missingAssembly = new StartupService(store, @"C:\dotnet\dotnet.exe", @"C:\LuKnight.dll", path => path.EndsWith(".exe"));
+        missingRejected = false; try { missingAssembly.Enable(); } catch (InvalidOperationException) { missingRejected = true; }
+        Require(missingRejected, "Hosted startup accepts a missing application DLL");
+
+        var runtime = new SettingsRuntime(true, true, "Sprite", "Idle", false, "", ChatStatus.Local, false, true);
+        var model = new SettingsViewModel(() => runtime, _ => { }, _ => { }, () => { }, startup);
+        Require(model.StartupAvailable && !model.StartWithWindows && model.StartHidden, "Settings does not read persisted startup preferences");
+        store.DenyWrites = true; model.StartWithWindows = true;
+        Require(!model.StartWithWindows && model.StartupMessage.Contains("gagal"), "Failed registry write leaves a checked startup toggle");
+        model.StartHidden = false;
+        Require(model.StartHidden, "Failed hidden preference write is shown as successful");
+        store.DenyWrites = false; model.StartWithWindows = true;
+        Require(model.StartWithWindows && !model.StartupMessage.Contains("gagal"), "Startup cannot recover from a denied write");
+        startup.Disable(); model.Refresh();
+        Require(!model.StartWithWindows, "External removal of Run entry is not reflected in Settings");
+        store.DenyReads = true; model.Refresh();
+        Require(!model.StartupAvailable && !startup.ReadStatus().Available, "Registry read failure crashes or exposes usable controls");
+        store.DenyReads = false; model.Refresh();
+        Require(model.StartupAvailable, "Startup controls remain disabled after access recovers");
+        Console.WriteLine("Startup checks use an in-memory store; no Windows Run entries or user preferences were changed.");
+    }
+
     private static void CheckSettings(string output)
     {
         var runtime = new SettingsRuntime(true, false, "Sprite", "Idle", false, "", ChatStatus.Local, false, true);
         int topChanges = 0, visibilityChanges = 0, resets = 0;
+        var startup = new StartupService(new MemoryStartupStore(), @"C:\LuKnight\LuKnight.exe", "unused", _ => true);
         var model = new SettingsViewModel(() => runtime,
             value => { topChanges++; runtime = runtime with { AlwaysOnTop = value }; },
             value => { visibilityChanges++; runtime = runtime with { Visible = value }; },
-            () => { resets++; runtime = runtime with { Visible = true, State = "Idle" }; });
+            () => { resets++; runtime = runtime with { Visible = true, State = "Idle" }; }, startup);
+        var uiCredentials = new FakeCredentials();
+        var uiServices = new AppServices(new SettingsService(), uiCredentials);
+        model.Product = new ProductSettingsViewModel(uiServices, uiServices.Chat.ClearConversation, () => true, () => true, () => { });
         Require(model.Provider == "Local fallback" && model.ApiStatus.Contains("belum dikonfigurasi"), "Settings misreports unconfigured AI as connected");
         Require(model.ApplicationStatus.Contains("Hidden"), "Settings does not report hidden mascot");
         var settings = new SettingsWindow(model);
@@ -90,8 +292,34 @@ internal static class Program
         Require(model.AiStatus.Contains("gagal") && model.Provider == "Gemini", "AI error claims that unimplemented fallback is active");
         runtime = runtime with { ChatStatus = ChatStatus.Connected }; model.Refresh();
         Require(model.ApiStatus.Contains("terakhir berhasil"), "Settings does not reflect a successful API response");
-        Require(!Get<CheckBox>(settings, "StartupCheck").IsEnabled && !Get<CheckBox>(settings, "StartHiddenCheck").IsEnabled &&
-            !Get<Button>(settings, "CheckUpdatesButton").IsEnabled, "Deferred startup/update features appear active in 6B");
+        Require(Get<CheckBox>(settings, "StartupCheck").IsEnabled && Get<CheckBox>(settings, "StartHiddenCheck").IsEnabled &&
+            Get<Button>(settings, "CheckUpdatesButton").IsEnabled, "Startup/update controls are disabled");
+        Get<CheckBox>(settings, "StartupCheck").IsChecked = true;
+        Get<CheckBox>(settings, "StartHiddenCheck").IsChecked = true;
+        Require(startup.IsEnabled() && startup.ReadStatus().StartHidden, "Startup checkbox bindings are not connected to the service");
+        Get<ComboBox>(settings, "ProviderCombo").SelectedItem = LuKnight.Models.ChatProvider.Local;
+        Require(uiServices.Chat.Options.Provider == LuKnight.Models.ChatProvider.Local && uiServices.Settings.Current.Chat.Provider == LuKnight.Models.ChatProvider.Local,
+            "Provider binding does not apply or persist");
+        Get<PasswordBox>(settings, "ApiKeyInput").Password = "fake-ui-key-for-test";
+        typeof(SettingsWindow).GetMethod("UpdateKey_Click", Private)!.Invoke(settings, new object[] { settings, new RoutedEventArgs() });
+        Require(uiCredentials.Key == "fake-ui-key-for-test" && Get<PasswordBox>(settings, "ApiKeyInput").Password == "" && !model.Product.CredentialStatus.Contains(uiCredentials.Key),
+            "Key update failed, retained input, or exposes stored value");
+        model.Product.RemoveKeyCommand.Execute(null);
+        Require(uiCredentials.Key is null, "Remove Key UI command does not remove saved credential");
+        Get<CheckBox>(settings, "AutonomousCheck").IsChecked = false;
+        Require(!model.AutonomousEnabled && Get<CheckBox>(settings, "LookCursorCheck").IsEnabled, "Autonomy binding disables manual cursor preferences");
+        Get<CheckBox>(settings, "AutonomousCheck").IsChecked = true;
+        Get<ComboBox>(settings, "ActivityCombo").SelectedItem = ActivityLevel.Active;
+        Get<ComboBox>(settings, "SpeedCombo").SelectedItem = MovementSpeed.Fast;
+        Get<ComboBox>(settings, "SleepAfterCombo").SelectedValue = SleepDelay.FiveMinutes;
+        Get<ComboBox>(settings, "NapCombo").SelectedItem = NapDuration.Long;
+        Require(model.Activity == ActivityLevel.Active && model.Speed == MovementSpeed.Fast && model.SleepAfter == SleepDelay.FiveMinutes && model.Nap == NapDuration.Long,
+            "Behavior dropdowns are not bound");
+        Get<CheckBox>(settings, "ExploreWindowsCheck").IsChecked = false;
+        Require(!model.ExploreWindows && !Get<CheckBox>(settings, "JumpWindowsCheck").IsEnabled, "Adventure dependencies are stale");
+        model.ResetBehaviorCommand.Execute(null);
+        Require(model.AutonomousEnabled && model.ExploreWindows && model.Activity == ActivityLevel.Balanced && model.Speed == MovementSpeed.Normal && model.SleepAfter == SleepDelay.TwoMinutes,
+            "Reset behavior does not refresh UI");
         Require(!string.IsNullOrWhiteSpace(model.Version) && !string.IsNullOrWhiteSpace(model.Build) &&
             model.RepositoryUrl == "https://github.com/Satyanr/LuKnight", "About metadata is missing");
 
@@ -108,6 +336,17 @@ internal static class Program
             var bitmap = new RenderTargetBitmap(860, 640, 96, 96, PixelFormats.Pbgra32); bitmap.Render(root);
             Save(bitmap, Path.Combine(output, "settings-" + i + ".png"));
         }
+        navigation.SelectedValue = "AI & Chat"; Layout(760, 520);
+        var aiScroll = Get<ScrollViewer>(settings, "PageScroll"); aiScroll.ScrollToEnd(); Layout(760, 520);
+        Require(aiScroll.ScrollableHeight > 0 && aiScroll.VerticalOffset > 0, "AI settings cannot scroll to conversation controls");
+        var aiBottom = new RenderTargetBitmap(760, 520, 96, 96, PixelFormats.Pbgra32); aiBottom.Render(root);
+        Save(aiBottom, Path.Combine(output, "settings-ai-bottom.png"));
+        navigation.SelectedValue = "Behavior"; Layout(760, 520);
+        var behaviorScroll = Get<ScrollViewer>(settings, "PageScroll"); behaviorScroll.ScrollToEnd(); Layout(760, 520);
+        Require(behaviorScroll.VerticalOffset > 0 && Get<Button>(settings, "ResetBehaviorButton").TransformToAncestor(root).Transform(new Point()).Y < 480,
+            "Behavior reset is inaccessible at minimum window size");
+        var behaviorBottom = new RenderTargetBitmap(760, 520, 96, 96, PixelFormats.Pbgra32); behaviorBottom.Render(root);
+        Save(behaviorBottom, Path.Combine(output, "settings-behavior-bottom.png"));
         navigation.SelectedValue = "General"; Layout(760, 520);
         var scroll = Get<ScrollViewer>(settings, "PageScroll"); scroll.ScrollToEnd(); Layout(760, 520);
         Require(scroll.ScrollableHeight > 0 && scroll.VerticalOffset > 0, "General page becomes inaccessible at minimum window size");
@@ -123,10 +362,15 @@ internal static class Program
         var second = (SettingsWindow)create.Invoke(app, null)!;
         Require(ReferenceEquals(first, second), "Opening Settings creates duplicate windows");
         Require(first.Owner is null && !mascot.IsVisible, "Settings is owned by/shows the hidden mascot");
+        first.Model.AutonomousEnabled = false;
+        first.Model.Speed = MovementSpeed.Slow;
+        Require(!mascot.BehaviorSettings.Current.Enabled && mascot.BehaviorSettings.Current.Speed == MovementSpeed.Slow && !mascot.IsVisible,
+            "Changing hidden mascot behavior opens it or loses preferences");
         first.Close();
         Require(!mascotClosed && Get<SettingsWindow?>(app, "_settingsWindow") is null, "Closing Settings closes the mascot or leaves a stale singleton");
         var reopened = (SettingsWindow)create.Invoke(app, null)!;
         Require(!ReferenceEquals(first, reopened), "Closed Settings cannot be reopened");
+        Require(!reopened.Model.AutonomousEnabled && reopened.Model.Speed == MovementSpeed.Slow, "Reopening Settings loses behavior preferences");
         reopened.Close();
         Get<CharacterView>(mascot, "CharacterControl").RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent)); mascot.Close();
 

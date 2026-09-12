@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using LuKnight.Models;
 
 namespace LuKnight.Services;
 
@@ -29,9 +30,16 @@ public sealed class GeminiChatService : IChatService
     };
 
     private readonly List<ChatTurn> _history = new();
+    private readonly Func<string?> _key;
+    private readonly HttpClient _client;
+    private ChatSettings _options;
+    public GeminiChatService(Func<string?>? key = null, ChatSettings? options = null, HttpClient? client = null)
+    { _key = key ?? (() => Environment.GetEnvironmentVariable("GEMINI_API_KEY")); _options = options ?? new(); _client = client ?? HttpClient; }
+    public void Configure(ChatSettings options) { _options = options; if (!options.RememberConversation) _history.Clear(); }
+    public void ClearConversation() => _history.Clear();
     private readonly SemaphoreSlim _sendLock = new(1, 1);
 
-    public string DisplayName => $"Gemini • {ModelName}";
+    public string DisplayName => $"Gemini • {_options.Model}";
 
     public async Task<string> SendMessageAsync(
         string message,
@@ -44,10 +52,11 @@ public sealed class GeminiChatService : IChatService
 
         try
         {
-            string apiKey = GetApiKey();
+            string apiKey = _key()?.Trim() ?? "";
+            if (apiKey.Length == 0) throw new InvalidOperationException("API key belum dikonfigurasi.");
             string trimmedMessage = message.Trim();
 
-            var requestHistory = new List<ChatTurn>(_history)
+            var requestHistory = new List<ChatTurn>(_options.RememberConversation ? _history : [])
             {
                 new("user", trimmedMessage)
             };
@@ -58,7 +67,7 @@ public sealed class GeminiChatService : IChatService
                 {
                     parts = new[]
                     {
-                        new { text = SystemInstruction }
+                        new { text = BuildInstruction(_options) }
                     }
                             },
 
@@ -84,7 +93,7 @@ public sealed class GeminiChatService : IChatService
 
             string json = JsonSerializer.Serialize(payload);
             string url =
-                $"https://generativelanguage.googleapis.com/v1beta/models/{ModelName}:generateContent";
+                $"https://generativelanguage.googleapis.com/v1beta/models/{_options.Model}:generateContent";
 
             using var request = new HttpRequestMessage(HttpMethod.Post, url);
             request.Headers.Add("x-goog-api-key", apiKey);
@@ -92,14 +101,14 @@ public sealed class GeminiChatService : IChatService
 
 #if DEBUG
             Debug.WriteLine(
-                $"Gemini request: model={ModelName}, historyTurns={requestHistory.Count}, apiKeyLength={apiKey.Length}");
+                $"Gemini request: model={_options.Model}, historyTurns={requestHistory.Count}, apiKeyLength={apiKey.Length}");
 #endif
 
             HttpResponseMessage response;
 
             try
             {
-                response = await HttpClient.SendAsync(request, cancellationToken);
+                response = await _client.SendAsync(request, cancellationToken);
             }
             catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
@@ -126,9 +135,12 @@ public sealed class GeminiChatService : IChatService
 
                 string reply = ExtractReply(responseBody);
 
-                _history.Add(new ChatTurn("user", trimmedMessage));
-                _history.Add(new ChatTurn("model", reply));
-                TrimHistory();
+                if (_options.RememberConversation)
+                {
+                    _history.Add(new ChatTurn("user", trimmedMessage));
+                    _history.Add(new ChatTurn("model", reply));
+                    TrimHistory();
+                }
 
                 return reply;
             }
@@ -139,19 +151,10 @@ public sealed class GeminiChatService : IChatService
         }
     }
 
-    private static string GetApiKey()
-    {
-        string? apiKey =
-            Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            throw new InvalidOperationException(
-                "GEMINI_API_KEY tidak ditemukan. Tutup lalu buka kembali VS Code/terminal setelah menjalankan setx.");
-        }
-
-        return apiKey.Trim();
-    }
+    public static string BuildInstruction(ChatSettings options) => SystemInstruction + " " +
+        (options.Language switch { ChatLanguage.Indonesia => "Jawab dalam Bahasa Indonesia.", ChatLanguage.English => "Reply in English.", _ => "Match the language of the user's latest message." }) + " " +
+        (options.ResponseLength switch { ResponseLength.Short => "Use at most two short sentences.", ResponseLength.Detailed => "Give a thorough explanation with useful examples.", _ => "Keep the response concise but complete." }) + " " +
+        (options.Style switch { ResponseStyle.Professional => "Use a professional, clear tone.", ResponseStyle.Playful => "Use a warm and playful tone.", _ => "Use a friendly and helpful tone." });
 
     private static string ExtractReply(string responseBody)
     {
@@ -215,67 +218,13 @@ public sealed class GeminiChatService : IChatService
             $"Gemini tidak memberikan teks jawaban. Finish reason: {finishReason}.");
     }
 
-    private static Exception CreateApiException(
-        HttpStatusCode statusCode,
-        string responseBody)
+    private static Exception CreateApiException(HttpStatusCode statusCode, string responseBody) => new InvalidOperationException(statusCode switch
     {
-        string apiMessage = ReadApiErrorMessage(responseBody);
-
-        string message = statusCode switch
-        {
-            HttpStatusCode.BadRequest =>
-                $"Permintaan ke Gemini ditolak (400). {apiMessage}",
-
-            HttpStatusCode.Unauthorized =>
-                "API key Gemini tidak valid atau tidak diterima (401). Periksa GEMINI_API_KEY.",
-
-            HttpStatusCode.Forbidden =>
-                $"Akses Gemini ditolak (403). Periksa izin API key/project. {apiMessage}",
-
-            HttpStatusCode.NotFound =>
-                $"Model Gemini tidak ditemukan (404). Model yang digunakan: {ModelName}. {apiMessage}",
-
-            HttpStatusCode.TooManyRequests =>
-                "Batas permintaan Gemini tercapai (429). Tunggu sebentar lalu coba lagi.",
-
-            HttpStatusCode.InternalServerError or
-            HttpStatusCode.BadGateway or
-            HttpStatusCode.ServiceUnavailable or
-            HttpStatusCode.GatewayTimeout =>
-                $"Layanan Gemini sedang bermasalah ({(int)statusCode}). Coba lagi nanti.",
-
-            _ =>
-                $"Gemini API error {(int)statusCode}. {apiMessage}"
-        };
-
-        return new InvalidOperationException(message);
-    }
-
-    private static string ReadApiErrorMessage(string responseBody)
-    {
-        try
-        {
-            using JsonDocument document = JsonDocument.Parse(responseBody);
-
-            if (document.RootElement.TryGetProperty("error", out JsonElement error) &&
-                error.TryGetProperty("message", out JsonElement messageElement) &&
-                messageElement.ValueKind == JsonValueKind.String)
-            {
-                return messageElement.GetString() ?? string.Empty;
-            }
-        }
-        catch (JsonException)
-        {
-            // Abaikan dan gunakan fallback singkat di bawah.
-        }
-
-        string compact = responseBody.Replace('\r', ' ').Replace('\n', ' ').Trim();
-
-        if (compact.Length > 300)
-            compact = compact[..300] + "…";
-
-        return compact;
-    }
+        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "API key atau izin Gemini ditolak. Periksa key dan project.",
+        HttpStatusCode.NotFound => "Model Gemini tidak tersedia. Periksa nama model.",
+        HttpStatusCode.TooManyRequests => "Kuota Gemini tercapai. Coba kembali nanti.",
+        _ => $"Permintaan Gemini gagal (HTTP {(int)statusCode})."
+    });
 
     private static string TryReadBlockReason(JsonElement root)
     {

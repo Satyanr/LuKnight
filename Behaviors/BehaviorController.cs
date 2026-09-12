@@ -38,11 +38,9 @@ public sealed class BehaviorController : IDisposable
 
     private bool _sleeping;
 
-    private TimeSpan _sleepAfter = TimeSpan.FromSeconds(75);
+    private TimeSpan _sleepAfter = TimeSpan.FromMinutes(2);
     private DateTime _sleepUntil = DateTime.MinValue;
 
-    private const double MinimumAwakeBeforeNapSeconds = 60.0;
-    private const double MaximumAwakeBeforeNapSeconds = 120.0;
     private const double MinimumNapSeconds = 7.0;
     private const double MaximumNapSeconds = 15.0;
 
@@ -59,6 +57,36 @@ public sealed class BehaviorController : IDisposable
     private int _direction = 1;
 
     private const double WalkSpeed = 70.0;
+    private double CurrentWalkSpeed => WalkSpeed * _options.SpeedFactor;
+    private BehaviorOptions _options = new();
+    public BehaviorOptions Options => _options;
+
+    public void ApplySettings(BehaviorOptions options)
+    {
+        var previous = _options;
+        _options = options;
+        _surfaceController.ApplySettings(options);
+        if (!options.Enabled)
+        {
+            _walking = _canWalkOnRender = false;
+            CancelPendingApplicationArrival();
+            if (_character.CurrentState == CharacterState.Walk) _character.SetState(CharacterState.Idle);
+        }
+        if (!options.CanSleep && _sleeping) WakeUp();
+        if ((!previous.Enabled && options.Enabled) || (!previous.CanSleep && options.CanSleep))
+            _lastInteractionAt = DateTime.UtcNow;
+        if (previous.SleepAfter != options.SleepAfter) ScheduleNextSleepCycle();
+        if (_sleeping && previous.Nap != options.Nap)
+            _sleepUntil = DateTime.UtcNow.AddSeconds(11 * options.NapFactor);
+        if (!options.LookAtCursor) _character.RelaxCursorLook();
+        if (!options.ReactToCursor)
+        {
+            _cursorNearby = _cursorVeryClose = false;
+            SetAmbientMood(CharacterMood.Neutral, DateTime.UtcNow);
+        }
+        if (previous.Enabled != options.Enabled || previous.Activity != options.Activity)
+            ScheduleNextDecision(.8, 1.8);
+    }
 
     private bool _cursorNearby;
     private bool _cursorVeryClose;
@@ -419,7 +447,7 @@ public sealed class BehaviorController : IDisposable
 
         if (_sleeping)
         {
-            if (distance <= CursorWakeRadius)
+            if (_options.WakeAtCursor && distance <= CursorWakeRadius)
             {
                 _lastInteractionAt = now;
 
@@ -429,6 +457,15 @@ public sealed class BehaviorController : IDisposable
             return false;
         }
 
+
+        if (!_options.ReactToCursor)
+        {
+            _cursorNearby = _cursorVeryClose = false;
+            if (_options.LookAtCursor && distance <= CursorAttentionRadius)
+                _character.TrackCursor(Math.Clamp(deltaX / 130.0, -1, 1), Math.Clamp(deltaY / 100.0, -1, 1));
+            else _character.RelaxCursorLook();
+            return false;
+        }
 
         // =========================
         // CURSOR FAR AWAY
@@ -507,9 +544,8 @@ public sealed class BehaviorController : IDisposable
                 -1,
                 1);
 
-        _character.TrackCursor(
-            normalizedX,
-            normalizedY);
+        if (_options.LookAtCursor) _character.TrackCursor(normalizedX, normalizedY);
+        else _character.RelaxCursorLook();
 
 
         // =========================
@@ -550,7 +586,7 @@ public sealed class BehaviorController : IDisposable
                 _nextCursorReactionAt =
                     now.AddSeconds(
                         1.5 +
-                        (_random.NextDouble() * 2));
+                        (_random.NextDouble() * 2) * _options.ActivityDelay);
             }
         }
         else if (distance >
@@ -1246,9 +1282,7 @@ public sealed class BehaviorController : IDisposable
                 now);
 
 
-        UpdatePendingApplicationArrival(
-            now,
-            cursorHasAttention);
+        if (_options.Enabled) UpdatePendingApplicationArrival(now, cursorHasAttention);
 
         // =========================
         // AUTO WAKE
@@ -1270,7 +1304,7 @@ public sealed class BehaviorController : IDisposable
         // AUTO NAP
         // =========================
 
-        if (!_thinking &&
+        if (_options.CanSleep && !_thinking &&
             !_surfaceController.IsBusy &&
             _pendingArrivalApplication is null &&
             now - _lastInteractionAt >=
@@ -1297,7 +1331,7 @@ public sealed class BehaviorController : IDisposable
         // BEHAVIOUR
         // =========================
 
-        if (!_thinking &&
+        if (_options.Enabled && !_thinking &&
             _pendingArrivalApplication is null &&
             !cursorHasAttention &&
             now >= _nextDecisionAt)
@@ -1318,8 +1352,8 @@ public sealed class BehaviorController : IDisposable
         if ((_pauseReasons & BehaviorPauseReason.Hidden) != 0) return;
         // Follow support and animate climbing at the same cadence as walking/physics.
         if (_surfaceController.HasSupport && !_surfaceController.UpdateSupportWindow()) return;
-        if (!IsPaused && _surfaceController.Update(DateTime.UtcNow, _thinking)) return;
-        if (!_canWalkOnRender || !_walking || IsPaused || _surfaceController.IsBusy ||
+        if (_options.Enabled && !IsPaused && _surfaceController.Update(DateTime.UtcNow, _thinking)) return;
+        if (!_options.Enabled || !_canWalkOnRender || !_walking || IsPaused || _surfaceController.IsBusy ||
             _character.CurrentState != CharacterState.Walk)
         {
             _walkPixelRemainder = 0;
@@ -1328,13 +1362,14 @@ public sealed class BehaviorController : IDisposable
 
         // Keep fractional distance across frames; Win32 window positions are integer pixels.
         // Without this, rounding each small step changes speed on 60/120/144 Hz monitors.
-        double distance = WalkSpeed * Math.Clamp(delta, 0, .05) + _walkPixelRemainder;
+        double distance = CurrentWalkSpeed * Math.Clamp(delta, 0, .05) + _walkPixelRemainder;
         double pixels = Math.Floor(distance);
         _walkPixelRemainder = distance - pixels;
-        if (pixels > 0) MoveCharacter(pixels / WalkSpeed);
+        if (pixels > 0) MoveCharacter(pixels / CurrentWalkSpeed);
     }
     private void ChooseNextBehavior()
     {
+        if (!_options.Enabled) return;
         if (_walking)
         {
             StopWalking();
@@ -1370,8 +1405,11 @@ public sealed class BehaviorController : IDisposable
                 appKind);
 
 
-        RememberAmbientAction(
-            action);
+        if (_options.Activity == ActivityLevel.Calm && action == AmbientAction.Walk && _random.NextDouble() < .55)
+            action = AmbientAction.Idle;
+        else if (_options.Activity == ActivityLevel.Active && action == AmbientAction.Idle && _random.NextDouble() < .55)
+            action = AmbientAction.Walk;
+        RememberAmbientAction(action);
 
 
         switch (action)
@@ -1540,6 +1578,7 @@ public sealed class BehaviorController : IDisposable
 
     private void StartWalking()
     {
+        if (!_options.Enabled) return;
         _walking = true;
 
         // Lebih sering lanjut ke arah sebelumnya.
@@ -1654,7 +1693,7 @@ public sealed class BehaviorController : IDisposable
             _surfaceController.MoveOnSupportWindow(
                 deltaSeconds,
                 _direction,
-                WalkSpeed);
+                CurrentWalkSpeed);
 
             if (_surfaceController.IsBusy)
             {
@@ -1687,7 +1726,7 @@ public sealed class BehaviorController : IDisposable
         double newLeft =
             windowBounds.Left +
             (_direction *
-             WalkSpeed *
+             CurrentWalkSpeed *
              deltaSeconds);
 
 
@@ -1831,7 +1870,7 @@ public sealed class BehaviorController : IDisposable
              (maxSeconds - minSeconds));
 
         _nextDecisionAt =
-            DateTime.UtcNow.AddSeconds(delay);
+            DateTime.UtcNow.AddSeconds(delay * (_walking ? 1 / Math.Sqrt(_options.ActivityDelay) : _options.ActivityDelay));
     }
 
     public void Dispose()
@@ -1857,17 +1896,12 @@ public sealed class BehaviorController : IDisposable
 
     private void ScheduleNextSleepCycle()
     {
-        double seconds =
-            MinimumAwakeBeforeNapSeconds +
-            (_random.NextDouble() *
-             (MaximumAwakeBeforeNapSeconds - MinimumAwakeBeforeNapSeconds));
-
-        _sleepAfter = TimeSpan.FromSeconds(seconds);
+        _sleepAfter = _options.SleepThreshold;
     }
 
     private void EnterSleep()
     {
-        if (_sleeping || _thinking || _surfaceController.IsBusy)
+        if (!_options.CanSleep || _sleeping || _thinking || IsPaused || _surfaceController.IsBusy)
         {
             return;
         }
@@ -1879,7 +1913,7 @@ public sealed class BehaviorController : IDisposable
             MinimumNapSeconds +
             (_random.NextDouble() * (MaximumNapSeconds - MinimumNapSeconds));
 
-        _sleepUntil = DateTime.UtcNow.AddSeconds(napSeconds);
+        _sleepUntil = DateTime.UtcNow.AddSeconds(napSeconds * _options.NapFactor);
 
         _character.SetMood(CharacterMood.Neutral);
         _character.SetState(CharacterState.Sleep);

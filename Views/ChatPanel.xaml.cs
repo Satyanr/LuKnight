@@ -57,6 +57,8 @@ public partial class ChatPanel : UserControl
         MessageSubmitted?.Invoke(message);
     }
 
+    public void ClearConversation() { MessagesPanel.Children.Clear(); MessageInput.Clear(); }
+
     public void AddUserMessage(string message)
     {
         AddMessage(
