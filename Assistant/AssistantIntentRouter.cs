@@ -22,6 +22,17 @@ public sealed class AssistantIntentRouter
             return AssistantIntent.UseTool(new ToolInvocation(toolName, arguments));
         }
 
+        FileContextCommand? fileCommand = FileContextCommandParser.Parse(input);
+        if (fileCommand is not null)
+        {
+            return AssistantIntent.UseContext(new ContextInvocation(
+                BuiltInContextNames.LocalTextFile,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["path"] = fileCommand.Path
+                }));
+        }
+
         if (IsApplicationAwarenessQuery(input))
         {
             return AssistantIntent.UseTool(new ToolInvocation(BuiltInToolNames.DesktopListApplications, new Dictionary<string, string>()));

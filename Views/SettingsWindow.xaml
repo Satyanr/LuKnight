@@ -216,6 +216,13 @@
                                 <TextBlock Text="Lu-Knight hanya menerima nama process dan kategori aplikasi. Isi layar, judul window, nama dokumen, clipboard, dan isi file belum dibaca." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0"/>
                             </StackPanel>
                         </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="File context" Style="{StaticResource CardTitle}"/>
+                                <CheckBox Content="Allow Lu-Knight to read explicitly requested text files" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseFileContext, Mode=TwoWay}"/>
+                                <TextBlock Text="Hanya file yang Anda sebutkan secara eksplisit. Lu-Knight tidak memindai folder. Isi file digunakan untuk request saat itu dan tidak disimpan ke long-term memory." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                     <StackPanel x:Name="AboutPanel">
                         <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding SelectedSection}" Value="About"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>

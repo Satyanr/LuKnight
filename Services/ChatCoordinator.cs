@@ -76,13 +76,22 @@ public sealed class ChatCoordinator : IChatService
         string? assistantInstruction,
         IReadOnlyList<ChatContextTurn>? context,
         CancellationToken cancellationToken = default)
-        => SendMessageAsync(message, assistantInstruction, context, longTermMemory: null, cancellationToken);
+        => SendMessageAsync(message, assistantInstruction, context, longTermMemory: null, references: null, cancellationToken);
+
+    public Task<string> SendMessageAsync(
+        string message,
+        string? assistantInstruction,
+        IReadOnlyList<ChatContextTurn>? context,
+        IReadOnlyList<string>? longTermMemory,
+        CancellationToken cancellationToken = default)
+        => SendMessageAsync(message, assistantInstruction, context, longTermMemory, references: null, cancellationToken);
 
     public async Task<string> SendMessageAsync(
         string message,
         string? assistantInstruction,
         IReadOnlyList<ChatContextTurn>? context,
         IReadOnlyList<string>? longTermMemory,
+        IReadOnlyList<ChatReferenceBlock>? references,
         CancellationToken cancellationToken = default)
     {
         EnsureIdle(); IsBusy = true; LastReplyWasGemini = false;
@@ -97,6 +106,7 @@ public sealed class ChatCoordinator : IChatService
                         assistantInstruction,
                         context,
                         longTermMemory,
+                        references,
                         cancellationToken);
                     LastReplyWasGemini = true; Status = "Gemini connected."; return answer;
                 }

@@ -10,6 +10,7 @@ public sealed class AppServices
     public AssistantContextProvider Context { get; }
     public AssistantIntentRouter IntentRouter { get; }
     public AssistantToolRouter Tools { get; }
+    public AssistantContextSourceRouter ContextSources { get; }
     public AssistantController Assistant { get; }
     public UpdateService Updates { get; }
     public AppServices(
@@ -29,12 +30,17 @@ public sealed class AppServices
             new ForgetMemoryTool(Memory),
             new ListApplicationsTool(() => Chat.Options.UseApplicationContext)
         });
+        ContextSources = new AssistantContextSourceRouter(new IAssistantContextSource[]
+        {
+            new LocalTextFileContextSource(() => Chat.Options.UseFileContext)
+        });
         Assistant = new AssistantController(
             Chat,
             memory: Memory,
             context: Context,
             intentRouter: IntentRouter,
-            tools: Tools);
+            tools: Tools,
+            contextSources: ContextSources);
         Updates = new(Settings);
     }
 }

@@ -13,6 +13,7 @@ public sealed class AssistantController
     public AssistantContextProvider Context { get; }
     public AssistantIntentRouter IntentRouter { get; }
     public AssistantToolRouter Tools { get; }
+    public AssistantContextSourceRouter ContextSources { get; }
     public AssistantEmotionEngine Emotions { get; }
     public bool IsBusy => _requestGate.CurrentCount == 0 || _chat.IsBusy;
     public string DisplayName => _chat.DisplayName;
@@ -24,7 +25,8 @@ public sealed class AssistantController
         AssistantContextProvider? context = null,
         AssistantIntentRouter? intentRouter = null,
         AssistantToolRouter? tools = null,
-        AssistantEmotionEngine? emotions = null)
+        AssistantEmotionEngine? emotions = null,
+        AssistantContextSourceRouter? contextSources = null)
     {
         _chat = chat ?? throw new ArgumentNullException(nameof(chat));
         Personality = personality ?? new PersonalityEngine();
@@ -36,6 +38,10 @@ public sealed class AssistantController
             new RememberMemoryTool(Memory),
             new ForgetMemoryTool(Memory),
             new ListApplicationsTool(() => _chat.Options.UseApplicationContext)
+        });
+        ContextSources = contextSources ?? new AssistantContextSourceRouter(new IAssistantContextSource[]
+        {
+            new LocalTextFileContextSource(() => _chat.Options.UseFileContext)
         });
         Emotions = emotions ?? new AssistantEmotionEngine();
     }
@@ -67,39 +73,27 @@ public sealed class AssistantController
                     cancellationToken);
             }
 
-            IReadOnlyList<ChatContextTurn> context = BuildShortTermContext();
-            Conversation.AddUser(request);
-
-            try
+            if (intent.Kind == AssistantIntentKind.Context)
             {
-                string personalityInstruction = Personality.BuildSystemInstruction();
-                string runtimeInstruction = Context.BuildSystemInstruction();
-                if (!string.IsNullOrWhiteSpace(runtimeInstruction))
-                    personalityInstruction += "\n\n" + runtimeInstruction;
+                ContextInvocation invocation = intent.Context ?? throw new InvalidOperationException("Context intent tidak memiliki invocation.");
+                ContextCaptureResult captured = await ContextSources.CaptureAsync(invocation, cancellationToken);
+                if (!captured.Success || captured.Reference is null)
+                {
+                    Conversation.AddUser(request);
+                    Conversation.AddAssistant(captured.Message);
+                    return new AssistantReply(captured.Message, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Confused);
+                }
 
-                IReadOnlyList<string> longTermMemory = BuildLongTermMemoryContext(request.Text);
-
-                string reply = await _chat.SendMessageAsync(
-                    request.Text,
-                    personalityInstruction,
-                    context,
-                    longTermMemory,
+                return await SendConversationAsync(
+                    request,
+                    new[] { captured.Reference },
                     cancellationToken);
-                Conversation.AddAssistant(reply);
+            }
 
-                AssistantBackend backend = _chat.LastReplyWasGemini ? AssistantBackend.Gemini : AssistantBackend.Local;
-                AssistantEmotion emotion = Emotions.EvaluateConversation(
-                    request.Text,
-                    reply,
-                    backend,
-                    _chat.Options.Style);
-                return new AssistantReply(reply, backend, DateTimeOffset.UtcNow, emotion);
-            }
-            catch
-            {
-                Conversation.RollbackPendingUser();
-                throw;
-            }
+            return await SendConversationAsync(
+                request,
+                Array.Empty<ChatReferenceBlock>(),
+                cancellationToken);
         }
         finally
         {
@@ -119,6 +113,48 @@ public sealed class AssistantController
             Conversation.AddAssistant(result.Message);
             AssistantEmotion emotion = Emotions.EvaluateTool(invocation, result);
             return new AssistantReply(result.Message, AssistantBackend.Local, DateTimeOffset.UtcNow, emotion);
+        }
+        catch
+        {
+            Conversation.RollbackPendingUser();
+            throw;
+        }
+    }
+
+    private async Task<AssistantReply> SendConversationAsync(
+        AssistantRequest request,
+        IReadOnlyList<ChatReferenceBlock> references,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<ChatContextTurn> context = BuildShortTermContext();
+        Conversation.AddUser(request);
+
+        try
+        {
+            string personalityInstruction = Personality.BuildSystemInstruction();
+            string runtimeInstruction = Context.BuildSystemInstruction();
+            if (!string.IsNullOrWhiteSpace(runtimeInstruction))
+                personalityInstruction += "\n\n" + runtimeInstruction;
+
+            IReadOnlyList<string> longTermMemory = BuildLongTermMemoryContext(request.Text);
+
+            string reply = await _chat.SendMessageAsync(
+                request.Text,
+                personalityInstruction,
+                context,
+                longTermMemory,
+                references,
+                cancellationToken);
+
+            Conversation.AddAssistant(reply);
+
+            AssistantBackend backend = _chat.LastReplyWasGemini ? AssistantBackend.Gemini : AssistantBackend.Local;
+            AssistantEmotion emotion = Emotions.EvaluateConversation(
+                request.Text,
+                reply,
+                backend,
+                _chat.Options.Style);
+            return new AssistantReply(reply, backend, DateTimeOffset.UtcNow, emotion);
         }
         catch
         {
