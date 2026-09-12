@@ -223,6 +223,13 @@
                                 <TextBlock Text="Hanya file yang Anda sebutkan secara eksplisit. Lu-Knight tidak memindai folder. Isi file digunakan untuk request saat itu dan tidak disimpan ke long-term memory." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0"/>
                             </StackPanel>
                         </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Clipboard context" Style="{StaticResource CardTitle}"/>
+                                <CheckBox Content="Allow Lu-Knight to read clipboard text when explicitly requested" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseClipboardContext, Mode=TwoWay}"/>
+                                <TextBlock Text="Clipboard hanya dibaca ketika Anda meminta. Lu-Knight tidak memonitor clipboard secara background dan tidak menyimpannya ke long-term memory." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                     <StackPanel x:Name="AboutPanel">
                         <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding SelectedSection}" Value="About"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>

@@ -46,4 +46,5 @@ public static class BuiltInToolNames
 public static class BuiltInContextNames
 {
     public const string LocalTextFile = "context.file.text";
+    public const string ClipboardText = "context.clipboard.text";
 }

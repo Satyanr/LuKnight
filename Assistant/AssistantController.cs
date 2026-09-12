@@ -41,7 +41,8 @@ public sealed class AssistantController
         });
         ContextSources = contextSources ?? new AssistantContextSourceRouter(new IAssistantContextSource[]
         {
-            new LocalTextFileContextSource(() => _chat.Options.UseFileContext)
+            new LocalTextFileContextSource(() => _chat.Options.UseFileContext),
+            new ClipboardTextContextSource(() => _chat.Options.UseClipboardContext)
         });
         Emotions = emotions ?? new AssistantEmotionEngine();
     }

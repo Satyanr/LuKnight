@@ -33,6 +33,14 @@ public sealed class AssistantIntentRouter
                 }));
         }
 
+        ClipboardContextCommand? clipboardCommand = ClipboardContextCommandParser.Parse(input);
+        if (clipboardCommand is not null)
+        {
+            return AssistantIntent.UseContext(new ContextInvocation(
+                BuiltInContextNames.ClipboardText,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)));
+        }
+
         if (IsApplicationAwarenessQuery(input))
         {
             return AssistantIntent.UseTool(new ToolInvocation(BuiltInToolNames.DesktopListApplications, new Dictionary<string, string>()));
