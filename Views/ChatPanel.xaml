@@ -57,6 +57,9 @@
                           Grid.Row="1"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled"
+                          PanningMode="VerticalOnly"
+                          PanningDeceleration="0.001"
+                          PanningRatio="1"
                           Margin="0,0,0,12">
 
                 <StackPanel x:Name="MessagesPanel"/>

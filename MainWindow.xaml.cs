@@ -184,11 +184,11 @@ public partial class MainWindow : Window
             _behaviorController?.ApplySettings(options);
             Services.Settings.Update(Services.Settings.Current with { Behavior = options });
         };
-        AddHandler(PreviewMouseLeftButtonDownEvent,
+        CharacterControl.AddHandler(PreviewMouseLeftButtonDownEvent,
             new MouseButtonEventHandler(Character_PreviewMouseLeftButtonDown), true);
-        AddHandler(PreviewMouseMoveEvent,
+        CharacterControl.AddHandler(PreviewMouseMoveEvent,
             new MouseEventHandler(Character_PreviewMouseMove), true);
-        AddHandler(PreviewMouseLeftButtonUpEvent,
+        CharacterControl.AddHandler(PreviewMouseLeftButtonUpEvent,
             new MouseButtonEventHandler(Character_PreviewMouseLeftButtonUp), true);
         Loaded += MainWindow_Loaded;
 

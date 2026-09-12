@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows.Input;
 using LuKnight.Models;
 using LuKnight.Services;
+using System.Diagnostics;
 
 namespace LuKnight.ViewModels;
 
@@ -48,22 +49,83 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
     public bool CanCheck => !_services.Updates.IsBusy;
     public bool CanDownload => !_services.Updates.IsBusy && _services.Updates.Available is not null && _services.Updates.VerifiedInstaller is null;
     public bool CanInstall => !_services.Updates.IsBusy && _services.Updates.VerifiedInstaller is not null && _safeToInstall();
-    public ChatProvider Provider { get => _services.Chat.Options.Provider; set => Change(_services.Chat.Options with { Provider = value }); }
-    public string Model { get => _services.Chat.Options.Model; set => Change(_services.Chat.Options with { Model = value.Trim() }); }
-    public ChatLanguage Language { get => _services.Chat.Options.Language; set => Change(_services.Chat.Options with { Language = value }); }
-    public ResponseLength Length { get => _services.Chat.Options.ResponseLength; set => Change(_services.Chat.Options with { ResponseLength = value }); }
-    public ResponseStyle Style { get => _services.Chat.Options.Style; set => Change(_services.Chat.Options with { Style = value }); }
-    public bool Remember { get => _services.Chat.Options.RememberConversation; set => Change(_services.Chat.Options with { RememberConversation = value }); }
-    private void Change(ChatSettings options) => Run(() =>
+    public ChatProvider Provider
     {
-        var config = SettingsService.Validate(_services.Settings.Current with { Chat = options });
-        _services.Chat.Configure(options); _services.Settings.Update(config);
-    });
+        get => _services.Chat.Options.Provider;
+        set
+        {
+            if (value == _services.Chat.Options.Provider) return;
+            Change(_services.Chat.Options with { Provider = value });
+        }
+    }
+    public string Model
+    {
+        get => _services.Chat.Options.Model;
+        set
+        {
+            string model = (value ?? string.Empty).Trim();
+            if (string.Equals(model, _services.Chat.Options.Model, StringComparison.Ordinal)) return;
+            Change(_services.Chat.Options with { Model = model });
+        }
+    }
+    public ChatLanguage Language
+    {
+        get => _services.Chat.Options.Language;
+        set
+        {
+            if (value == _services.Chat.Options.Language) return;
+            Change(_services.Chat.Options with { Language = value });
+        }
+    }
+    public ResponseLength Length
+    {
+        get => _services.Chat.Options.ResponseLength;
+        set
+        {
+            if (value == _services.Chat.Options.ResponseLength) return;
+            Change(_services.Chat.Options with { ResponseLength = value });
+        }
+    }
+    public ResponseStyle Style
+    {
+        get => _services.Chat.Options.Style;
+        set
+        {
+            if (value == _services.Chat.Options.Style) return;
+            Change(_services.Chat.Options with { Style = value });
+        }
+    }
+    public bool Remember
+    {
+        get => _services.Chat.Options.RememberConversation;
+        set
+        {
+            if (value == _services.Chat.Options.RememberConversation) return;
+            Change(_services.Chat.Options with { RememberConversation = value });
+        }
+    }
+    private void Change(ChatSettings options)
+    {
+        if (options == _services.Chat.Options) return;
+        Run(() =>
+        {
+            AppSettings config = SettingsService.Validate(_services.Settings.Current with { Chat = options });
+            _services.Chat.Configure(options);
+            _services.Settings.Update(config);
+        });
+    }
     private void Run(Action action)
     {
-        try { action(); _message = null; }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
-        { _message = "Perubahan gagal. Periksa nilai, izin Credential Manager, atau tunggu chat selesai."; }
+        try
+        {
+            action();
+            _message = null;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine("[Lu-Knight][Settings] " + ex);
+            _message = "Perubahan pengaturan gagal. Nilai sebelumnya tetap digunakan.";
+        }
         Refresh();
     }
     public void UpdateKey(string key) => Run(() => _services.Chat.UpdateKey(key));
@@ -88,7 +150,16 @@ public sealed class AsyncSettingsCommand(Func<Task> execute, Func<bool> enabled)
         _running = true; Refresh();
         try { await execute(); }
         catch (OperationCanceledException) { }
-        finally { _running = false; Refresh(); Completed?.Invoke(); }
+        catch (Exception ex)
+        {
+            Debug.WriteLine("[Lu-Knight][SettingsCommand] " + ex);
+        }
+        finally
+        {
+            _running = false;
+            Refresh();
+            Completed?.Invoke();
+        }
     }
     public void Refresh() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }
