@@ -49,7 +49,8 @@ public sealed class AssistantController
         {
             new LocalTextFileContextSource(() => _chat.Options.UseFileContext),
             new ClipboardTextContextSource(() => _chat.Options.UseClipboardContext),
-            new SystemStatusContextSource(() => _chat.Options.UseSystemContext)
+            new SystemStatusContextSource(() => _chat.Options.UseSystemContext),
+            new ScreenImageContextSource(() => _chat.Options.UseScreenContext, () => _chat.UsesGemini)
         });
         Actions = actions ?? new AssistantActionRouter(new IAssistantAction[]
         {

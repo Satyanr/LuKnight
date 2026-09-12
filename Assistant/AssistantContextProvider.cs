@@ -116,9 +116,15 @@ public sealed class AssistantContextProvider
             Application awareness only provides process names
             and broad application categories.
 
-            It does NOT provide screen contents, window titles,
-            document or file names, clipboard contents,
-            microphone, camera, or user location.
+            Runtime and application-awareness context do not
+            provide screen contents, window titles, file contents,
+            clipboard contents, microphone, camera, or location.
+
+            A screen image is available only when the current
+            user request contains an explicit user-approved
+            screen-image reference.
+
+            Never claim continuous screen visibility or access.
 
             Never infer information that was not explicitly
             supplied by the application.

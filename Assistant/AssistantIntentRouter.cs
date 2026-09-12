@@ -52,6 +52,14 @@ public sealed class AssistantIntentRouter
                 }));
         }
 
+        ScreenContextCommand? screenCommand = ScreenContextCommandParser.Parse(input);
+        if (screenCommand is not null)
+        {
+            return AssistantIntent.UseContext(new ContextInvocation(
+                BuiltInContextNames.ScreenImage,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)));
+        }
+
         if (IsApplicationAwarenessQuery(input))
         {
             return AssistantIntent.UseTool(new ToolInvocation(BuiltInToolNames.DesktopListApplications, new Dictionary<string, string>()));

@@ -239,6 +239,13 @@
                         </Border>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
+                                <TextBlock Text="Screen context" Style="{StaticResource CardTitle}"/>
+                                <CheckBox Content="Allow Lu-Knight to capture the primary display when explicitly requested" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseScreenContext, Mode=TwoWay}"/>
+                                <TextBlock Text="Screen capture hanya dilakukan sekali ketika Anda meminta. Screenshot tidak dimonitor di background dan tidak disimpan oleh Lu-Knight. Image dikirim ke Gemini untuk request tersebut." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
                                 <TextBlock Text="Desktop actions" Style="{StaticResource CardTitle}"/>
                                 <CheckBox Content="Allow Lu-Knight to perform approved desktop actions" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseDesktopActions, Mode=TwoWay}"/>
                                 <TextBlock Text="Setiap tindakan tetap meminta konfirmasi. Saat ini Lu-Knight hanya dapat membuka aplikasi yang telah diizinkan dan memfokuskan window aplikasi yang sudah terbuka. Shell, PowerShell, CMD, arbitrary executable, close/kill app, dan file modification tidak diizinkan." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>

@@ -419,6 +419,71 @@ internal static partial class Program
             systemAssistant.Memory.Count == 0,
             "System status leaked into conversation transcript or long-term memory.");
 
+        var fakeScreen = new ScreenCaptureSnapshot(
+            "image/jpeg",
+            "SCREEN-BASE64-742",
+            1280,
+            720);
+        AssistantIntent screenIntent = new AssistantIntentRouter().Route("lihat layar saya");
+        Require(screenIntent.Kind == AssistantIntentKind.Context &&
+            screenIntent.Context?.Name == BuiltInContextNames.ScreenImage,
+            "Screen request was not routed as context.");
+        Require(new AssistantIntentRouter().Route("pantau layar").Kind == AssistantIntentKind.Conversation &&
+            new AssistantIntentRouter().Route("awasi layar terus").Kind == AssistantIntentKind.Conversation,
+            "Background screen monitoring was exposed as a context command.");
+
+        var disabledScreen = new ScreenImageContextSource(
+            () => false,
+            () => true,
+            () => throw new Exception("Screen must not be captured when disabled"));
+        Require(!(await disabledScreen.CaptureAsync(screenIntent.Context!)).Success,
+            "Disabled screen context captured the screen.");
+
+        var noGeminiScreen = new ScreenImageContextSource(
+            () => true,
+            () => false,
+            () => throw new Exception("Screen must not be captured without Gemini"));
+        Require(!(await noGeminiScreen.CaptureAsync(screenIntent.Context!)).Success,
+            "Screen was captured even though Gemini was unavailable.");
+
+        var screenSource = new ScreenImageContextSource(() => true, () => true, () => fakeScreen);
+        ContextCaptureResult screenCapture = await screenSource.CaptureAsync(screenIntent.Context!);
+        Require(screenCapture.Success && screenCapture.Reference!.HasInlineData &&
+            screenCapture.Reference.Base64Data == "SCREEN-BASE64-742",
+            "Screen image reference was not created as inline data.");
+
+        var screenPayloads = new List<string>();
+        using var screenHandler = new FakeHttp(async (request, token) =>
+        {
+            screenPayloads.Add(await request.Content!.ReadAsStringAsync(token));
+            return JsonResponse(new { candidates = new[] { new { content = new { parts = new[] { new { text = "screen safe" } } } } } });
+        });
+        using var screenClient = new HttpClient(screenHandler);
+        var screenAssistant = new AssistantController(
+            new ChatCoordinator(new FakeCredentials { Key = "screen-context-key" }, new() { UseScreenContext = true }, () => null, screenClient),
+            memory: new MemoryService(),
+            contextSources: new AssistantContextSourceRouter(new IAssistantContextSource[]
+            {
+                new ScreenImageContextSource(() => true, () => true, () => fakeScreen)
+            }));
+        await screenAssistant.SendAsync(new("lihat layar saya"));
+        using (var screenPayload = JsonDocument.Parse(screenPayloads[^1]))
+        {
+            string instruction = screenPayload.RootElement.GetProperty("system_instruction").GetProperty("parts")[0].GetProperty("text").GetString()!;
+            JsonElement contents = screenPayload.RootElement.GetProperty("contents");
+            JsonElement current = contents[contents.GetArrayLength() - 1];
+            JsonElement parts = current.GetProperty("parts");
+            Require(!instruction.Contains("SCREEN-BASE64-742", StringComparison.Ordinal) &&
+                parts.GetArrayLength() == 3 &&
+                parts[0].GetProperty("text").GetString()!.Contains("untrusted visual data", StringComparison.OrdinalIgnoreCase) &&
+                parts[1].GetProperty("inline_data").GetProperty("data").GetString() == "SCREEN-BASE64-742" &&
+                parts[2].GetProperty("text").GetString() == "lihat layar saya",
+                "Screen image was not isolated from the current message.");
+        }
+        Require(screenAssistant.Conversation.Turns.All(turn => !turn.Text.Contains("SCREEN-BASE64-742", StringComparison.Ordinal)) &&
+            screenAssistant.Memory.Count == 0,
+            "Screen image data leaked into conversation transcript or long-term memory.");
+
         var fakeDesktop = new FakeDesktopActionExecutor();
         var actionRouter = new AssistantActionRouter(new IAssistantAction[]
         {

@@ -35,7 +35,8 @@ public sealed class AppServices
         {
             new LocalTextFileContextSource(() => Chat.Options.UseFileContext),
             new ClipboardTextContextSource(() => Chat.Options.UseClipboardContext),
-            new SystemStatusContextSource(() => Chat.Options.UseSystemContext)
+            new SystemStatusContextSource(() => Chat.Options.UseSystemContext),
+            new ScreenImageContextSource(() => Chat.Options.UseScreenContext, () => Chat.UsesGemini)
         });
         Actions = new AssistantActionRouter(new IAssistantAction[]
         {

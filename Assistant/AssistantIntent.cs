@@ -66,4 +66,5 @@ public static class BuiltInContextNames
     public const string LocalTextFile = "context.file.text";
     public const string ClipboardText = "context.clipboard.text";
     public const string SystemStatus = "context.system.status";
+    public const string ScreenImage = "context.screen.image";
 }
