@@ -246,6 +246,13 @@
                         </Border>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
+                                <TextBlock Text="Voice input" Style="{StaticResource CardTitle}"/>
+                                <CheckBox Content="Allow Lu-Knight to use the microphone for push-to-talk" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseVoiceInput, Mode=TwoWay}"/>
+                                <TextBlock Text="Microphone hanya aktif saat tombol mic ditekan. Tidak ada background listening, wake word, atau penyimpanan rekaman suara." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
                                 <TextBlock Text="Desktop actions" Style="{StaticResource CardTitle}"/>
                                 <CheckBox Content="Allow Lu-Knight to perform approved desktop actions" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseDesktopActions, Mode=TwoWay}"/>
                                 <TextBlock Text="Setiap tindakan tetap meminta konfirmasi. Saat ini Lu-Knight hanya dapat membuka aplikasi yang telah diizinkan dan memfokuskan window aplikasi yang sudah terbuka. Shell, PowerShell, CMD, arbitrary executable, close/kill app, dan file modification tidak diizinkan." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>

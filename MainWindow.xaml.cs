@@ -71,7 +71,9 @@ public partial class MainWindow : Window
     private BehaviorController? _behaviorController;
 
     private CancellationTokenSource? _requestCts;
+    private CancellationTokenSource? _voiceLimitCts;
     private bool _isSending;
+    private bool _isVoiceRecording;
 
     private Point _mouseDownPosition;
     private Point _mouseDownScreenPosition;
@@ -225,6 +227,8 @@ public partial class MainWindow : Window
         Loaded += MainWindow_Loaded;
 
         ChatPanelControl.MessageSubmitted += ChatPanel_MessageSubmitted;
+        ChatPanelControl.VoiceToggleRequested += ChatPanel_VoiceToggleRequested;
+        RefreshVoiceAvailability();
 
         if (_usesGemini)
         {
@@ -623,6 +627,9 @@ public partial class MainWindow : Window
         if (_isSending)
             return;
 
+        if (_isVoiceRecording)
+            await StopVoiceRecordingAsync();
+
         _isSending = true;
 
         _behaviorController?
@@ -711,11 +718,99 @@ public partial class MainWindow : Window
                 .SetThinking(false);
 
             ChatPanelControl.SetBusy(false);
+            RefreshVoiceAvailability();
 
             if (ReferenceEquals(_requestCts, requestCts))
                 _requestCts = null;
 
             _isSending = false;
+        }
+    }
+
+    private void RefreshVoiceAvailability()
+    {
+        ChatPanelControl.SetVoiceEnabled(
+            Services.Chat.Options.UseVoiceInput && !_isSending);
+    }
+
+    private async void ChatPanel_VoiceToggleRequested()
+    {
+        if (_isSending)
+            return;
+
+        if (!Services.Chat.Options.UseVoiceInput)
+        {
+            ChatPanelControl.SetStatus("Voice input nonaktif.", ChatStatus.Ready);
+            return;
+        }
+
+        if (!_isVoiceRecording)
+        {
+            try
+            {
+                Services.VoiceCapture.Start();
+                _isVoiceRecording = true;
+                ChatPanelControl.SetVoiceRecording(true);
+                ChatPanelControl.SetStatus("Mendengarkan...", ChatStatus.Busy);
+                _behaviorController?.ReactMood(CharacterMood.Curious);
+
+                _voiceLimitCts?.Cancel();
+                _voiceLimitCts?.Dispose();
+                _voiceLimitCts = new CancellationTokenSource();
+                _ = AutoStopVoiceAsync(_voiceLimitCts.Token);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("[Lu-Knight][Voice] " + ex);
+                ChatPanelControl.SetStatus("Microphone tidak dapat digunakan.", ChatStatus.Error);
+                RefreshVoiceAvailability();
+            }
+
+            return;
+        }
+
+        await StopVoiceRecordingAsync();
+    }
+
+    private async Task StopVoiceRecordingAsync()
+    {
+        if (!_isVoiceRecording)
+            return;
+
+        _voiceLimitCts?.Cancel();
+        _voiceLimitCts?.Dispose();
+        _voiceLimitCts = null;
+
+        try
+        {
+            VoiceCaptureResult result = await Services.VoiceCapture.StopAsync();
+            ChatPanelControl.SetStatus(
+                $"Voice captured · {result.Duration.TotalSeconds:0.0}s",
+                ChatStatus.Ready);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("[Lu-Knight][Voice] " + ex);
+            ChatPanelControl.SetStatus("Rekaman suara gagal.", ChatStatus.Error);
+        }
+        finally
+        {
+            _isVoiceRecording = false;
+            ChatPanelControl.SetVoiceRecording(false);
+            RefreshVoiceAvailability();
+        }
+    }
+
+    private async Task AutoStopVoiceAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(15), token);
+            if (_isVoiceRecording)
+                await Dispatcher.InvokeAsync(async () => await StopVoiceRecordingAsync());
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
@@ -790,6 +885,10 @@ public partial class MainWindow : Window
     {
         Services.Context.Detach();
         _requestCts?.Cancel();
+        _voiceLimitCts?.Cancel();
+        _voiceLimitCts?.Dispose();
+        _voiceLimitCts = null;
+        Services.VoiceCapture.Dispose();
 
         if (_physicsController is not null)
         {

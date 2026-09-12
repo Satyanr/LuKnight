@@ -21,6 +21,7 @@ public sealed record ChatSettings
     public bool UseClipboardContext { get; init; } = false;
     public bool UseSystemContext { get; init; } = false;
     public bool UseScreenContext { get; init; } = false;
+    public bool UseVoiceInput { get; init; } = false;
     public bool UseDesktopActions { get; init; } = false;
 }
 public sealed record WindowPlacement(double Left, double Top, double Width, double Height);

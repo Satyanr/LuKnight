@@ -29,6 +29,38 @@ internal static partial class Program
         }
     }
 
+    private sealed class FakeVoiceCaptureService : IVoiceCaptureService
+    {
+        public bool IsRecording { get; private set; }
+        public int StartCalls { get; private set; }
+        public int StopCalls { get; private set; }
+
+        public void Start()
+        {
+            if (IsRecording)
+                throw new InvalidOperationException();
+
+            StartCalls++;
+            IsRecording = true;
+        }
+
+        public Task<VoiceCaptureResult> StopAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsRecording)
+                throw new InvalidOperationException();
+
+            StopCalls++;
+            IsRecording = false;
+            return Task.FromResult(new VoiceCaptureResult(
+                [0x52, 0x49, 0x46, 0x46],
+                TimeSpan.FromSeconds(2),
+                new NAudio.Wave.WaveFormat(16000, 16, 1)));
+        }
+
+        public void Dispose() => IsRecording = false;
+    }
+
     private static void CheckAssistant()
     {
         Task.Run(CheckAssistantAsync).GetAwaiter().GetResult();
@@ -79,6 +111,14 @@ internal static partial class Program
             AssistantBackend.Gemini,
             ResponseStyle.Friendly) == AssistantEmotion.Determined,
             "Task continuation does not produce Determined emotion.");
+
+        var fakeVoice = new FakeVoiceCaptureService();
+        fakeVoice.Start();
+        Require(fakeVoice.IsRecording && fakeVoice.StartCalls == 1,
+            "Voice recording did not start.");
+        VoiceCaptureResult voice = await fakeVoice.StopAsync();
+        Require(!fakeVoice.IsRecording && fakeVoice.StopCalls == 1 && voice.WavData.Length > 0,
+            "Voice recording did not stop correctly.");
 
         await CheckToolRouterAsync();
         await CheckPersonalityAsync();

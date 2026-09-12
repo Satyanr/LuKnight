@@ -13,15 +13,18 @@ public sealed class AppServices
     public AssistantContextSourceRouter ContextSources { get; }
     public AssistantActionRouter Actions { get; }
     public AssistantController Assistant { get; }
+    public IVoiceCaptureService VoiceCapture { get; }
     public UpdateService Updates { get; }
     public AppServices(
         SettingsService? settings = null,
         ICredentialService? credentials = null,
         MemoryService? memory = null,
-        AssistantContextProvider? context = null)
+        AssistantContextProvider? context = null,
+        IVoiceCaptureService? voiceCapture = null)
     {
         Settings = settings ?? new();
         Chat = new(credentials ?? new SecureCredentialService(), Settings.Current.Chat);
+        VoiceCapture = voiceCapture ?? new VoiceCaptureService();
         Memory = memory ?? new();
         Context = context ?? new();
         IntentRouter = new AssistantIntentRouter();

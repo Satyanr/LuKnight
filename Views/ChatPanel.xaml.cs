@@ -18,6 +18,7 @@ public enum ChatStatus
 public partial class ChatPanel : UserControl
 {
     public event Action<string>? MessageSubmitted;
+    public event Action? VoiceToggleRequested;
     public ChatStatus CurrentStatus { get; private set; } = ChatStatus.Local;
 
     public ChatPanel()
@@ -30,6 +31,14 @@ public partial class ChatPanel : UserControl
         RoutedEventArgs e)
     {
         SubmitMessage();
+    }
+
+    private void VoiceButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (VoiceButton.IsEnabled)
+            VoiceToggleRequested?.Invoke();
     }
 
     private void MessageInput_KeyDown(
@@ -80,9 +89,18 @@ public partial class ChatPanel : UserControl
         MessageInput.IsEnabled = !isBusy;
         SendButton.IsEnabled = !isBusy;
         SendButton.Content = isBusy ? "..." : "Kirim";
+        VoiceButton.IsEnabled = !isBusy;
 
         if (!isBusy)
             FocusInput();
+    }
+
+    public void SetVoiceEnabled(bool enabled) => VoiceButton.IsEnabled = enabled;
+
+    public void SetVoiceRecording(bool recording)
+    {
+        VoiceButton.Content = recording ? "■" : "🎤";
+        VoiceButton.ToolTip = recording ? "Stop recording" : "Push to talk";
     }
 
     public void SetStatus(string text, ChatStatus status)

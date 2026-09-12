@@ -72,6 +72,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <TextBox x:Name="MessageInput"
@@ -84,8 +85,17 @@
                          BorderThickness="1"
                          KeyDown="MessageInput_KeyDown"/>
 
+                <Button x:Name="VoiceButton"
+                    Grid.Column="1"
+                    Width="38"
+                    Height="38"
+                    Margin="8,0,0,0"
+                    Content="🎤"
+                    ToolTip="Push to talk"
+                    Click="VoiceButton_Click"/>
+
                 <Button x:Name="SendButton"
-                        Grid.Column="1"
+                    Grid.Column="2"
                         Width="58"
                         Height="38"
                         Margin="8,0,0,0"
