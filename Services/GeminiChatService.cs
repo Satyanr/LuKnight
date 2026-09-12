@@ -42,7 +42,16 @@ public sealed class GeminiChatService : IChatService
     private ChatSettings _options;
     public GeminiChatService(Func<string?>? key = null, ChatSettings? options = null, HttpClient? client = null)
     { _key = key ?? (() => Environment.GetEnvironmentVariable("GEMINI_API_KEY")); _options = options ?? new(); _client = client ?? HttpClient; }
-    public void Configure(ChatSettings options) { _options = options; }
+    public string? LastModelUsed { get; private set; }
+    public bool UsedFallbackModel { get; private set; }
+    public IReadOnlyList<string> LastAttemptedModels { get; private set; } = Array.Empty<string>();
+    private void ResetAttempts()
+    {
+        LastModelUsed = null;
+        UsedFallbackModel = false;
+        LastAttemptedModels = Array.Empty<string>();
+    }
+    public void Configure(ChatSettings options) { _options = options; ResetAttempts(); }
     private readonly SemaphoreSlim _sendLock = new(1, 1);
 
     public string DisplayName => $"Gemini • {_options.Model}";
@@ -88,12 +97,14 @@ public sealed class GeminiChatService : IChatService
 
         try
         {
+            ResetAttempts();
+            ChatSettings options = _options;
             string apiKey = _key()?.Trim() ?? "";
             if (apiKey.Length == 0) throw new InvalidOperationException("API key belum dikonfigurasi.");
             string trimmedMessage = message.Trim();
 
             IEnumerable<ChatContextTurn> recentContext =
-                _options.RememberConversation && context is not null
+                options.RememberConversation && context is not null
                     ? context.TakeLast(20)
                     : Array.Empty<ChatContextTurn>();
 
@@ -195,7 +206,7 @@ public sealed class GeminiChatService : IChatService
                 {
                     parts = new[]
                     {
-                            new { text = BuildInstruction(_options, assistantInstruction) }
+                            new { text = BuildInstruction(options, assistantInstruction) }
                     }
                 },
 
@@ -211,53 +222,67 @@ public sealed class GeminiChatService : IChatService
             };
 
             string json = JsonSerializer.Serialize(payload);
-            string url =
-                $"https://generativelanguage.googleapis.com/v1beta/models/{_options.Model}:generateContent";
-
-            using var request = new HttpRequestMessage(HttpMethod.Post, url);
-            request.Headers.Add("x-goog-api-key", apiKey);
-            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
-
-#if DEBUG
-            Debug.WriteLine(
-                $"Gemini request: model={_options.Model}, historyTurns={contents.Count}, apiKeyLength={apiKey.Length}");
-#endif
-
-            HttpResponseMessage response;
-
-            try
+            var attempted = new List<string>();
+            GeminiApiException? lastError = null;
+            foreach (string model in GeminiModelCatalog.BuildFailoverSequence(options.Model, options.AutoModelFallback))
             {
-                response = await _client.SendAsync(request, cancellationToken);
-            }
-            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-            {
-                throw new TimeoutException(
-                    "Gemini tidak merespons dalam 60 detik. Periksa koneksi internet lalu coba lagi.",
-                    ex);
-            }
-            catch (HttpRequestException ex)
-            {
-                throw new InvalidOperationException(
-                    "Tidak dapat terhubung ke Gemini. Periksa koneksi internet atau firewall.",
-                    ex);
-            }
-
-            using (response)
-            {
-                string responseBody =
-                    await response.Content.ReadAsStringAsync(cancellationToken);
-
-                if (!response.IsSuccessStatusCode)
+                cancellationToken.ThrowIfCancellationRequested();
+                attempted.Add(model);
+                LastAttemptedModels = Array.AsReadOnly(attempted.ToArray());
+                try
                 {
-                    throw CreateApiException(response.StatusCode, responseBody);
+                    string answer = await SendToModelAsync(model, apiKey, json, cancellationToken);
+                    LastModelUsed = model;
+                    UsedFallbackModel = !model.Equals(options.Model.Trim(), StringComparison.OrdinalIgnoreCase);
+                    return answer;
                 }
-
-                return ExtractReply(responseBody);
+                catch (GeminiApiException ex) when (ex.AllowsModelFallback) { lastError = ex; }
             }
+            throw lastError ?? new InvalidOperationException("Tidak ada model Gemini yang dapat digunakan.");
         }
         finally
         {
             _sendLock.Release();
+        }
+    }
+
+    private async Task<string> SendToModelAsync(string model, string apiKey, string json, CancellationToken cancellationToken)
+    {
+        string url = $"https://generativelanguage.googleapis.com/v1beta/models/{Uri.EscapeDataString(model)}:generateContent";
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Add("x-goog-api-key", apiKey);
+        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        HttpResponseMessage response;
+
+        try
+        {
+            response = await _client.SendAsync(request, cancellationToken);
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                "Gemini tidak merespons dalam 60 detik. Periksa koneksi internet lalu coba lagi.",
+                ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new InvalidOperationException(
+                "Tidak dapat terhubung ke Gemini. Periksa koneksi internet atau firewall.",
+                ex);
+        }
+
+        using (response)
+        {
+            string responseBody =
+                await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw CreateApiException(response.StatusCode, model);
+            }
+
+            return ExtractReply(responseBody);
         }
     }
 
@@ -362,11 +387,12 @@ public sealed class GeminiChatService : IChatService
             $"Gemini tidak memberikan teks jawaban. Finish reason: {finishReason}.");
     }
 
-    private static Exception CreateApiException(HttpStatusCode statusCode, string responseBody) => new InvalidOperationException(statusCode switch
+    private static GeminiApiException CreateApiException(HttpStatusCode statusCode, string model) => new(statusCode, model, statusCode switch
     {
         HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "API key atau izin Gemini ditolak. Periksa key dan project.",
-        HttpStatusCode.NotFound => "Model Gemini tidak tersedia. Periksa nama model.",
-        HttpStatusCode.TooManyRequests => "Kuota Gemini tercapai. Coba kembali nanti.",
+        HttpStatusCode.NotFound => $"Model Gemini '{model}' tidak tersedia.",
+        HttpStatusCode.TooManyRequests => $"Kuota Gemini tercapai pada model '{model}'. Coba kembali nanti.",
+        HttpStatusCode.ServiceUnavailable => $"Model '{model}' sedang tidak tersedia.",
         _ => $"Permintaan Gemini gagal (HTTP {(int)statusCode})."
     });
 

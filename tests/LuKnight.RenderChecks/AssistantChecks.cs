@@ -94,6 +94,8 @@ internal static partial class Program
     {
         await CheckPhase8RegressionsAsync();
         await CheckLocalDesktopCommandsAsync();
+        await CheckGeminiFailoverAsync();
+        CheckPackagedApps();
         var emotionEngine = new AssistantEmotionEngine();
         Require(emotionEngine.EvaluateConversation(
             "apa itu Lu-Knight?",

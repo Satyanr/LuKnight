@@ -58,6 +58,16 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
             Change(_services.Chat.Options with { Provider = value });
         }
     }
+    public IReadOnlyList<string> GeminiModels => GeminiModelCatalog.AssistantModels;
+    public bool AutoModelFallback
+    {
+        get => _services.Chat.Options.AutoModelFallback;
+        set
+        {
+            if (value == _services.Chat.Options.AutoModelFallback) return;
+            Change(_services.Chat.Options with { AutoModelFallback = value });
+        }
+    }
     public string Model
     {
         get => _services.Chat.Options.Model;

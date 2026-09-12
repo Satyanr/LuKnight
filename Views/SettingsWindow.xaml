@@ -183,7 +183,9 @@
                             <TextBlock x:Name="AiStatusText" Text="{Binding Product.ChatStatus}" Foreground="#67E8F9" TextWrapping="Wrap"/>
                             <StackPanel IsEnabled="{Binding Product.CanEditChat}" Margin="0,16,0,0">
                                 <TextBlock Text="Provider" Margin="0,0,0,6"/><ComboBox x:Name="ProviderCombo" ItemsSource="{Binding Product.Providers}" SelectedItem="{Binding Product.Provider}"/>
-                                <TextBlock Text="AI model" Margin="0,14,0,6"/><TextBox x:Name="ModelInput" Text="{Binding Product.Model, UpdateSourceTrigger=LostFocus}" Padding="10,7" Foreground="#0F172A"/>
+                                <TextBlock Text="AI model" Margin="0,14,0,6"/><ComboBox x:Name="ModelInput" ItemsSource="{Binding Product.GeminiModels}" IsEditable="True" Text="{Binding Product.Model, UpdateSourceTrigger=LostFocus}" IsEnabled="{Binding Product.CanEditChat}" Padding="10,7" Foreground="#0F172A"/>
+                                <CheckBox IsChecked="{Binding Product.AutoModelFallback, Mode=TwoWay}" IsEnabled="{Binding Product.CanEditChat}" Margin="0,12,0,0"><TextBlock Text="Automatically use another Gemini model when the selected model reaches its limit" TextWrapping="Wrap"/></CheckBox>
+                                <TextBlock Text="Fallback: 3.8 Flash &#x2192; 3.7 Flash &#x2192; 3.6 Flash &#x2192; 3.5 Flash &#x2192; 3.5 Flash-Lite. Dimulai dari model pilihan, memakai API key yang sama. Jika semuanya tidak tersedia, kembali ke local mode." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </StackPanel></Border>
                         <Border Style="{StaticResource Card}"><StackPanel IsEnabled="{Binding Product.CanEditChat}">

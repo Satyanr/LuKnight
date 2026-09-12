@@ -18,7 +18,7 @@ public sealed class ChatCoordinator : IChatService
     public bool LastReplyWasGemini { get; private set; }
     public string CredentialStatus { get; private set; } = "";
     public string Status { get; private set; } = "Belum diuji.";
-    public string DisplayName => UsesGemini ? $"Gemini · {Options.Model}" : "Local fallback";
+    public string DisplayName => UsesGemini ? $"Gemini · {_gemini.LastModelUsed ?? Options.Model}" : "Local fallback";
     public ChatCoordinator(ICredentialService credentials, ChatSettings options, Func<string?>? environment = null, HttpClient? client = null)
     {
         _credentials = credentials; _environment = environment ?? (() => Environment.GetEnvironmentVariable("GEMINI_API_KEY"));
@@ -59,7 +59,7 @@ public sealed class ChatCoordinator : IChatService
         try
         {
             var probe = new GeminiChatService(() => _key, Options with { RememberConversation = false, ResponseLength = ResponseLength.Short }, _client);
-            await probe.SendMessageAsync("Reply with OK.", token); Status = "Gemini connected · koneksi berhasil diuji."; return true;
+            await probe.SendMessageAsync("Reply with OK.", token); Status = ConnectedStatus(probe); return true;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { Status = "Tes koneksi dibatalkan."; throw; }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TimeoutException or System.Text.Json.JsonException)
@@ -112,7 +112,9 @@ public sealed class ChatCoordinator : IChatService
                         longTermMemory,
                         references,
                         cancellationToken);
-                    LastReplyWasGemini = true; Status = "Gemini connected."; return answer;
+                    LastReplyWasGemini = true;
+                    Status = ConnectedStatus(_gemini);
+                    return answer;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
                 catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TimeoutException or System.Text.Json.JsonException)
@@ -124,6 +126,10 @@ public sealed class ChatCoordinator : IChatService
         }
         finally { IsBusy = false; }
     }
+    private string ConnectedStatus(GeminiChatService service) =>
+        $"Gemini connected \u00b7 {service.LastModelUsed ?? Options.Model}" +
+        (service.UsedFallbackModel ? $" \u00b7 fallback dari {Options.Model}." : ".");
+
     private static string SafeError(Exception ex) => ex switch
     {
         TimeoutException => "Waktu koneksi habis.",

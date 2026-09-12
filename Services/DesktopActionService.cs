@@ -37,6 +37,16 @@ public sealed class WindowsDesktopActionExecutor : IDesktopActionExecutor
 
         try
         {
+            if (app.Source == DesktopAppSource.AppsFolder)
+            {
+                using Process? activation = Process.Start(new ProcessStartInfo
+                {
+                    FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"),
+                    Arguments = "shell:AppsFolder\\" + app.AppUserModelId,
+                    UseShellExecute = true
+                });
+                return new(true, $"{app.DisplayName} dibuka.");
+            }
             using Process? process = Process.Start(new ProcessStartInfo
             {
                 // Launch the inspected executable, not a shortcut which can change after validation.
@@ -90,6 +100,7 @@ public sealed class WindowsDesktopActionExecutor : IDesktopActionExecutor
     {
         if (DesktopAppPolicy.IsRestrictedExecutable(processName)) return false;
         if (app.ProcessNames.Any(p => p.Equals(processName, StringComparison.OrdinalIgnoreCase))) return true;
+        if (app.Source == DesktopAppSource.AppsFolder) return false;
         string process = DesktopNameNormalizer.Normalize(processName);
         return process.Length > 0 && app.Aliases.Any(alias =>
             DesktopNameNormalizer.Normalize(alias).Split(' ').Contains(process, StringComparer.OrdinalIgnoreCase));

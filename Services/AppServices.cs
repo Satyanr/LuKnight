@@ -34,6 +34,7 @@ public sealed class AppServices
         Memory = memory ?? new();
         Context = context ?? new();
         DesktopApps = desktopApps ?? DesktopAppCatalogService.Shared;
+        DesktopAppIndexWarmup.Start(DesktopApps);
         DesktopCommands = new LocalDesktopCommandRouter(DesktopApps);
         IntentRouter = new AssistantIntentRouter(DesktopCommands);
         ExplorerActions = explorerExecutor ?? new WindowsExplorerActionExecutor();

@@ -82,3 +82,26 @@ detik. Windows menerima launch Photoshop 2026, helper Spotify (`spotify_cli`),
 Discord, Downloads, serta dua pencarian Explorer. Keenam perintah menggunakan
 **0 request Gemini**. Sandbox membatasi sebagian discovery dan shell activation;
 hasil native di atas diperoleh melalui eksekusi smoke test tanpa batasan tersebut.
+
+
+## 8D.5H / 8D.5I and 7I (12 September 2026)
+
+AppsFolder discovery includes validated packaged AUMIDs. Confirmation fingerprints
+include the AUMID; activation uses Windows Explorer with a fixed AppsFolder prefix.
+Terminal/PowerShell packages and malformed identifiers are rejected. Native/store
+entries with the same normalized display name merge, preserving native process
+identity. Store-only focus does not guess a process from aliases. Startup warms
+the catalog on a background STA thread; existing refresh throttling remains.
+
+Gemini automatic fallback defaults on: 3.8 Flash -> 3.7 Flash -> 3.6 Flash ->
+3.5 Flash -> 3.5 Flash-Lite. Selecting a later model starts the chain there.
+Custom model names remain editable. Only HTTP 429, 503 and 404 advance the chain;
+authentication, bad payloads, safety responses, network errors and cancellation
+never trigger another model. Each model is attempted once with the same payload
+and key. Exhaustion returns to local mode. Settings exposes the toggle and chat
+status reports the actual successful model and fallback origin.
+
+Validation: Release build passed without warnings/errors; 353 assistant checks,
+53 product checks and 42 settings checks passed. Native smoke outside the sandbox
+found 146 targets in 1537 ms and accepted all six app/Explorer commands with zero
+Gemini requests. Gemini checks used fake HTTP; no live Gemini request was made.

@@ -3,7 +3,7 @@ using System.Text;
 
 namespace LuKnight.Services;
 
-public enum DesktopAppSource { BuiltIn, StartMenu, AppPaths }
+public enum DesktopAppSource { BuiltIn, StartMenu, AppPaths, AppsFolder }
 
 public sealed record DesktopAppTarget(
     string Id, string DisplayName, string LaunchTarget,
@@ -13,8 +13,9 @@ public sealed record DesktopAppTarget(
     public string Arguments { get; init; } = "";
     public string WorkingDirectory { get; init; } = "";
     public string? RegistrationIdentity { get; init; }
+    public string? AppUserModelId { get; init; }
     public string Fingerprint => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-        $"{LaunchTarget}|{ResolvedExecutable}|{Arguments}|{WorkingDirectory}")));
+        $"{LaunchTarget}|{ResolvedExecutable}|{Arguments}|{WorkingDirectory}|{AppUserModelId}")));
 }
 
 public sealed record DesktopAppResolution(
@@ -65,7 +66,7 @@ public sealed class DesktopAppCatalogService : IDesktopAppCatalog
         {
             var discovered = _discover().Where(DesktopAppPolicy.IsAllowed).ToList();
             // Merge duplicate registrations of the same executable/arguments, not different versions.
-            var apps = discovered.Where(a => a.Source != DesktopAppSource.BuiltIn)
+            var apps = discovered.Where(a => a.Source is not (DesktopAppSource.BuiltIn or DesktopAppSource.AppsFolder))
                 .GroupBy(a => a.RegistrationIdentity ?? $"{a.ResolvedExecutable ?? a.LaunchTarget}|{a.Arguments}", StringComparer.OrdinalIgnoreCase)
                 .Select(group => Merge(group.OrderByDescending(a => a.RegistrationIdentity is not null && a.Arguments.Length > 0)
                     .ThenBy(a => a.Source).ToArray())).ToList();
@@ -79,6 +80,17 @@ public sealed class DesktopAppCatalogService : IDesktopAppCatalog
                         Id = matches.Length == 1 ? builtin.Id : match.Id,
                         Aliases = Array.AsReadOnly(match.Aliases.Concat(builtin.Aliases).Distinct(StringComparer.OrdinalIgnoreCase).ToArray())
                     };
+            }
+            foreach (var packaged in discovered.Where(a => a.Source == DesktopAppSource.AppsFolder))
+            {
+                var existing = apps.FirstOrDefault(a =>
+                    DesktopNameNormalizer.Normalize(a.DisplayName) == DesktopNameNormalizer.Normalize(packaged.DisplayName));
+                if (existing is null) apps.Add(packaged);
+                else apps[apps.IndexOf(existing)] = existing with
+                {
+                    Aliases = Array.AsReadOnly(existing.Aliases.Concat(packaged.Aliases)
+                        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray())
+                };
             }
             _applications = Array.AsReadOnly(apps.GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
                 .Select(g => g.First()).OrderBy(a => a.DisplayName, StringComparer.OrdinalIgnoreCase).ToArray());

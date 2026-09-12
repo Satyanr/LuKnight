@@ -11,6 +11,7 @@ public sealed record ChatSettings
 {
     public ChatProvider Provider { get; init; } = ChatProvider.Gemini;
     public string Model { get; init; } = "gemini-3.8-flash";
+    public bool AutoModelFallback { get; init; } = true;
     public ChatLanguage Language { get; init; } = ChatLanguage.Automatic;
     public ResponseLength ResponseLength { get; init; } = ResponseLength.Normal;
     public ResponseStyle Style { get; init; } = ResponseStyle.Friendly;

@@ -61,7 +61,54 @@ public static class WindowsDesktopAppDiscovery
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or PlatformNotSupportedException) { }
         }
+        apps.AddRange(DiscoverAppsFolder());
         return apps;
+    }
+
+    private static IEnumerable<DesktopAppTarget> DiscoverAppsFolder()
+    {
+        var result = new List<DesktopAppTarget>();
+        object? shell = null, folder = null, items = null;
+        try
+        {
+            Type? type = Type.GetTypeFromProgID("Shell.Application");
+            if (type is null) return result;
+            shell = Activator.CreateInstance(type);
+            if (shell is null) return result;
+            folder = ((dynamic)shell).NameSpace("shell:AppsFolder");
+            if (folder is null) return result;
+            items = ((dynamic)folder).Items();
+            int count = (int)((dynamic)items).Count;
+            for (int i = 0; i < count; i++)
+            {
+                object? item = null;
+                try
+                {
+                    item = ((dynamic)items).Item(i);
+                    if (item is null) continue;
+                    string name = Convert.ToString(((dynamic)item).Name)?.Trim() ?? "";
+                    string aumid = Convert.ToString(((dynamic)item).ExtendedProperty("System.AppUserModel.ID"))?.Trim() ?? "";
+                    if (name.Length == 0 || !DesktopAppPolicy.IsValidAppUserModelId(aumid)) continue;
+                    var app = new DesktopAppTarget(DesktopAppCatalogService.CreateId("appsfolder|" + aumid),
+                        name, "shell:AppsFolder\\" + aumid, [],
+                        DesktopNameNormalizer.BuildAliases(name, []).ToArray(), DesktopAppSource.AppsFolder)
+                    { AppUserModelId = aumid, RegistrationIdentity = "aumid|" + aumid };
+                    if (DesktopAppPolicy.IsAllowed(app)) result.Add(app);
+                }
+                catch (Exception ex) when (ex is COMException or InvalidOperationException or ArgumentException
+                    or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException) { }
+                finally { ReleaseCom(item); }
+            }
+        }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException or ArgumentException
+            or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException) { }
+        finally { ReleaseCom(items); ReleaseCom(folder); ReleaseCom(shell); }
+        return result;
+    }
+
+    private static void ReleaseCom(object? value)
+    {
+        if (value is not null && Marshal.IsComObject(value)) Marshal.FinalReleaseComObject(value);
     }
 
     // Reads existing .lnk metadata only. Never calls Run, Exec, Save or a script interpreter.

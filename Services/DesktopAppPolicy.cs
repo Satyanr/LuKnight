@@ -23,11 +23,21 @@ public static class DesktopAppPolicy
             Regex.IsMatch(query, @"\.(exe|lnk|bat|cmd|ps1|vbs|js|msi)\b", RegexOptions.IgnoreCase);
     }
 
+    public static bool IsValidAppUserModelId(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= 260 &&
+        Regex.IsMatch(value, @"\A[A-Za-z0-9._-]+![A-Za-z0-9._-]+\z");
+
     public static bool IsAllowed(DesktopAppTarget app)
     {
         if (RestrictedNames.Any(name => DesktopNameNormalizer.Normalize(app.DisplayName).Contains(name, StringComparison.Ordinal))) return false;
         if (app.ProcessNames.Any(IsRestrictedExecutable)) return false;
         if (DesktopNameNormalizer.Normalize(app.Arguments).Split(' ').Any(Restricted.Contains)) return false;
+        if (app.Source == DesktopAppSource.AppsFolder)
+            return IsValidAppUserModelId(app.AppUserModelId) &&
+                app.LaunchTarget == "shell:AppsFolder\\" + app.AppUserModelId &&
+                app.Arguments.Length == 0 && app.ResolvedExecutable is null &&
+                !app.AppUserModelId!.Contains("windowsterminal", StringComparison.OrdinalIgnoreCase) &&
+                !app.AppUserModelId.Contains("powershell", StringComparison.OrdinalIgnoreCase);
         string executable = app.ResolvedExecutable ?? app.LaunchTarget;
         if (app.Source == DesktopAppSource.BuiltIn && app.Id == "settings" && executable == "ms-settings:") return true;
         if (!string.Equals(Path.GetExtension(executable), ".exe", StringComparison.OrdinalIgnoreCase) || IsRestrictedExecutable(executable)) return false;
