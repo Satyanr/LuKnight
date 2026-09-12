@@ -46,6 +46,21 @@ public sealed class AssistantIntentRouter
             return AssistantIntent.UseTool(new ToolInvocation(BuiltInToolNames.DesktopListApplications, new Dictionary<string, string>()));
         }
 
+        DesktopActionCommand? desktopAction = DesktopActionCommandParser.Parse(input);
+        if (desktopAction is not null)
+        {
+            string name = desktopAction.Kind == DesktopActionCommandKind.Open
+                ? BuiltInActionNames.DesktopOpenApplication
+                : BuiltInActionNames.DesktopFocusApplication;
+
+            return AssistantIntent.UseAction(new ActionInvocation(
+                name,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["appId"] = desktopAction.AppId
+                }));
+        }
+
         return AssistantIntent.Conversation();
     }
 

@@ -11,6 +11,7 @@ public sealed class AppServices
     public AssistantIntentRouter IntentRouter { get; }
     public AssistantToolRouter Tools { get; }
     public AssistantContextSourceRouter ContextSources { get; }
+    public AssistantActionRouter Actions { get; }
     public AssistantController Assistant { get; }
     public UpdateService Updates { get; }
     public AppServices(
@@ -35,13 +36,19 @@ public sealed class AppServices
             new LocalTextFileContextSource(() => Chat.Options.UseFileContext),
             new ClipboardTextContextSource(() => Chat.Options.UseClipboardContext)
         });
+        Actions = new AssistantActionRouter(new IAssistantAction[]
+        {
+            new OpenDesktopApplicationAction(() => Chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor()),
+            new FocusDesktopApplicationAction(() => Chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor())
+        });
         Assistant = new AssistantController(
             Chat,
             memory: Memory,
             context: Context,
             intentRouter: IntentRouter,
             tools: Tools,
-            contextSources: ContextSources);
+            contextSources: ContextSources,
+            actions: Actions);
         Updates = new(Settings);
     }
 }

@@ -30,8 +30,8 @@ internal static partial class Program
         Require(apps.Kind == AssistantIntentKind.Tool &&
             apps.Tool?.Name == BuiltInToolNames.DesktopListApplications,
             "Application awareness query was not routed correctly.");
-        Require(intentRouter.Route("buka notepad").Kind == AssistantIntentKind.Conversation,
-            "Application action was enabled during read-only phase 8A.");
+        Require(intentRouter.Route("buka notepad").Kind == AssistantIntentKind.Action,
+            "Approved app open request was not routed as a desktop action.");
 
         var memory = new MemoryService();
         var tools = new AssistantToolRouter(new IAssistantTool[]

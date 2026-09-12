@@ -11,6 +11,24 @@ using LuKnight.Views;
 
 internal static partial class Program
 {
+    private sealed class FakeDesktopActionExecutor : IDesktopActionExecutor
+    {
+        public int OpenCalls { get; private set; }
+        public int FocusCalls { get; private set; }
+
+        public DesktopActionResult Open(DesktopAppTarget app)
+        {
+            OpenCalls++;
+            return new DesktopActionResult(true, $"{app.DisplayName} fake-opened.");
+        }
+
+        public DesktopActionResult Focus(DesktopAppTarget app)
+        {
+            FocusCalls++;
+            return new DesktopActionResult(true, $"{app.DisplayName} fake-focused.");
+        }
+    }
+
     private static void CheckAssistant()
     {
         Task.Run(CheckAssistantAsync).GetAwaiter().GetResult();
@@ -319,6 +337,61 @@ internal static partial class Program
             "Clipboard content leaked into conversation transcript.");
         Require(clipboardAssistant.Memory.Count == 0,
             "Clipboard content leaked into long-term memory.");
+
+        var fakeDesktop = new FakeDesktopActionExecutor();
+        var actionRouter = new AssistantActionRouter(new IAssistantAction[]
+        {
+            new OpenDesktopApplicationAction(() => true, fakeDesktop),
+            new FocusDesktopApplicationAction(() => true, fakeDesktop)
+        });
+        var actionAssistant = new AssistantController(
+            new ChatCoordinator(new FakeCredentials { Key = "desktop-action-key" }, new() { UseDesktopActions = true }, () => null),
+            memory: new MemoryService(),
+            actions: actionRouter);
+
+        AssistantReply proposal = await actionAssistant.SendAsync(new("buka notepad"));
+        Require(proposal.ActionProposal is not null && fakeDesktop.OpenCalls == 0,
+            "Desktop action executed before confirmation.");
+
+        AssistantReply confirmed = await actionAssistant.ConfirmActionAsync(proposal.ActionProposal!.Id);
+        Require(fakeDesktop.OpenCalls == 1 && confirmed.Emotion == AssistantEmotion.Happy,
+            "Confirmed desktop action was not executed exactly once.");
+
+        try
+        {
+            await actionAssistant.ConfirmActionAsync(proposal.ActionProposal!.Id);
+            throw new Exception("Desktop action confirmation was replayable.");
+        }
+        catch (InvalidOperationException) { }
+        Require(fakeDesktop.OpenCalls == 1, "Desktop action executed more than once.");
+
+        AssistantReply cancelProposal = await actionAssistant.SendAsync(new("fokus chrome"));
+        actionAssistant.CancelAction(cancelProposal.ActionProposal!.Id);
+        Require(fakeDesktop.FocusCalls == 0, "Cancelled desktop action was executed.");
+
+        var actionIntentRouter = new AssistantIntentRouter();
+        Require(actionIntentRouter.Route("buka notepad").Kind == AssistantIntentKind.Action,
+            "Approved app open request was not routed as an action.");
+        Require(actionIntentRouter.Route("fokus chrome").Kind == AssistantIntentKind.Action,
+            "Approved app focus request was not routed as an action.");
+        Require(actionIntentRouter.Route("buka C:\\Temp\\evil.exe").Kind == AssistantIntentKind.Conversation,
+            "Arbitrary executable path became a desktop action.");
+        Require(actionIntentRouter.Route("buka powershell").Kind == AssistantIntentKind.Conversation,
+            "PowerShell was accidentally exposed as a desktop action.");
+        Require(actionIntentRouter.Route("buka cmd").Kind == AssistantIntentKind.Conversation,
+            "CMD was accidentally exposed as a desktop action.");
+
+        var disabledActions = new AssistantActionRouter(new IAssistantAction[]
+        {
+            new OpenDesktopApplicationAction(() => false, fakeDesktop)
+        });
+        var disabledActionAssistant = new AssistantController(
+            new ChatCoordinator(new FakeCredentials { Key = "desktop-disabled-key" }, new() { UseDesktopActions = false }, () => null),
+            memory: new MemoryService(),
+            actions: disabledActions);
+        AssistantReply disabledProposal = await disabledActionAssistant.SendAsync(new("buka notepad"));
+        Require(disabledProposal.ActionProposal is null && disabledProposal.Emotion == AssistantEmotion.Confused && fakeDesktop.OpenCalls == 1,
+            "Disabled desktop action still prepared a proposal.");
 
         var securityFilePayloads = new List<string>();
         using var securityFileHandler = new FakeHttp(async (request, token) =>

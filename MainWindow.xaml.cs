@@ -655,8 +655,33 @@ public partial class MainWindow : Window
 
             ChatPanelControl.AddAssistantMessage(reply.Text);
 
-            ChatPanelControl.SetStatus(Services.Chat.Status,
-                reply.Backend == AssistantBackend.Gemini ? ChatStatus.Connected : ChatStatus.Local);
+            if (reply.ActionProposal is { } proposal)
+            {
+                ChatPanelControl.SetStatus("Menunggu konfirmasi tindakan...", ChatStatus.Ready);
+
+                MessageBoxResult confirmation = MessageBox.Show(
+                    this,
+                    proposal.ConfirmationText,
+                    proposal.Title,
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question,
+                    MessageBoxResult.No);
+
+                AssistantReply actionReply = confirmation == MessageBoxResult.Yes
+                    ? await Services.Assistant.ConfirmActionAsync(proposal.Id, requestCts.Token)
+                    : Services.Assistant.CancelAction(proposal.Id);
+
+                ReactToAssistantEmotion(actionReply.Emotion);
+                ChatPanelControl.AddAssistantMessage(actionReply.Text);
+                ChatPanelControl.SetStatus(
+                    actionReply.Text,
+                    actionReply.Emotion == AssistantEmotion.Confused ? ChatStatus.Error : ChatStatus.Local);
+            }
+            else
+            {
+                ChatPanelControl.SetStatus(Services.Chat.Status,
+                    reply.Backend == AssistantBackend.Gemini ? ChatStatus.Connected : ChatStatus.Local);
+            }
         }
         catch (OperationCanceledException)
         {

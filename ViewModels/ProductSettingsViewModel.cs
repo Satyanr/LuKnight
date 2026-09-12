@@ -140,6 +140,15 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
             Change(_services.Chat.Options with { UseClipboardContext = value });
         }
     }
+    public bool UseDesktopActions
+    {
+        get => _services.Chat.Options.UseDesktopActions;
+        set
+        {
+            if (value == _services.Chat.Options.UseDesktopActions) return;
+            Change(_services.Chat.Options with { UseDesktopActions = value });
+        }
+    }
     public int LongTermMemoryCount => _services.Memory.Count;
     public string LongTermMemorySummary => LongTermMemoryCount == 0
         ? "Belum ada long-term memory tersimpan."

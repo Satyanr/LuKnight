@@ -19,6 +19,7 @@ public sealed record ChatSettings
     public bool UseApplicationContext { get; init; } = true;
     public bool UseFileContext { get; init; } = false;
     public bool UseClipboardContext { get; init; } = false;
+    public bool UseDesktopActions { get; init; } = false;
 }
 public sealed record WindowPlacement(double Left, double Top, double Width, double Height);
 public sealed record MascotPlacement(double Left, double MonitorLeft, double MonitorTop);
