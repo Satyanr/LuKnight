@@ -85,15 +85,18 @@ public sealed class VoiceCaptureService : IVoiceCaptureService
     public async Task<VoiceCaptureResult> StopAsync(CancellationToken cancellationToken = default)
     {
         Task<VoiceCaptureResult> task;
+        WaveIn input;
+
         lock (_sync)
         {
             if (_input is null || _completion is null)
                 throw new InvalidOperationException("Voice recording belum aktif.");
 
+            input = _input;
             task = _completion.Task;
-            _input.StopRecording();
         }
 
+        input.StopRecording();
         return await task.WaitAsync(cancellationToken);
     }
 

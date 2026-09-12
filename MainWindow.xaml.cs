@@ -228,6 +228,7 @@ public partial class MainWindow : Window
 
         ChatPanelControl.MessageSubmitted += ChatPanel_MessageSubmitted;
         ChatPanelControl.VoiceToggleRequested += ChatPanel_VoiceToggleRequested;
+        Services.Chat.OptionsChanged += Chat_OptionsChanged;
         RefreshVoiceAvailability();
 
         if (_usesGemini)
@@ -733,6 +734,11 @@ public partial class MainWindow : Window
             Services.Chat.Options.UseVoiceInput && !_isSending);
     }
 
+    private void Chat_OptionsChanged(ChatSettings options)
+    {
+        Dispatcher.BeginInvoke(RefreshVoiceAvailability);
+    }
+
     private async void ChatPanel_VoiceToggleRequested()
     {
         if (_isSending)
@@ -884,6 +890,7 @@ public partial class MainWindow : Window
     EventArgs e)
     {
         Services.Context.Detach();
+        Services.Chat.OptionsChanged -= Chat_OptionsChanged;
         _requestCts?.Cancel();
         _voiceLimitCts?.Cancel();
         _voiceLimitCts?.Dispose();

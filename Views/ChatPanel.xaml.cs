@@ -101,6 +101,8 @@ public partial class ChatPanel : UserControl
     {
         VoiceButton.Content = recording ? "■" : "🎤";
         VoiceButton.ToolTip = recording ? "Stop recording" : "Push to talk";
+        MessageInput.IsEnabled = !recording;
+        SendButton.IsEnabled = !recording;
     }
 
     public void SetStatus(string text, ChatStatus status)

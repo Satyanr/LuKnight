@@ -11,6 +11,7 @@ public sealed class ChatCoordinator : IChatService
     private string? _key;
     private GeminiChatService _gemini;
     public ChatSettings Options { get; private set; }
+    public event Action<ChatSettings>? OptionsChanged;
     public bool IsBusy { get; private set; }
     public bool HasKey => !string.IsNullOrWhiteSpace(_key);
     public bool UsesGemini => Options.Provider == ChatProvider.Gemini && HasKey;
@@ -28,7 +29,10 @@ public sealed class ChatCoordinator : IChatService
     {
         if (IsBusy) throw new InvalidOperationException("Tunggu permintaan chat selesai.");
         if (options == Options) return;
-        Options = options; _gemini.Configure(options); Status = "Preferensi chat diperbarui; koneksi belum diuji.";
+        Options = options;
+        _gemini.Configure(options);
+        OptionsChanged?.Invoke(options);
+        Status = "Preferensi chat diperbarui; koneksi belum diuji.";
     }
     public void RefreshCredentials()
     {

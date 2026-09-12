@@ -120,6 +120,14 @@ internal static partial class Program
         Require(!fakeVoice.IsRecording && fakeVoice.StopCalls == 1 && voice.WavData.Length > 0,
             "Voice recording did not stop correctly.");
 
+        var optionChat = new ChatCoordinator(new FakeCredentials(), new());
+        ChatSettings? changedOptions = null;
+        optionChat.OptionsChanged += options => changedOptions = options;
+        ChatSettings voiceOptions = optionChat.Options with { UseVoiceInput = true };
+        optionChat.Configure(voiceOptions);
+        Require(changedOptions == voiceOptions,
+            "Chat settings changes did not notify listeners.");
+
         await CheckToolRouterAsync();
         await CheckPersonalityAsync();
         var conversation = new ConversationManager();
