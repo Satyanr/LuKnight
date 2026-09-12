@@ -10,6 +10,8 @@ public sealed class AssistantController
     public PersonalityEngine Personality { get; }
     public MemoryService Memory { get; }
     public AssistantContextProvider Context { get; }
+    public AssistantIntentRouter IntentRouter { get; }
+    public AssistantToolRouter Tools { get; }
     public bool IsBusy => _chat.IsBusy;
     public string DisplayName => _chat.DisplayName;
 
@@ -17,12 +19,20 @@ public sealed class AssistantController
         ChatCoordinator chat,
         PersonalityEngine? personality = null,
         MemoryService? memory = null,
-        AssistantContextProvider? context = null)
+        AssistantContextProvider? context = null,
+        AssistantIntentRouter? intentRouter = null,
+        AssistantToolRouter? tools = null)
     {
         _chat = chat ?? throw new ArgumentNullException(nameof(chat));
         Personality = personality ?? new PersonalityEngine();
         Memory = memory ?? new MemoryService();
         Context = context ?? new AssistantContextProvider();
+        IntentRouter = intentRouter ?? new AssistantIntentRouter();
+        Tools = tools ?? new AssistantToolRouter(new IAssistantTool[]
+        {
+            new RememberMemoryTool(Memory),
+            new ForgetMemoryTool(Memory)
+        });
     }
 
     public async Task<AssistantReply> SendAsync(
@@ -37,34 +47,13 @@ public sealed class AssistantController
         cancellationToken.ThrowIfCancellationRequested();
         if (IsBusy) throw new InvalidOperationException("Tunggu permintaan chat selesai.");
 
-        MemoryCommand? memoryCommand = MemoryCommandParser.Parse(request.Text);
-        if (memoryCommand is not null)
+        AssistantIntent intent = IntentRouter.Route(request.Text);
+        if (intent.Kind == AssistantIntentKind.Tool)
         {
-            Conversation.AddUser(request);
-            try
-            {
-                string memoryReply;
-                if (memoryCommand.Kind == MemoryCommandKind.Remember)
-                {
-                    Memory.Remember(memoryCommand.Text);
-                    memoryReply = "Baik, aku akan mengingat itu.";
-                }
-                else
-                {
-                    bool forgotten = Memory.ForgetExact(memoryCommand.Text);
-                    memoryReply = forgotten
-                        ? "Memory itu sudah kuhapus."
-                        : "Aku tidak menemukan memory yang sama persis.";
-                }
-
-                Conversation.AddAssistant(memoryReply);
-                return new AssistantReply(memoryReply, AssistantBackend.Local, DateTimeOffset.UtcNow);
-            }
-            catch
-            {
-                Conversation.RollbackPendingUser();
-                throw;
-            }
+            return await ExecuteToolAsync(
+                request,
+                intent.Tool ?? throw new InvalidOperationException("Tool intent tidak memiliki invocation."),
+                cancellationToken);
         }
 
         IReadOnlyList<ChatContextTurn> context = BuildShortTermContext();
@@ -89,6 +78,25 @@ public sealed class AssistantController
 
             AssistantBackend backend = _chat.LastReplyWasGemini ? AssistantBackend.Gemini : AssistantBackend.Local;
             return new AssistantReply(reply, backend, DateTimeOffset.UtcNow);
+        }
+        catch
+        {
+            Conversation.RollbackPendingUser();
+            throw;
+        }
+    }
+
+    private async Task<AssistantReply> ExecuteToolAsync(
+        AssistantRequest request,
+        ToolInvocation invocation,
+        CancellationToken cancellationToken)
+    {
+        Conversation.AddUser(request);
+        try
+        {
+            ToolExecutionResult result = await Tools.ExecuteAsync(invocation, cancellationToken);
+            Conversation.AddAssistant(result.Message);
+            return new AssistantReply(result.Message, AssistantBackend.Local, DateTimeOffset.UtcNow);
         }
         catch
         {

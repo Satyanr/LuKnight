@@ -8,6 +8,8 @@ public sealed class AppServices
     public ChatCoordinator Chat { get; }
     public MemoryService Memory { get; }
     public AssistantContextProvider Context { get; }
+    public AssistantIntentRouter IntentRouter { get; }
+    public AssistantToolRouter Tools { get; }
     public AssistantController Assistant { get; }
     public UpdateService Updates { get; }
     public AppServices(
@@ -20,7 +22,18 @@ public sealed class AppServices
         Chat = new(credentials ?? new SecureCredentialService(), Settings.Current.Chat);
         Memory = memory ?? new();
         Context = context ?? new();
-        Assistant = new AssistantController(Chat, memory: Memory, context: Context);
+        IntentRouter = new AssistantIntentRouter();
+        Tools = new AssistantToolRouter(new IAssistantTool[]
+        {
+            new RememberMemoryTool(Memory),
+            new ForgetMemoryTool(Memory)
+        });
+        Assistant = new AssistantController(
+            Chat,
+            memory: Memory,
+            context: Context,
+            intentRouter: IntentRouter,
+            tools: Tools);
         Updates = new(Settings);
     }
 }

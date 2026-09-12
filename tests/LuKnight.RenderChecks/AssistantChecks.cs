@@ -42,6 +42,7 @@ internal static partial class Program
 
     private static async Task CheckAssistantAsync()
     {
+        await CheckToolRouterAsync();
         await CheckPersonalityAsync();
         var conversation = new ConversationManager();
         Require(conversation.Count == 0, "Assistant transcript is not initially empty");
