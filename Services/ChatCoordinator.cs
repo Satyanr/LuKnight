@@ -71,10 +71,18 @@ public sealed class ChatCoordinator : IChatService
         CancellationToken cancellationToken = default) =>
         SendMessageAsync(message, assistantInstruction, context: null, cancellationToken);
 
+    public Task<string> SendMessageAsync(
+        string message,
+        string? assistantInstruction,
+        IReadOnlyList<ChatContextTurn>? context,
+        CancellationToken cancellationToken = default)
+        => SendMessageAsync(message, assistantInstruction, context, longTermMemory: null, cancellationToken);
+
     public async Task<string> SendMessageAsync(
         string message,
         string? assistantInstruction,
         IReadOnlyList<ChatContextTurn>? context,
+        IReadOnlyList<string>? longTermMemory,
         CancellationToken cancellationToken = default)
     {
         EnsureIdle(); IsBusy = true; LastReplyWasGemini = false;
@@ -84,7 +92,12 @@ public sealed class ChatCoordinator : IChatService
             {
                 try
                 {
-                    string answer = await _gemini.SendMessageAsync(message, assistantInstruction, context, cancellationToken);
+                    string answer = await _gemini.SendMessageAsync(
+                        message,
+                        assistantInstruction,
+                        context,
+                        longTermMemory,
+                        cancellationToken);
                     LastReplyWasGemini = true; Status = "Gemini connected."; return answer;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }

@@ -9,17 +9,20 @@ public sealed class AssistantController
     public ConversationManager Conversation { get; } = new();
     public PersonalityEngine Personality { get; }
     public MemoryService Memory { get; }
+    public AssistantContextProvider Context { get; }
     public bool IsBusy => _chat.IsBusy;
     public string DisplayName => _chat.DisplayName;
 
     public AssistantController(
         ChatCoordinator chat,
         PersonalityEngine? personality = null,
-        MemoryService? memory = null)
+        MemoryService? memory = null,
+        AssistantContextProvider? context = null)
     {
         _chat = chat ?? throw new ArgumentNullException(nameof(chat));
         Personality = personality ?? new PersonalityEngine();
         Memory = memory ?? new MemoryService();
+        Context = context ?? new AssistantContextProvider();
     }
 
     public async Task<AssistantReply> SendAsync(
@@ -70,14 +73,17 @@ public sealed class AssistantController
         try
         {
             string personalityInstruction = Personality.BuildSystemInstruction();
-            string memoryInstruction = BuildLongTermMemoryInstruction(request.Text);
-            if (!string.IsNullOrWhiteSpace(memoryInstruction))
-                personalityInstruction += "\n\n" + memoryInstruction;
+            string runtimeInstruction = Context.BuildSystemInstruction();
+            if (!string.IsNullOrWhiteSpace(runtimeInstruction))
+                personalityInstruction += "\n\n" + runtimeInstruction;
+
+            IReadOnlyList<string> longTermMemory = BuildLongTermMemoryContext(request.Text);
 
             string reply = await _chat.SendMessageAsync(
                 request.Text,
                 personalityInstruction,
                 context,
+                longTermMemory,
                 cancellationToken);
             Conversation.AddAssistant(reply);
 
@@ -91,20 +97,9 @@ public sealed class AssistantController
         }
     }
 
-    private string BuildLongTermMemoryInstruction(string query)
+    private IReadOnlyList<string> BuildLongTermMemoryContext(string query)
     {
-        IReadOnlyList<MemoryEntry> memories = Memory.Search(query);
-        if (memories.Count == 0)
-            return string.Empty;
-
-        return """
-            Long-term memory yang relevan.
-            Gunakan hanya bila membantu menjawab pertanyaan.
-            Jangan mengarang memory tambahan.
-
-            """ + string.Join(
-                Environment.NewLine,
-                memories.Select(memory => "- Pengguna sebelumnya meminta agar diingat: " + memory.Text));
+        return Memory.Search(query).Select(memory => memory.Text).ToArray();
     }
 
     private IReadOnlyList<ChatContextTurn> BuildShortTermContext()

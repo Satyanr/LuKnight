@@ -183,6 +183,7 @@ public partial class MainWindow : Window
     {
         Services = services ?? new AppServices();
         InitializeComponent();
+        Services.Context.Attach(CaptureAssistantContext);
         Topmost = Services.Settings.Current.General.AlwaysOnTop;
         BehaviorSettings.Apply(Services.Settings.Current.Behavior);
         BehaviorSettings.Changed += options =>
@@ -566,6 +567,22 @@ public partial class MainWindow : Window
         }
     }
 
+    private AssistantRuntimeContext CaptureAssistantContext()
+    {
+        BehaviorOptions behavior = BehaviorSettings.Current;
+        return new AssistantRuntimeContext(
+            RuntimeAvailable: true,
+            LocalTime: DateTimeOffset.Now,
+            TimeZoneId: TimeZoneInfo.Local.Id,
+            CharacterVisible: IsVisible,
+            ChatOpen: ChatPopup.IsOpen,
+            CharacterState: CharacterControl.CurrentState.ToString(),
+            CharacterMood: CharacterControl.CurrentMood.ToString(),
+            AutonomousBehaviorEnabled: behavior.Enabled,
+            Activity: behavior.Activity.ToString(),
+            MovementSpeed: behavior.Speed.ToString());
+    }
+
     private async void ChatPanel_MessageSubmitted(string message)
     {
         if (_isSending)
@@ -709,6 +726,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(
     EventArgs e)
     {
+        Services.Context.Detach();
         _requestCts?.Cancel();
 
         if (_physicsController is not null)
