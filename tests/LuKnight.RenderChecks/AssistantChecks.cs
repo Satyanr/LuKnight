@@ -369,11 +369,44 @@ internal static partial class Program
         actionAssistant.CancelAction(cancelProposal.ActionProposal!.Id);
         Require(fakeDesktop.FocusCalls == 0, "Cancelled desktop action was executed.");
 
+        AssistantReply clearProposal = await actionAssistant.SendAsync(new("buka notepad"));
+        try
+        {
+            actionAssistant.ClearConversation();
+            throw new Exception("Clear Conversation accepted a pending desktop action.");
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        Require(actionAssistant.HasPendingAction,
+            "Rejected Clear Conversation lost the pending action.");
+
+        actionAssistant.CancelAction(clearProposal.ActionProposal!.Id);
+        Require(!actionAssistant.IsBusy,
+            "Rejected Clear Conversation leaked the request gate.");
+
+        actionAssistant.ClearConversation();
+
         var actionIntentRouter = new AssistantIntentRouter();
         Require(actionIntentRouter.Route("buka notepad").Kind == AssistantIntentKind.Action,
             "Approved app open request was not routed as an action.");
         Require(actionIntentRouter.Route("fokus chrome").Kind == AssistantIntentKind.Action,
             "Approved app focus request was not routed as an action.");
+
+        Require(actionIntentRouter.Route("buka aplikasi chrome").Kind == AssistantIntentKind.Action,
+            "'buka aplikasi' prefix tidak berfungsi.");
+        Require(actionIntentRouter.Route("open app chrome").Kind == AssistantIntentKind.Action,
+            "'open app' prefix tidak berfungsi.");
+        Require(actionIntentRouter.Route("fokus ke chrome").Kind == AssistantIntentKind.Action,
+            "'fokus ke' prefix tidak berfungsi.");
+        Require(actionIntentRouter.Route("focus app chrome").Kind == AssistantIntentKind.Action,
+            "'focus app' prefix tidak berfungsi.");
+
+        Require(actionIntentRouter.Route("buka aplikasi powershell").Kind == AssistantIntentKind.Conversation,
+            "PowerShell exposed through long-form prefix.");
+        Require(actionIntentRouter.Route(@"open app C:\Temp\evil.exe").Kind == AssistantIntentKind.Conversation,
+            "Arbitrary executable exposed through long-form prefix.");
+
         Require(actionIntentRouter.Route("buka C:\\Temp\\evil.exe").Kind == AssistantIntentKind.Conversation,
             "Arbitrary executable path became a desktop action.");
         Require(actionIntentRouter.Route("buka powershell").Kind == AssistantIntentKind.Conversation,

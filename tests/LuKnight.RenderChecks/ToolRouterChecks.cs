@@ -32,6 +32,18 @@ internal static partial class Program
             "Application awareness query was not routed correctly.");
         Require(intentRouter.Route("buka notepad").Kind == AssistantIntentKind.Action,
             "Approved app open request was not routed as a desktop action.");
+        Require(intentRouter.Route("buka aplikasi chrome").Kind == AssistantIntentKind.Action,
+            "'buka aplikasi' prefix tidak berfungsi.");
+        Require(intentRouter.Route("open app chrome").Kind == AssistantIntentKind.Action,
+            "'open app' prefix tidak berfungsi.");
+        Require(intentRouter.Route("fokus ke chrome").Kind == AssistantIntentKind.Action,
+            "'fokus ke' prefix tidak berfungsi.");
+        Require(intentRouter.Route("focus app chrome").Kind == AssistantIntentKind.Action,
+            "'focus app' prefix tidak berfungsi.");
+        Require(intentRouter.Route("buka aplikasi powershell").Kind == AssistantIntentKind.Conversation,
+            "PowerShell exposed through long-form prefix.");
+        Require(intentRouter.Route(@"open app C:\Temp\evil.exe").Kind == AssistantIntentKind.Conversation,
+            "Arbitrary executable exposed through long-form prefix.");
 
         var memory = new MemoryService();
         var tools = new AssistantToolRouter(new IAssistantTool[]

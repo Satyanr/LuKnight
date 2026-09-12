@@ -286,13 +286,17 @@ public sealed class AssistantController
     public void ClearConversation()
     {
         if (!_requestGate.Wait(0))
+        {
             throw new InvalidOperationException("Tunggu permintaan chat selesai.");
-
-        if (_pendingAction is not null)
-            throw new InvalidOperationException("Selesaikan atau batalkan tindakan desktop terlebih dahulu.");
+        }
 
         try
         {
+            if (_pendingAction is not null)
+            {
+                throw new InvalidOperationException("Selesaikan atau batalkan tindakan desktop terlebih dahulu.");
+            }
+
             _chat.ClearConversation();
             Conversation.Clear();
         }

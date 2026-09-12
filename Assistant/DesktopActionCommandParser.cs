@@ -55,7 +55,7 @@ public static class DesktopActionCommandParser
             string target = text[prefix.Length..].Trim();
 
             if (!DesktopAppCatalog.TryResolve(target, out DesktopAppTarget app))
-                return null;
+                continue;
 
             return new DesktopActionCommand(kind, app.Id);
         }
