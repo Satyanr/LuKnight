@@ -28,7 +28,6 @@ public sealed class ChatCoordinator : IChatService
     {
         if (IsBusy) throw new InvalidOperationException("Tunggu permintaan chat selesai.");
         if (options == Options) return;
-        if (options.Provider != Options.Provider || options.Model != Options.Model) _gemini.ClearConversation();
         Options = options; _gemini.Configure(options); Status = "Preferensi chat diperbarui; koneksi belum diuji.";
     }
     public void RefreshCredentials()
@@ -43,10 +42,10 @@ public sealed class ChatCoordinator : IChatService
         Status = UsesGemini ? "Gemini dikonfigurasi; koneksi belum diuji." : "Local fallback aktif.";
     }
     public void UpdateKey(string key)
-    { EnsureIdle(); _credentials.Write(key); _gemini.ClearConversation(); RefreshCredentials(); }
+    { EnsureIdle(); _credentials.Write(key); RefreshCredentials(); }
     public void RemoveKey()
-    { EnsureIdle(); _credentials.Remove(); _gemini.ClearConversation(); RefreshCredentials(); }
-    public void ClearConversation() { EnsureIdle(); _gemini.ClearConversation(); Status = "Percakapan dihapus."; }
+    { EnsureIdle(); _credentials.Remove(); RefreshCredentials(); }
+    public void ClearConversation() { EnsureIdle(); Status = "Percakapan dihapus."; }
     private void EnsureIdle() { if (IsBusy) throw new InvalidOperationException("Tunggu permintaan chat selesai."); }
     public async Task<bool> TestConnection(CancellationToken token = default)
     {
@@ -66,7 +65,17 @@ public sealed class ChatCoordinator : IChatService
     public Task<string> SendMessageAsync(string message, CancellationToken cancellationToken = default) =>
         SendMessageAsync(message, assistantInstruction: null, cancellationToken);
 
-    public async Task<string> SendMessageAsync(string message, string? assistantInstruction, CancellationToken cancellationToken = default)
+    public Task<string> SendMessageAsync(
+        string message,
+        string? assistantInstruction,
+        CancellationToken cancellationToken = default) =>
+        SendMessageAsync(message, assistantInstruction, context: null, cancellationToken);
+
+    public async Task<string> SendMessageAsync(
+        string message,
+        string? assistantInstruction,
+        IReadOnlyList<ChatContextTurn>? context,
+        CancellationToken cancellationToken = default)
     {
         EnsureIdle(); IsBusy = true; LastReplyWasGemini = false;
         try
@@ -75,7 +84,7 @@ public sealed class ChatCoordinator : IChatService
             {
                 try
                 {
-                    string answer = await _gemini.SendMessageAsync(message, assistantInstruction, cancellationToken);
+                    string answer = await _gemini.SendMessageAsync(message, assistantInstruction, context, cancellationToken);
                     LastReplyWasGemini = true; Status = "Gemini connected."; return answer;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }

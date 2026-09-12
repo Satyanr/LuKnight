@@ -16,8 +16,6 @@ public sealed class GeminiChatService : IChatService
 {
     public const string ModelName = "gemini-3.8-flash";
 
-    private const int MaxHistoryTurns = 20;
-
     private const string FallbackIdentityInstruction =
         """
         Kamu adalah Lu-Knight,
@@ -39,14 +37,12 @@ public sealed class GeminiChatService : IChatService
         Timeout = TimeSpan.FromSeconds(60)
     };
 
-    private readonly List<ChatTurn> _history = new();
     private readonly Func<string?> _key;
     private readonly HttpClient _client;
     private ChatSettings _options;
     public GeminiChatService(Func<string?>? key = null, ChatSettings? options = null, HttpClient? client = null)
     { _key = key ?? (() => Environment.GetEnvironmentVariable("GEMINI_API_KEY")); _options = options ?? new(); _client = client ?? HttpClient; }
-    public void Configure(ChatSettings options) { _options = options; if (!options.RememberConversation) _history.Clear(); }
-    public void ClearConversation() => _history.Clear();
+    public void Configure(ChatSettings options) { _options = options; }
     private readonly SemaphoreSlim _sendLock = new(1, 1);
 
     public string DisplayName => $"Gemini • {_options.Model}";
@@ -56,9 +52,16 @@ public sealed class GeminiChatService : IChatService
         CancellationToken cancellationToken = default) =>
         SendMessageAsync(message, assistantInstruction: null, cancellationToken);
 
+    public Task<string> SendMessageAsync(
+        string message,
+        string? assistantInstruction,
+        CancellationToken cancellationToken = default) =>
+        SendMessageAsync(message, assistantInstruction, context: null, cancellationToken);
+
     public async Task<string> SendMessageAsync(
         string message,
         string? assistantInstruction,
+        IReadOnlyList<ChatContextTurn>? context,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(message))
@@ -72,10 +75,20 @@ public sealed class GeminiChatService : IChatService
             if (apiKey.Length == 0) throw new InvalidOperationException("API key belum dikonfigurasi.");
             string trimmedMessage = message.Trim();
 
-            var requestHistory = new List<ChatTurn>(_options.RememberConversation ? _history : [])
-            {
-                new("user", trimmedMessage)
-            };
+            IEnumerable<ChatContextTurn> recentContext =
+                _options.RememberConversation && context is not null
+                    ? context.TakeLast(20)
+                    : Array.Empty<ChatContextTurn>();
+
+            var requestHistory = recentContext
+                .Select(turn => new
+                {
+                    role = turn.Role == ChatContextRole.User ? "user" : "model",
+                    text = turn.Text
+                })
+                .ToList();
+
+            requestHistory.Add(new { role = "user", text = trimmedMessage });
 
             var payload = new
             {
@@ -88,12 +101,12 @@ public sealed class GeminiChatService : IChatService
                             },
 
                             contents = requestHistory
-                    .Select(turn => new
+                                .Select(turn => new
                     {
-                        role = turn.Role,
+                                    role = turn.role,
                         parts = new[]
                         {
-                            new { text = turn.Text }
+                                        new { text = turn.text }
                         }
                     })
                 .ToArray(),
@@ -149,16 +162,7 @@ public sealed class GeminiChatService : IChatService
                     throw CreateApiException(response.StatusCode, responseBody);
                 }
 
-                string reply = ExtractReply(responseBody);
-
-                if (_options.RememberConversation)
-                {
-                    _history.Add(new ChatTurn("user", trimmedMessage));
-                    _history.Add(new ChatTurn("model", reply));
-                    TrimHistory();
-                }
-
-                return reply;
+                return ExtractReply(responseBody);
             }
         }
         finally
@@ -283,20 +287,4 @@ public sealed class GeminiChatService : IChatService
         return string.Empty;
     }
 
-    private void TrimHistory()
-    {
-        if (_history.Count <= MaxHistoryTurns)
-            return;
-
-        int removeCount = _history.Count - MaxHistoryTurns;
-
-        // History selalu ditambahkan berpasangan user/model.
-        if (removeCount % 2 != 0)
-            removeCount++;
-
-        removeCount = Math.Min(removeCount, _history.Count);
-        _history.RemoveRange(0, removeCount);
-    }
-
-    private sealed record ChatTurn(string Role, string Text);
 }

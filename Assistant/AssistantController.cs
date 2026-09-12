@@ -29,13 +29,41 @@ public sealed class AssistantController
         cancellationToken.ThrowIfCancellationRequested();
         if (IsBusy) throw new InvalidOperationException("Tunggu permintaan chat selesai.");
 
+        IReadOnlyList<ChatContextTurn> context = BuildShortTermContext();
         Conversation.AddUser(request);
-        string personalityInstruction = Personality.BuildSystemInstruction();
-        string reply = await _chat.SendMessageAsync(request.Text, personalityInstruction, cancellationToken);
-        Conversation.AddAssistant(reply);
 
-        AssistantBackend backend = _chat.LastReplyWasGemini ? AssistantBackend.Gemini : AssistantBackend.Local;
-        return new AssistantReply(reply, backend, DateTimeOffset.UtcNow);
+        try
+        {
+            string personalityInstruction = Personality.BuildSystemInstruction();
+            string reply = await _chat.SendMessageAsync(
+                request.Text,
+                personalityInstruction,
+                context,
+                cancellationToken);
+            Conversation.AddAssistant(reply);
+
+            AssistantBackend backend = _chat.LastReplyWasGemini ? AssistantBackend.Gemini : AssistantBackend.Local;
+            return new AssistantReply(reply, backend, DateTimeOffset.UtcNow);
+        }
+        catch
+        {
+            Conversation.RollbackPendingUser();
+            throw;
+        }
+    }
+
+    private IReadOnlyList<ChatContextTurn> BuildShortTermContext()
+    {
+        if (!_chat.Options.RememberConversation)
+            return Array.Empty<ChatContextTurn>();
+
+        return Conversation.GetRecentContext()
+            .Select(turn => new ChatContextTurn(
+                turn.Role == ConversationRole.User
+                    ? ChatContextRole.User
+                    : ChatContextRole.Assistant,
+                turn.Text))
+            .ToArray();
     }
 
     public void ClearConversation()

@@ -48,6 +48,14 @@ internal static partial class Program
         Require(conversation.Turns[0] is { Role: ConversationRole.User, Text: "hello", Source: AssistantInputSource.Tray } &&
             conversation.Turns[1] is { Role: ConversationRole.Assistant, Text: "reply" }, "Conversation loses role, normalization, or source");
         Require(conversation.Turns.All(t => t.CreatedAt.Offset == TimeSpan.Zero && t.CreatedAt <= DateTimeOffset.UtcNow), "Transcript timestamps are not UTC");
+        var context = conversation.GetRecentContext();
+        Require(context.Count == 2 && context[0].Role == ConversationRole.User && context[1].Role == ConversationRole.Assistant,
+            "Recent context does not preserve transcript order");
+        conversation.RollbackPendingUser();
+        Require(conversation.Count == 2, "Rollback removed a completed assistant turn");
+        conversation.AddUser(new("pending"));
+        conversation.RollbackPendingUser();
+        Require(conversation.Count == 2, "Rollback did not remove an unanswered user turn");
         var snapshot = conversation.Snapshot();
         conversation.Clear();
         Require(snapshot.Count == 2 && conversation.Count == 0, "Snapshot changes after transcript is cleared");
@@ -63,6 +71,9 @@ internal static partial class Program
         for (int i = 0; i < 55; i++) { conversation.AddUser(new("user " + i)); conversation.AddAssistant("reply " + i); }
         Require(conversation.Count == 100 && conversation.Turns[0].Text == "user 5" && conversation.Turns[^1].Text == "reply 54",
             "Transcript does not retain the latest 100 turns");
+        var recent = conversation.GetRecentContext();
+        Require(recent.Count == 20 && recent[0].Text == "user 45" && recent[^1].Text == "reply 54",
+            "Short-term context does not retain exactly the latest 20 turns");
 
         var noKey = new ChatCoordinator(new FakeCredentials(), new(), () => null);
         var local = new AssistantController(noKey);
@@ -94,7 +105,14 @@ internal static partial class Program
         Require(onlineReply.CreatedAt >= assistant.Conversation.Turns[^1].CreatedAt, "Reply timestamp predates its transcript entry");
         await assistant.SendAsync(new("second"));
         using (var history = JsonDocument.Parse(payloads[^1]))
-            Require(history.RootElement.GetProperty("contents").GetArrayLength() == 3, "Assistant bypasses existing Gemini history");
+        {
+            JsonElement contents = history.RootElement.GetProperty("contents");
+            Require(contents.GetArrayLength() == 3 &&
+                contents[0].GetProperty("parts")[0].GetProperty("text").GetString() == "online" &&
+                contents[2].GetProperty("parts")[0].GetProperty("text").GetString() == "second" &&
+                contents.EnumerateArray().Count(item => item.GetProperty("parts")[0].GetProperty("text").GetString() == "second") == 1,
+                "Assistant context is missing, misordered, or duplicates the current user message");
+        }
         assistant.ClearConversation();
         Require(assistant.Conversation.Count == 0, "Assistant clear leaves transcript entries");
         await assistant.SendAsync(new("fresh"));
@@ -130,7 +148,7 @@ internal static partial class Program
         catch (InvalidOperationException) { Require(pending.Conversation.Count == 1, "Failed clear erased accepted user input"); }
         cancellation.Cancel();
         try { await send; throw new Exception("Cancellation swallowed"); }
-        catch (OperationCanceledException) { Require(!pending.IsBusy && pending.Conversation.Count == 1, "Cancellation creates a phantom reply or leaves Assistant busy"); }
+        catch (OperationCanceledException) { Require(!pending.IsBusy && pending.Conversation.Count == 0, "Cancellation leaves a phantom user turn or busy state"); }
         pendingChat.Configure(new() { Provider = ChatProvider.Local });
         Require((await pending.SendAsync(new("retry"))).Backend == AssistantBackend.Local, "Assistant cannot send after cancellation");
         pending.ClearConversation(); Require(pending.Conversation.Count == 0, "Clear after cancellation failed");

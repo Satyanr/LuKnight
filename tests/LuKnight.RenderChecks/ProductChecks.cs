@@ -78,7 +78,7 @@ internal static partial class Program
             var chat = new ChatCoordinator(credentials, new(), () => null, client);
             Require(chat.UsesGemini && chat.CredentialStatus.Contains("••••") && !chat.CredentialStatus.Contains(credentials.Key!), "Credential status exposes a key");
             await chat.SendMessageAsync("first"); await chat.SendMessageAsync("second");
-            Require(JsonDocument.Parse(payloads[1]).RootElement.GetProperty("contents").GetArrayLength() == 3, "Session history is not sent");
+            Require(JsonDocument.Parse(payloads[1]).RootElement.GetProperty("contents").GetArrayLength() == 1, "Coordinator unexpectedly owns session history");
             chat.ClearConversation(); await chat.SendMessageAsync("fresh");
             Require(JsonDocument.Parse(payloads[2]).RootElement.GetProperty("contents").GetArrayLength() == 1, "Clear conversation retains old prompts");
             chat.Configure(new() { RememberConversation = false, Language = ChatLanguage.English, ResponseLength = ResponseLength.Short, Style = ResponseStyle.Professional });

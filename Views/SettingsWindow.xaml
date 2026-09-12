@@ -198,7 +198,7 @@
                             <TextBlock Text="Language" Margin="0,0,0,6"/><ComboBox ItemsSource="{Binding Product.Languages}" SelectedItem="{Binding Product.Language}"/>
                             <TextBlock Text="Response length" Margin="0,14,0,6"/><ComboBox ItemsSource="{Binding Product.Lengths}" SelectedItem="{Binding Product.Length}"/>
                             <TextBlock Text="Response style" Margin="0,14,0,6"/><ComboBox ItemsSource="{Binding Product.Styles}" SelectedItem="{Binding Product.Style}"/>
-                            <CheckBox Content="Remember conversation during session" IsChecked="{Binding Product.Remember}" Margin="0,18,0,12"/>
+                            <CheckBox Content="Use recent conversation as AI context" IsChecked="{Binding Product.Remember}" Margin="0,18,0,12"/>
                             <Button Content="Clear Conversation" Command="{Binding Product.ClearCommand}" HorizontalAlignment="Left"/>
                         </StackPanel></Border>
                     </StackPanel>
