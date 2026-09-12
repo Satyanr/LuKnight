@@ -7,12 +7,14 @@ public sealed class AssistantController
     private readonly ChatCoordinator _chat;
 
     public ConversationManager Conversation { get; } = new();
+    public PersonalityEngine Personality { get; }
     public bool IsBusy => _chat.IsBusy;
     public string DisplayName => _chat.DisplayName;
 
-    public AssistantController(ChatCoordinator chat)
+    public AssistantController(ChatCoordinator chat, PersonalityEngine? personality = null)
     {
         _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        Personality = personality ?? new PersonalityEngine();
     }
 
     public async Task<AssistantReply> SendAsync(
@@ -28,7 +30,8 @@ public sealed class AssistantController
         if (IsBusy) throw new InvalidOperationException("Tunggu permintaan chat selesai.");
 
         Conversation.AddUser(request);
-        string reply = await _chat.SendMessageAsync(request.Text, cancellationToken);
+        string personalityInstruction = Personality.BuildSystemInstruction();
+        string reply = await _chat.SendMessageAsync(request.Text, personalityInstruction, cancellationToken);
         Conversation.AddAssistant(reply);
 
         AssistantBackend backend = _chat.LastReplyWasGemini ? AssistantBackend.Gemini : AssistantBackend.Local;

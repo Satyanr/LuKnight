@@ -28,6 +28,12 @@ internal static partial class Program
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
+        if (args.Contains("--assistant-live"))
+        {
+            try { CheckAssistantLive(); }
+            catch (Exception ex) { Console.Error.WriteLine(ex.Message); Environment.ExitCode = 1; }
+            return;
+        }
         if (args.Contains("--assistant")) { CheckAssistant(); Console.WriteLine($"PASS: {_checks} assistant checks."); return; }
         if (args.Contains("--behavior-settings")) { CheckBehaviorSettings(); Console.WriteLine($"PASS: {_checks} behavior settings checks."); return; }
         if (args.Contains("--product")) { CheckProducts(); Console.WriteLine($"PASS: {_checks} product checks."); return; }

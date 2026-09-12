@@ -84,7 +84,7 @@ internal static partial class Program
             chat.Configure(new() { RememberConversation = false, Language = ChatLanguage.English, ResponseLength = ResponseLength.Short, Style = ResponseStyle.Professional });
             await chat.SendMessageAsync("a"); await chat.SendMessageAsync("b");
             Require(JsonDocument.Parse(payloads[^1]).RootElement.GetProperty("contents").GetArrayLength() == 1, "Remember OFF retains history");
-            Require(payloads[^1].Contains("Reply in English") && payloads[^1].Contains("two short sentences") && payloads[^1].Contains("professional"), "Preferences do not reach Gemini instruction");
+            Require(payloads[^1].Contains("Reply in English") && payloads[^1].Contains("dua kalimat pendek") && payloads[^1].Contains("gaya profesional"), "Preferences do not reach Gemini instruction");
             Require(await chat.TestConnection() && chat.Status.Contains("connected"), "Successful test connection is not reported");
             chat.RemoveKey(); Require(!chat.HasKey && credentials.Key is null, "Removing key leaves it active");
             chat.UpdateKey("another-fake-key"); Require(chat.HasKey, "Updating credential does not activate Gemini");

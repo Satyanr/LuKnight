@@ -18,11 +18,21 @@ public sealed class GeminiChatService : IChatService
 
     private const int MaxHistoryTurns = 20;
 
-    private const string SystemInstruction =
-        "Kamu adalah Lu-Knight, asisten desktop kecil yang ramah, ringkas, dan membantu. " +
-        "Gunakan Bahasa Indonesia secara default kecuali pengguna meminta bahasa lain. " +
-        "Saat ini kamu hanya memiliki kemampuan percakapan. Jangan mengaku sudah membuka aplikasi, " +
-        "mengubah file, atau menjalankan tindakan di PC kecuali aplikasi benar-benar memberikan hasil tindakan tersebut.";
+    private const string FallbackIdentityInstruction =
+        """
+        Kamu adalah Lu-Knight,
+        asisten desktop kecil yang ramah,
+        ringkas, dan membantu.
+        """;
+
+    private const string CapabilityBoundaryInstruction =
+        """
+        Jangan mengaku sudah membuka aplikasi,
+        melihat layar, mengubah file,
+        menjalankan command, atau melakukan
+        tindakan di PC kecuali aplikasi benar-benar
+        memberikan hasil tindakan tersebut.
+        """;
 
     private static readonly HttpClient HttpClient = new()
     {
@@ -41,8 +51,14 @@ public sealed class GeminiChatService : IChatService
 
     public string DisplayName => $"Gemini • {_options.Model}";
 
+    public Task<string> SendMessageAsync(
+        string message,
+        CancellationToken cancellationToken = default) =>
+        SendMessageAsync(message, assistantInstruction: null, cancellationToken);
+
     public async Task<string> SendMessageAsync(
         string message,
+        string? assistantInstruction,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(message))
@@ -67,7 +83,7 @@ public sealed class GeminiChatService : IChatService
                 {
                     parts = new[]
                     {
-                        new { text = BuildInstruction(_options) }
+                        new { text = BuildInstruction(_options, assistantInstruction) }
                     }
                             },
 
@@ -151,10 +167,39 @@ public sealed class GeminiChatService : IChatService
         }
     }
 
-    public static string BuildInstruction(ChatSettings options) => SystemInstruction + " " +
-        (options.Language switch { ChatLanguage.Indonesia => "Jawab dalam Bahasa Indonesia.", ChatLanguage.English => "Reply in English.", _ => "Match the language of the user's latest message." }) + " " +
-        (options.ResponseLength switch { ResponseLength.Short => "Use at most two short sentences.", ResponseLength.Detailed => "Give a thorough explanation with useful examples.", _ => "Keep the response concise but complete." }) + " " +
-        (options.Style switch { ResponseStyle.Professional => "Use a professional, clear tone.", ResponseStyle.Playful => "Use a warm and playful tone.", _ => "Use a friendly and helpful tone." });
+    public static string BuildInstruction(ChatSettings options, string? assistantInstruction = null)
+    {
+        string identity = string.IsNullOrWhiteSpace(assistantInstruction)
+            ? FallbackIdentityInstruction : assistantInstruction.Trim();
+        string language = options.Language switch
+        {
+            ChatLanguage.Indonesia => "Jawab dalam Bahasa Indonesia.",
+            ChatLanguage.English => "Reply in English.",
+            _ => "Gunakan bahasa yang sama dengan pesan terbaru pengguna secara natural."
+        };
+        string length = options.ResponseLength switch
+        {
+            ResponseLength.Short => "Jawaban harus sangat ringkas, maksimal sekitar dua kalimat pendek kecuali dibutuhkan format khusus.",
+            ResponseLength.Detailed => "Berikan penjelasan menyeluruh dengan detail atau contoh berguna ketika relevan.",
+            _ => "Jawab secara ringkas tetapi lengkap."
+        };
+        string style = options.Style switch
+        {
+            ResponseStyle.Professional => "Gunakan gaya profesional, jelas, dan tenang.",
+            ResponseStyle.Playful => "Gunakan gaya hangat dan sedikit playful ketika sesuai konteks.",
+            _ => "Gunakan gaya ramah dan membantu."
+        };
+        return $"""
+            {identity}
+
+            {CapabilityBoundaryInstruction}
+
+            Preferensi respons saat ini:
+            - {language}
+            - {length}
+            - {style}
+            """;
+    }
 
     private static string ExtractReply(string responseBody)
     {

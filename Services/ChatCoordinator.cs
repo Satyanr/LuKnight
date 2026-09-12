@@ -63,7 +63,10 @@ public sealed class ChatCoordinator : IChatService
         { Status = "AI unavailable · Local fallback aktif. " + SafeError(ex); return false; }
         finally { IsBusy = false; }
     }
-    public async Task<string> SendMessageAsync(string message, CancellationToken cancellationToken = default)
+    public Task<string> SendMessageAsync(string message, CancellationToken cancellationToken = default) =>
+        SendMessageAsync(message, assistantInstruction: null, cancellationToken);
+
+    public async Task<string> SendMessageAsync(string message, string? assistantInstruction, CancellationToken cancellationToken = default)
     {
         EnsureIdle(); IsBusy = true; LastReplyWasGemini = false;
         try
@@ -72,7 +75,7 @@ public sealed class ChatCoordinator : IChatService
             {
                 try
                 {
-                    string answer = await _gemini.SendMessageAsync(message, cancellationToken);
+                    string answer = await _gemini.SendMessageAsync(message, assistantInstruction, cancellationToken);
                     LastReplyWasGemini = true; Status = "Gemini connected."; return answer;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
