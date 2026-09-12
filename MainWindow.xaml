@@ -14,8 +14,7 @@
         ResizeMode="NoResize"
         Topmost="True"
         ShowInTaskbar="False"
-        WindowStartupLocation="CenterScreen"
-        LostMouseCapture="Character_LostMouseCapture">
+        WindowStartupLocation="CenterScreen">
 
     <Grid Background="Transparent">
 

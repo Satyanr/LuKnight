@@ -26,7 +26,8 @@ public partial class MainWindow : Window
         ShowFromTray();
         _leftMouseDown = false;
         _dragStarted = false;
-        ReleaseMouseCapture();
+        if (CharacterControl.IsMouseCaptured)
+            CharacterControl.ReleaseMouseCapture();
         if (_activeTouchDevice is not null)
         {
             CharacterControl.ReleaseTouchCapture(_activeTouchDevice);
@@ -216,6 +217,8 @@ public partial class MainWindow : Window
             new MouseEventHandler(Character_PreviewMouseMove), true);
         CharacterControl.AddHandler(PreviewMouseLeftButtonUpEvent,
             new MouseButtonEventHandler(Character_PreviewMouseLeftButtonUp), true);
+        CharacterControl.AddHandler(LostMouseCaptureEvent,
+            new MouseEventHandler(Character_LostMouseCapture), true);
         CharacterControl.AddHandler(PreviewTouchDownEvent,
             new EventHandler<TouchEventArgs>(Character_PreviewTouchDown), true);
         CharacterControl.AddHandler(PreviewTouchMoveEvent,
@@ -406,7 +409,7 @@ public partial class MainWindow : Window
         _mouseDownScreenPosition = PointToScreen(_mouseDownPosition);
         _mouseDownTime = System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
 
-        if (!CaptureMouse())
+        if (!CharacterControl.CaptureMouse())
         {
             _leftMouseDown = false;
             _behaviorController?.Resume(BehaviorPauseReason.UserDrag);
@@ -427,6 +430,17 @@ public partial class MainWindow : Window
         if (e.LeftButton !=
             MouseButtonState.Pressed)
         {
+            _leftMouseDown = false;
+            if (_dragStarted)
+            {
+                _dragStarted = false;
+                _behaviorController?.Pause(BehaviorPauseReason.Physics);
+                _physicsController?.EndGrab();
+            }
+            else _physicsController?.CancelPreparedGrab();
+            _behaviorController?.Resume(BehaviorPauseReason.UserDrag);
+            if (CharacterControl.IsMouseCaptured)
+                CharacterControl.ReleaseMouseCapture();
             return;
         }
 
@@ -503,7 +517,8 @@ public partial class MainWindow : Window
             return;
 
         _leftMouseDown = false;
-        ReleaseMouseCapture();
+        if (CharacterControl.IsMouseCaptured)
+            CharacterControl.ReleaseMouseCapture();
 
         if (_dragStarted)
         {
@@ -841,7 +856,8 @@ public partial class MainWindow : Window
     {
         // Acquire Hidden first: closing chat/releasing capture must not resume movement.
         _behaviorController?.Pause(BehaviorPauseReason.Hidden);
-        if (IsMouseCaptured) ReleaseMouseCapture();
+        if (CharacterControl.IsMouseCaptured)
+            CharacterControl.ReleaseMouseCapture();
         _physicsController?.SetSuspended(true);
         // Popup adalah window terpisah.
         // Tutup supaya tidak tertinggal
