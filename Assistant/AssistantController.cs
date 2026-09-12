@@ -34,7 +34,8 @@ public sealed class AssistantController
         Tools = tools ?? new AssistantToolRouter(new IAssistantTool[]
         {
             new RememberMemoryTool(Memory),
-            new ForgetMemoryTool(Memory)
+            new ForgetMemoryTool(Memory),
+            new ListApplicationsTool(() => _chat.Options.UseApplicationContext)
         });
         Emotions = emotions ?? new AssistantEmotionEngine();
     }

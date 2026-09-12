@@ -113,6 +113,15 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
             Change(_services.Chat.Options with { UseLongTermMemory = value });
         }
     }
+    public bool UseApplicationContext
+    {
+        get => _services.Chat.Options.UseApplicationContext;
+        set
+        {
+            if (value == _services.Chat.Options.UseApplicationContext) return;
+            Change(_services.Chat.Options with { UseApplicationContext = value });
+        }
+    }
     public int LongTermMemoryCount => _services.Memory.Count;
     public string LongTermMemorySummary => LongTermMemoryCount == 0
         ? "Belum ada long-term memory tersimpan."

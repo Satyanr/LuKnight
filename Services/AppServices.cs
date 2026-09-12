@@ -26,7 +26,8 @@ public sealed class AppServices
         Tools = new AssistantToolRouter(new IAssistantTool[]
         {
             new RememberMemoryTool(Memory),
-            new ForgetMemoryTool(Memory)
+            new ForgetMemoryTool(Memory),
+            new ListApplicationsTool(() => Chat.Options.UseApplicationContext)
         });
         Assistant = new AssistantController(
             Chat,

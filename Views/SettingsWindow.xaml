@@ -209,6 +209,13 @@
                             <Button Content="Clear Long-Term Memory" Click="ClearLongTermMemory_Click" IsEnabled="{Binding Product.CanClearLongTermMemory}" HorizontalAlignment="Left" Margin="0,14,0,0"/>
                             <TextBlock Text="Clear Conversation hanya menghapus percakapan sesi. Clear Long-Term Memory menghapus memory.json yang disimpan Lu-Knight." Style="{StaticResource Muted}" FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap"/>
                         </StackPanel></Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Application awareness" Style="{StaticResource CardTitle}"/>
+                                <CheckBox Content="Allow Lu-Knight to use visible application context" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseApplicationContext, Mode=TwoWay}"/>
+                                <TextBlock Text="Lu-Knight hanya menerima nama process dan kategori aplikasi. Isi layar, judul window, nama dokumen, clipboard, dan isi file belum dibaca." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                     <StackPanel x:Name="AboutPanel">
                         <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding SelectedSection}" Value="About"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>

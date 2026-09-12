@@ -10,7 +10,12 @@ public sealed record AssistantRuntimeContext(
     string CharacterMood,
     bool AutonomousBehaviorEnabled,
     string Activity,
-    string MovementSpeed);
+    string MovementSpeed)
+{
+    public bool ApplicationContextEnabled { get; init; }
+    public string? PrimaryApplication { get; init; }
+    public IReadOnlyList<string> VisibleApplications { get; init; } = Array.Empty<string>();
+}
 
 public sealed class AssistantContextProvider
 {
@@ -70,6 +75,31 @@ public sealed class AssistantContextProvider
             """;
         }
 
+        string applicationContext;
+
+        if (!context.ApplicationContextEnabled)
+        {
+            applicationContext = """
+            - Application awareness: disabled
+            """;
+        }
+        else if (context.VisibleApplications.Count == 0)
+        {
+            applicationContext = """
+            - Application awareness: enabled
+            - External applications: none detected
+            """;
+        }
+        else
+        {
+            string visible = string.Join(", ", context.VisibleApplications);
+            applicationContext = $"""
+            - Application awareness: enabled
+            - Primary visible external application: {context.PrimaryApplication ?? "Unknown"}
+            - Visible external applications: {visible}
+            """;
+        }
+
         return basic + $"""
 
             - Character visible: {context.CharacterVisible}
@@ -79,15 +109,19 @@ public sealed class AssistantContextProvider
             - Autonomous behavior: {context.AutonomousBehaviorEnabled}
             - Activity preset: {context.Activity}
             - Movement speed: {context.MovementSpeed}
+            {applicationContext}
 
             This context describes Lu-Knight itself.
 
-            It does NOT mean you can see the user's
-            screen, active application, files,
-            clipboard, microphone, camera, or location.
+            Application awareness only provides process names
+            and broad application categories.
 
-            Never claim access to information that is
-            not explicitly present in this context.
+            It does NOT provide screen contents, window titles,
+            document or file names, clipboard contents,
+            microphone, camera, or user location.
+
+            Never infer information that was not explicitly
+            supplied by the application.
             """;
     }
 }

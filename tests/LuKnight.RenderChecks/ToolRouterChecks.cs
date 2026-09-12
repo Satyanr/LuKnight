@@ -26,15 +26,24 @@ internal static partial class Program
         Require(desktopRequest.Kind == AssistantIntentKind.Conversation,
             "Unregistered desktop request was routed as a tool.");
 
+        AssistantIntent apps = intentRouter.Route("aplikasi apa yang sedang terbuka?");
+        Require(apps.Kind == AssistantIntentKind.Tool &&
+            apps.Tool?.Name == BuiltInToolNames.DesktopListApplications,
+            "Application awareness query was not routed correctly.");
+        Require(intentRouter.Route("buka notepad").Kind == AssistantIntentKind.Conversation,
+            "Application action was enabled during read-only phase 8A.");
+
         var memory = new MemoryService();
         var tools = new AssistantToolRouter(new IAssistantTool[]
         {
             new RememberMemoryTool(memory),
-            new ForgetMemoryTool(memory)
+            new ForgetMemoryTool(memory),
+            new ListApplicationsTool(() => true)
         });
-        Require(tools.RegisteredTools.Count == 2 &&
+        Require(tools.RegisteredTools.Count == 3 &&
             tools.RegisteredTools.Contains(BuiltInToolNames.MemoryRemember) &&
-            tools.RegisteredTools.Contains(BuiltInToolNames.MemoryForget),
+            tools.RegisteredTools.Contains(BuiltInToolNames.MemoryForget) &&
+            tools.RegisteredTools.Contains(BuiltInToolNames.DesktopListApplications),
             "Default tool registry is incomplete.");
 
         ToolExecutionResult stored = await tools.ExecuteAsync(remember.Tool!);
@@ -44,6 +53,23 @@ internal static partial class Program
         ToolExecutionResult removed = await tools.ExecuteAsync(forget.Tool!);
         Require(removed.Success && memory.Count == 0,
             "Forget tool failed.");
+
+        var fakeSnapshot = new DesktopApplicationSnapshot(
+            new DesktopApplicationContext((nint)1, 100, "code", DesktopApplicationKind.CodeEditor),
+            new[]
+            {
+                new DesktopApplicationContext((nint)1, 100, "code", DesktopApplicationKind.CodeEditor),
+                new DesktopApplicationContext((nint)2, 200, "chrome", DesktopApplicationKind.Browser)
+            });
+        var appTool = new ListApplicationsTool(() => true, () => fakeSnapshot);
+        ToolExecutionResult appResult = await appTool.ExecuteAsync(new ToolInvocation(BuiltInToolNames.DesktopListApplications, new Dictionary<string, string>()));
+        Require(appResult.Success && appResult.Message.Contains("code") && appResult.Message.Contains("chrome"),
+            "Application awareness tool returned incorrect application context.");
+
+        var disabledAppTool = new ListApplicationsTool(() => false, () => throw new Exception("Capture must not run when disabled"));
+        ToolExecutionResult disabled = await disabledAppTool.ExecuteAsync(apps.Tool!);
+        Require(!disabled.Success,
+            "Disabled application awareness was still executed.");
 
         var unknown = new ToolInvocation(
             "desktop.run-command",

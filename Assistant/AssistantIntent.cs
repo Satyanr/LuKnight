@@ -28,4 +28,5 @@ public static class BuiltInToolNames
 {
     public const string MemoryRemember = "memory.remember";
     public const string MemoryForget = "memory.forget";
+    public const string DesktopListApplications = "desktop.list_applications";
 }

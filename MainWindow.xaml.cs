@@ -587,7 +587,8 @@ public partial class MainWindow : Window
     private AssistantRuntimeContext CaptureAssistantContext()
     {
         BehaviorOptions behavior = BehaviorSettings.Current;
-        return new AssistantRuntimeContext(
+
+        var runtime = new AssistantRuntimeContext(
             RuntimeAvailable: true,
             LocalTime: DateTimeOffset.Now,
             TimeZoneId: TimeZoneInfo.Local.Id,
@@ -598,6 +599,23 @@ public partial class MainWindow : Window
             AutonomousBehaviorEnabled: behavior.Enabled,
             Activity: behavior.Activity.ToString(),
             MovementSpeed: behavior.Speed.ToString());
+
+        if (!Services.Chat.Options.UseApplicationContext)
+        {
+            return runtime with { ApplicationContextEnabled = false };
+        }
+
+        DesktopApplicationSnapshot snapshot = DesktopApplicationAwarenessService.Capture();
+        return runtime with
+        {
+            ApplicationContextEnabled = true,
+            PrimaryApplication = snapshot.Primary is DesktopApplicationContext primary
+                ? DesktopApplicationAwarenessService.Format(primary)
+                : null,
+            VisibleApplications = snapshot.Applications
+                .Select(DesktopApplicationAwarenessService.Format)
+                .ToArray()
+        };
     }
 
     private async void ChatPanel_MessageSubmitted(string message)

@@ -66,6 +66,7 @@ public sealed class AssistantEmotionEngine
         {
             BuiltInToolNames.MemoryRemember => AssistantEmotion.Happy,
             BuiltInToolNames.MemoryForget => AssistantEmotion.Neutral,
+            BuiltInToolNames.DesktopListApplications => AssistantEmotion.Curious,
             _ => AssistantEmotion.Neutral
         };
     }
