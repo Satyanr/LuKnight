@@ -15,6 +15,7 @@ public sealed record ChatSettings
     public ResponseLength ResponseLength { get; init; } = ResponseLength.Normal;
     public ResponseStyle Style { get; init; } = ResponseStyle.Friendly;
     public bool RememberConversation { get; init; } = true;
+    public bool UseLongTermMemory { get; init; } = true;
 }
 public sealed record WindowPlacement(double Left, double Top, double Width, double Height);
 public sealed record MascotPlacement(double Left, double MonitorLeft, double MonitorTop);

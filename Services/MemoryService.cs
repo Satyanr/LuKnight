@@ -130,7 +130,13 @@ public sealed class MemoryService
     public void Clear()
     {
         _items.Clear();
-        Save();
+        bool saved = Save();
+        if (!saved)
+            return;
+
+        Status = IsPersistent
+            ? "Semua long-term memory telah dihapus."
+            : "Long-term memory sesi uji telah dikosongkan.";
     }
 
     private bool Save()

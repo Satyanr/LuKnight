@@ -41,7 +41,7 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
     public Array Languages => Enum.GetValues<ChatLanguage>();
     public Array Lengths => Enum.GetValues<ResponseLength>();
     public Array Styles => Enum.GetValues<ResponseStyle>();
-    public bool CanEditChat => !_services.Chat.IsBusy;
+    public bool CanEditChat => !_services.Assistant.IsBusy;
     public string CredentialStatus => _services.Chat.CredentialStatus;
     public string ChatStatus => _message ?? _services.Chat.Status;
     public string SaveStatus => _services.Settings.Status;
@@ -104,6 +104,23 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
             Change(_services.Chat.Options with { RememberConversation = value });
         }
     }
+    public bool UseLongTermMemory
+    {
+        get => _services.Chat.Options.UseLongTermMemory;
+        set
+        {
+            if (value == _services.Chat.Options.UseLongTermMemory) return;
+            Change(_services.Chat.Options with { UseLongTermMemory = value });
+        }
+    }
+    public int LongTermMemoryCount => _services.Memory.Count;
+    public string LongTermMemorySummary => LongTermMemoryCount == 0
+        ? "Belum ada long-term memory tersimpan."
+        : $"{LongTermMemoryCount} long-term memory tersimpan.";
+    public string LongTermMemoryStatus => string.IsNullOrWhiteSpace(_services.Memory.Status)
+        ? LongTermMemorySummary
+        : _services.Memory.Status;
+    public bool CanClearLongTermMemory => !_services.Assistant.IsBusy && _services.Memory.Count > 0;
     private void Change(ChatSettings options)
     {
         if (options == _services.Chat.Options) return;
@@ -129,6 +146,11 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
         Refresh();
     }
     public void UpdateKey(string key) => Run(() => _services.Chat.UpdateKey(key));
+    public void ClearLongTermMemory()
+    {
+        if (!CanClearLongTermMemory) return;
+        Run(_services.Memory.Clear);
+    }
     public void Refresh()
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));

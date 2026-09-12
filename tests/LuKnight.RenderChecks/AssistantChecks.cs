@@ -255,6 +255,53 @@ internal static partial class Program
         Require((await contextFailureAssistant.SendAsync(new("context failure"))).Backend == AssistantBackend.Gemini,
             "Context provider failure broke an otherwise valid chat");
 
+        var quotaClient = new HttpClient(new FakeHttp((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent("{}")
+            })));
+        var quotaChat = new ChatCoordinator(
+            new FakeCredentials { Key = "quota-test-key" }, new(), () => null, quotaClient);
+        var quotaAssistant = new AssistantController(quotaChat);
+        AssistantReply quotaReply = await quotaAssistant.SendAsync(new("test quota"));
+        Require(quotaReply.Backend == AssistantBackend.Local &&
+            quotaChat.Status.Contains("Kuota Gemini tercapai", StringComparison.OrdinalIgnoreCase),
+            "Gemini quota limit is not reported clearly");
+
+        var isolatedMemory = new MemoryService();
+        isolatedMemory.Remember("kode rahasia TEST-742");
+        var isolatedPayloads = new List<string>();
+        using var isolatedHandler = new FakeHttp(async (request, token) =>
+        {
+            isolatedPayloads.Add(await request.Content!.ReadAsStringAsync(token));
+            return JsonResponse(new { candidates = new[] { new { content = new { parts = new[] { new { text = "isolated" } } } } } });
+        });
+        using var isolatedClient = new HttpClient(isolatedHandler);
+        var isolatedChat = new ChatCoordinator(
+            new FakeCredentials { Key = "isolated-key" }, new(), () => null, isolatedClient);
+        var isolatedAssistant = new AssistantController(isolatedChat, memory: isolatedMemory);
+        isolatedChat.Configure(isolatedChat.Options with { UseLongTermMemory = false });
+        await isolatedAssistant.SendAsync(new("apa kode rahasia saya?"));
+        Require(isolatedMemory.Count == 1 && !isolatedPayloads[^1].Contains("TEST-742", StringComparison.OrdinalIgnoreCase),
+            "Disabled long-term memory leaked into AI context");
+
+        string corruptDirectory = Path.Combine(Path.GetTempPath(), "LuKnight-corrupt-memory-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(corruptDirectory);
+        string corruptPath = Path.Combine(corruptDirectory, "memory.json");
+        File.WriteAllText(corruptPath, "{ this is not json");
+        try
+        {
+            var corruptMemory = new MemoryService(corruptPath);
+            corruptMemory.Load();
+            Require(corruptMemory.Count == 0 && corruptMemory.Status.Contains("tidak valid", StringComparison.OrdinalIgnoreCase),
+                "Corrupt memory file was not recovered safely");
+        }
+        finally
+        {
+            try { Directory.Delete(corruptDirectory, true); } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
         using var failureClient = new HttpClient(new FakeHttp((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable))));
         var fallback = new AssistantController(new ChatCoordinator(new FakeCredentials { Key = "fake-key" }, new(), () => null, failureClient));
         Require((await fallback.SendAsync(new("offline"))).Backend == AssistantBackend.Local && fallback.Conversation.Count == 2 && !fallback.IsBusy,

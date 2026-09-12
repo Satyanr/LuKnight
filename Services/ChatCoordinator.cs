@@ -110,7 +110,14 @@ public sealed class ChatCoordinator : IChatService
         }
         finally { IsBusy = false; }
     }
-    private static string SafeError(Exception ex) => ex is TimeoutException ? "Waktu koneksi habis." : "Periksa koneksi, key, kuota, atau model.";
+    private static string SafeError(Exception ex) => ex switch
+    {
+        TimeoutException => "Waktu koneksi habis.",
+        InvalidOperationException when !string.IsNullOrWhiteSpace(ex.Message) => ex.Message,
+        System.Text.Json.JsonException => "Respons Gemini tidak dapat dibaca.",
+        HttpRequestException => "Tidak dapat terhubung ke layanan AI.",
+        _ => "Periksa koneksi, key, kuota, atau model."
+    };
     public static string LocalReply(string message, ChatSettings options)
     {
         bool english = options.Language == ChatLanguage.English || (options.Language == ChatLanguage.Automatic &&

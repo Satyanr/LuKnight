@@ -5,6 +5,7 @@ namespace LuKnight.Assistant;
 public sealed class AssistantController
 {
     private readonly ChatCoordinator _chat;
+    private readonly SemaphoreSlim _requestGate = new(1, 1);
 
     public ConversationManager Conversation { get; } = new();
     public PersonalityEngine Personality { get; }
@@ -13,7 +14,7 @@ public sealed class AssistantController
     public AssistantIntentRouter IntentRouter { get; }
     public AssistantToolRouter Tools { get; }
     public AssistantEmotionEngine Emotions { get; }
-    public bool IsBusy => _chat.IsBusy;
+    public bool IsBusy => _requestGate.CurrentCount == 0 || _chat.IsBusy;
     public string DisplayName => _chat.DisplayName;
 
     public AssistantController(
@@ -46,51 +47,62 @@ public sealed class AssistantController
         if (string.IsNullOrWhiteSpace(request.Text))
             throw new ArgumentException("Pesan tidak boleh kosong.", nameof(request));
 
-        // Rejected submissions must not add transcript entries.
         cancellationToken.ThrowIfCancellationRequested();
-        if (IsBusy) throw new InvalidOperationException("Tunggu permintaan chat selesai.");
-
-        AssistantIntent intent = IntentRouter.Route(request.Text);
-        if (intent.Kind == AssistantIntentKind.Tool)
-        {
-            return await ExecuteToolAsync(
-                request,
-                intent.Tool ?? throw new InvalidOperationException("Tool intent tidak memiliki invocation."),
-                cancellationToken);
-        }
-
-        IReadOnlyList<ChatContextTurn> context = BuildShortTermContext();
-        Conversation.AddUser(request);
+        bool entered = await _requestGate.WaitAsync(0, cancellationToken);
+        if (!entered)
+            throw new InvalidOperationException("Tunggu permintaan chat selesai.");
 
         try
         {
-            string personalityInstruction = Personality.BuildSystemInstruction();
-            string runtimeInstruction = Context.BuildSystemInstruction();
-            if (!string.IsNullOrWhiteSpace(runtimeInstruction))
-                personalityInstruction += "\n\n" + runtimeInstruction;
+            if (_chat.IsBusy)
+                throw new InvalidOperationException("Tunggu permintaan chat selesai.");
 
-            IReadOnlyList<string> longTermMemory = BuildLongTermMemoryContext(request.Text);
+            AssistantIntent intent = IntentRouter.Route(request.Text);
+            if (intent.Kind == AssistantIntentKind.Tool)
+            {
+                return await ExecuteToolAsync(
+                    request,
+                    intent.Tool ?? throw new InvalidOperationException("Tool intent tidak memiliki invocation."),
+                    cancellationToken);
+            }
 
-            string reply = await _chat.SendMessageAsync(
-                request.Text,
-                personalityInstruction,
-                context,
-                longTermMemory,
-                cancellationToken);
-            Conversation.AddAssistant(reply);
+            IReadOnlyList<ChatContextTurn> context = BuildShortTermContext();
+            Conversation.AddUser(request);
 
-            AssistantBackend backend = _chat.LastReplyWasGemini ? AssistantBackend.Gemini : AssistantBackend.Local;
-            AssistantEmotion emotion = Emotions.EvaluateConversation(
-                request.Text,
-                reply,
-                backend,
-                _chat.Options.Style);
-            return new AssistantReply(reply, backend, DateTimeOffset.UtcNow, emotion);
+            try
+            {
+                string personalityInstruction = Personality.BuildSystemInstruction();
+                string runtimeInstruction = Context.BuildSystemInstruction();
+                if (!string.IsNullOrWhiteSpace(runtimeInstruction))
+                    personalityInstruction += "\n\n" + runtimeInstruction;
+
+                IReadOnlyList<string> longTermMemory = BuildLongTermMemoryContext(request.Text);
+
+                string reply = await _chat.SendMessageAsync(
+                    request.Text,
+                    personalityInstruction,
+                    context,
+                    longTermMemory,
+                    cancellationToken);
+                Conversation.AddAssistant(reply);
+
+                AssistantBackend backend = _chat.LastReplyWasGemini ? AssistantBackend.Gemini : AssistantBackend.Local;
+                AssistantEmotion emotion = Emotions.EvaluateConversation(
+                    request.Text,
+                    reply,
+                    backend,
+                    _chat.Options.Style);
+                return new AssistantReply(reply, backend, DateTimeOffset.UtcNow, emotion);
+            }
+            catch
+            {
+                Conversation.RollbackPendingUser();
+                throw;
+            }
         }
-        catch
+        finally
         {
-            Conversation.RollbackPendingUser();
-            throw;
+            _requestGate.Release();
         }
     }
 
@@ -116,6 +128,9 @@ public sealed class AssistantController
 
     private IReadOnlyList<string> BuildLongTermMemoryContext(string query)
     {
+        if (!_chat.Options.UseLongTermMemory)
+            return Array.Empty<string>();
+
         return Memory.Search(query).Select(memory => memory.Text).ToArray();
     }
 
@@ -135,7 +150,17 @@ public sealed class AssistantController
 
     public void ClearConversation()
     {
-        _chat.ClearConversation();
-        Conversation.Clear();
+        if (!_requestGate.Wait(0))
+            throw new InvalidOperationException("Tunggu permintaan chat selesai.");
+
+        try
+        {
+            _chat.ClearConversation();
+            Conversation.Clear();
+        }
+        finally
+        {
+            _requestGate.Release();
+        }
     }
 }

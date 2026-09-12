@@ -82,6 +82,21 @@ public partial class SettingsWindow : Window
         Model.Product?.UpdateKey(ApiKeyInput.Password);
         ApiKeyInput.Clear();
     }
+    private void ClearLongTermMemory_Click(object sender, RoutedEventArgs e)
+    {
+        ProductSettingsViewModel? product = Model.Product;
+        if (product is null || !product.CanClearLongTermMemory) return;
+
+        MessageBoxResult result = MessageBox.Show(
+            this,
+            $"Hapus semua {product.LongTermMemoryCount} long-term memory Lu-Knight?\n\nPercakapan saat ini tidak akan dihapus.",
+            "Clear Long-Term Memory",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+        if (result == MessageBoxResult.Yes)
+            product.ClearLongTermMemory();
+    }
     public void SavePlacement()
     {
         if (_settings is null || !IsLoaded) return;

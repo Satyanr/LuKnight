@@ -664,6 +664,9 @@ public partial class MainWindow : Window
         }
         finally
         {
+            _behaviorController?
+                .SetThinking(false);
+
             ChatPanelControl.SetBusy(false);
 
             if (ReferenceEquals(_requestCts, requestCts))

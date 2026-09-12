@@ -1,4 +1,5 @@
 using LuKnight.Assistant;
+using LuKnight.Models;
 using LuKnight.Services;
 
 internal static partial class Program
@@ -63,6 +64,48 @@ internal static partial class Program
             Require(memory.Count == 0, "Cancelled tool execution changed memory.");
         }
 
+        var gateStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gateRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gateRouter = new AssistantToolRouter(new IAssistantTool[]
+        {
+            new SlowRememberTool(gateStarted, gateRelease)
+        });
+        var gateAssistant = new AssistantController(
+            new ChatCoordinator(new FakeCredentials(), new() { Provider = ChatProvider.Local }),
+            tools: gateRouter);
+        Task<AssistantReply> first = gateAssistant.SendAsync(new("ingat bahwa gate test"));
+        await gateStarted.Task;
+        try
+        {
+            await gateAssistant.SendAsync(new("ingat bahwa second request"));
+            throw new Exception("Concurrent tool request was accepted.");
+        }
+        catch (InvalidOperationException) { }
+        try
+        {
+            gateAssistant.ClearConversation();
+            throw new Exception("Clear Conversation was accepted during a tool request.");
+        }
+        catch (InvalidOperationException) { }
+        gateRelease.SetResult();
+        await first;
+
         Console.WriteLine("Tool router checks passed.");
+    }
+
+    private sealed class SlowRememberTool(
+        TaskCompletionSource started,
+        TaskCompletionSource release) : IAssistantTool
+    {
+        public string Name => BuiltInToolNames.MemoryRemember;
+
+        public async Task<ToolExecutionResult> ExecuteAsync(
+            ToolInvocation invocation,
+            CancellationToken cancellationToken = default)
+        {
+            started.TrySetResult();
+            await release.Task.WaitAsync(cancellationToken);
+            return new ToolExecutionResult(true, "gate complete");
+        }
     }
 }
