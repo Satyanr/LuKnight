@@ -37,21 +37,146 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
      new(SleepDelay.FiveMinutes, "5 min"), new(SleepDelay.Never, "Never")];
     public bool SleepControlsEnabled => AutonomousEnabled && AllowSleep;
     public bool AdventureControlsEnabled => AutonomousEnabled && ExploreWindows;
-    private void SetBehavior(BehaviorOptions options) { _behavior.Apply(options); _lastBehavior = _behavior.Current; Changed(string.Empty); }
+    private void SetBehavior(BehaviorOptions options)
+    {
+        if (options == _behavior.Current)
+        {
+            return;
+        }
 
+        try
+        {
+            _behavior.Apply(options);
+            _lastBehavior = _behavior.Current;
+            Changed(string.Empty);
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException or InvalidOperationException)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                "[Lu-Knight][BehaviorSettings] " + ex);
+        }
+    }
 
-    public bool AutonomousEnabled { get => _behavior.Current.Enabled; set => SetBehavior(_behavior.Current with { Enabled = value }); }
-    public ActivityLevel Activity { get => _behavior.Current.Activity; set => SetBehavior(_behavior.Current with { Activity = value }); }
-    public MovementSpeed Speed { get => _behavior.Current.Speed; set => SetBehavior(_behavior.Current with { Speed = value }); }
-    public bool AllowSleep { get => _behavior.Current.AllowSleep; set => SetBehavior(_behavior.Current with { AllowSleep = value }); }
-    public SleepDelay SleepAfter { get => _behavior.Current.SleepAfter; set => SetBehavior(_behavior.Current with { SleepAfter = value }); }
-    public NapDuration Nap { get => _behavior.Current.Nap; set => SetBehavior(_behavior.Current with { Nap = value }); }
-    public bool ExploreWindows { get => _behavior.Current.ExploreWindows; set => SetBehavior(_behavior.Current with { ExploreWindows = value }); }
-    public bool JumpBetweenWindows { get => _behavior.Current.JumpBetweenWindows; set => SetBehavior(_behavior.Current with { JumpBetweenWindows = value }); }
-    public bool HangingClimbing { get => _behavior.Current.HangingClimbing; set => SetBehavior(_behavior.Current with { HangingClimbing = value }); }
-    public bool LookAtCursor { get => _behavior.Current.LookAtCursor; set => SetBehavior(_behavior.Current with { LookAtCursor = value }); }
-    public bool ReactToCursor { get => _behavior.Current.ReactToCursor; set => SetBehavior(_behavior.Current with { ReactToCursor = value }); }
-    public bool WakeAtCursor { get => _behavior.Current.WakeAtCursor; set => SetBehavior(_behavior.Current with { WakeAtCursor = value }); }
+    public bool AutonomousEnabled
+    {
+        get => _behavior.Current.Enabled;
+        set
+        {
+            if (value == _behavior.Current.Enabled) return;
+            SetBehavior(_behavior.Current with { Enabled = value });
+        }
+    }
+
+    public ActivityLevel Activity
+    {
+        get => _behavior.Current.Activity;
+        set
+        {
+            if (value == _behavior.Current.Activity) return;
+            SetBehavior(_behavior.Current with { Activity = value });
+        }
+    }
+
+    public MovementSpeed Speed
+    {
+        get => _behavior.Current.Speed;
+        set
+        {
+            if (value == _behavior.Current.Speed) return;
+            SetBehavior(_behavior.Current with { Speed = value });
+        }
+    }
+
+    public bool AllowSleep
+    {
+        get => _behavior.Current.AllowSleep;
+        set
+        {
+            if (value == _behavior.Current.AllowSleep) return;
+            SetBehavior(_behavior.Current with { AllowSleep = value });
+        }
+    }
+
+    public SleepDelay SleepAfter
+    {
+        get => _behavior.Current.SleepAfter;
+        set
+        {
+            if (value == _behavior.Current.SleepAfter) return;
+            SetBehavior(_behavior.Current with { SleepAfter = value });
+        }
+    }
+
+    public NapDuration Nap
+    {
+        get => _behavior.Current.Nap;
+        set
+        {
+            if (value == _behavior.Current.Nap) return;
+            SetBehavior(_behavior.Current with { Nap = value });
+        }
+    }
+
+    public bool ExploreWindows
+    {
+        get => _behavior.Current.ExploreWindows;
+        set
+        {
+            if (value == _behavior.Current.ExploreWindows) return;
+            SetBehavior(_behavior.Current with { ExploreWindows = value });
+        }
+    }
+
+    public bool JumpBetweenWindows
+    {
+        get => _behavior.Current.JumpBetweenWindows;
+        set
+        {
+            if (value == _behavior.Current.JumpBetweenWindows) return;
+            SetBehavior(_behavior.Current with { JumpBetweenWindows = value });
+        }
+    }
+
+    public bool HangingClimbing
+    {
+        get => _behavior.Current.HangingClimbing;
+        set
+        {
+            if (value == _behavior.Current.HangingClimbing) return;
+            SetBehavior(_behavior.Current with { HangingClimbing = value });
+        }
+    }
+
+    public bool LookAtCursor
+    {
+        get => _behavior.Current.LookAtCursor;
+        set
+        {
+            if (value == _behavior.Current.LookAtCursor) return;
+            SetBehavior(_behavior.Current with { LookAtCursor = value });
+        }
+    }
+
+    public bool ReactToCursor
+    {
+        get => _behavior.Current.ReactToCursor;
+        set
+        {
+            if (value == _behavior.Current.ReactToCursor) return;
+            SetBehavior(_behavior.Current with { ReactToCursor = value });
+        }
+    }
+
+    public bool WakeAtCursor
+    {
+        get => _behavior.Current.WakeAtCursor;
+        set
+        {
+            if (value == _behavior.Current.WakeAtCursor) return;
+            SetBehavior(_behavior.Current with { WakeAtCursor = value });
+        }
+    }
 
     public SettingsViewModel(Func<SettingsRuntime> read, Action<bool> setTopmost, Action<bool> setVisible, Action reset, StartupService? startup = null, BehaviorSettings? behavior = null)
     {
