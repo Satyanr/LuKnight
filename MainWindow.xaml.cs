@@ -27,6 +27,11 @@ public partial class MainWindow : Window
         _leftMouseDown = false;
         _dragStarted = false;
         ReleaseMouseCapture();
+        if (_activeTouchDevice is not null)
+        {
+            CharacterControl.ReleaseTouchCapture(_activeTouchDevice);
+            _activeTouchDevice = null;
+        }
         _physicsController?.ResetMotion();
         _behaviorController?.ResetToDesktop();
     }
@@ -73,6 +78,7 @@ public partial class MainWindow : Window
     private double _mouseDownTime;
     private bool _leftMouseDown;
     private bool _dragStarted;
+    private TouchDevice? _activeTouchDevice;
 
     private CharacterPhysicsController?
         _physicsController;
@@ -190,6 +196,14 @@ public partial class MainWindow : Window
             new MouseEventHandler(Character_PreviewMouseMove), true);
         CharacterControl.AddHandler(PreviewMouseLeftButtonUpEvent,
             new MouseButtonEventHandler(Character_PreviewMouseLeftButtonUp), true);
+        CharacterControl.AddHandler(PreviewTouchDownEvent,
+            new EventHandler<TouchEventArgs>(Character_PreviewTouchDown), true);
+        CharacterControl.AddHandler(PreviewTouchMoveEvent,
+            new EventHandler<TouchEventArgs>(Character_PreviewTouchMove), true);
+        CharacterControl.AddHandler(PreviewTouchUpEvent,
+            new EventHandler<TouchEventArgs>(Character_PreviewTouchUp), true);
+        CharacterControl.AddHandler(LostTouchCaptureEvent,
+            new EventHandler<TouchEventArgs>(Character_LostTouchCapture), true);
         Loaded += MainWindow_Loaded;
 
         ChatPanelControl.MessageSubmitted += ChatPanel_MessageSubmitted;
@@ -209,6 +223,145 @@ public partial class MainWindow : Window
             ChatPanelControl.AddAssistantMessage(
                 "Halo! Aku Lu-Knight. Mode lokal aktif. Kamu dapat mengatur Gemini melalui Settings ? AI & Chat.");
         }
+    }
+
+    private void Character_PreviewTouchDown(
+        object? sender,
+        TouchEventArgs e)
+    {
+        if (_activeTouchDevice is not null)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        _activeTouchDevice = e.TouchDevice;
+        _leftMouseDown = true;
+        _dragStarted = false;
+
+        _behaviorController?.NotifyUserInteraction();
+        _behaviorController?.Pause(BehaviorPauseReason.UserDrag);
+
+        _mouseDownPosition = e.GetTouchPoint(this).Position;
+        _mouseDownScreenPosition = PointToScreen(_mouseDownPosition);
+        _mouseDownTime = System.Diagnostics.Stopwatch.GetTimestamp() /
+            (double)System.Diagnostics.Stopwatch.Frequency;
+
+        bool captured = CharacterControl.CaptureTouch(e.TouchDevice);
+        if (!captured)
+        {
+            _activeTouchDevice = null;
+            _leftMouseDown = false;
+            _behaviorController?.Resume(BehaviorPauseReason.UserDrag);
+        }
+        else
+        {
+            _physicsController?.PrepareGrab(_mouseDownScreenPosition, _mouseDownTime);
+        }
+
+        e.Handled = true;
+    }
+
+    private void Character_PreviewTouchMove(
+        object? sender,
+        TouchEventArgs e)
+    {
+        if (_activeTouchDevice != e.TouchDevice || !_leftMouseDown)
+            return;
+
+        Point currentPosition = e.GetTouchPoint(this).Position;
+        Point currentScreen = PointToScreen(currentPosition);
+        _physicsController?.SamplePointer(currentScreen);
+
+        double horizontalDistance = Math.Abs(currentPosition.X - _mouseDownPosition.X);
+        double verticalDistance = Math.Abs(currentPosition.Y - _mouseDownPosition.Y);
+        const double TouchDragThreshold = 8.0;
+        bool movedEnough = horizontalDistance >= TouchDragThreshold ||
+            verticalDistance >= TouchDragThreshold;
+
+        if (!_dragStarted)
+        {
+            if (!movedEnough)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (ChatPopup.IsOpen)
+            {
+                ChatPopup.IsOpen = false;
+                _behaviorController?.Resume(BehaviorPauseReason.Chat);
+            }
+
+            bool grabStarted = _physicsController?.BeginGrab(
+                _mouseDownScreenPosition, _mouseDownTime) == true;
+            if (!grabStarted)
+            {
+                _behaviorController?.Resume(BehaviorPauseReason.UserDrag);
+                e.Handled = true;
+                return;
+            }
+
+            _behaviorController?.ClearSupportWindow();
+            _dragStarted = true;
+        }
+
+        e.Handled = true;
+    }
+
+    private void Character_PreviewTouchUp(
+        object? sender,
+        TouchEventArgs e)
+    {
+        if (_activeTouchDevice != e.TouchDevice)
+            return;
+
+        _leftMouseDown = false;
+        CharacterControl.ReleaseTouchCapture(e.TouchDevice);
+        _activeTouchDevice = null;
+
+        if (_dragStarted)
+        {
+            _behaviorController?.Pause(BehaviorPauseReason.Physics);
+            _behaviorController?.Resume(BehaviorPauseReason.UserDrag);
+            _physicsController?.EndGrab();
+            _dragStarted = false;
+        }
+        else
+        {
+            _physicsController?.CancelPreparedGrab();
+            _behaviorController?.Resume(BehaviorPauseReason.UserDrag);
+            _behaviorController?.ReactToClick();
+            ToggleChat();
+        }
+
+        e.Handled = true;
+    }
+
+    private void Character_LostTouchCapture(
+        object? sender,
+        TouchEventArgs e)
+    {
+        if (_activeTouchDevice != e.TouchDevice)
+            return;
+
+        _activeTouchDevice = null;
+        if (!_leftMouseDown)
+            return;
+
+        _leftMouseDown = false;
+        if (_dragStarted)
+        {
+            _dragStarted = false;
+            _behaviorController?.Pause(BehaviorPauseReason.Physics);
+            _physicsController?.EndGrab();
+        }
+        else
+        {
+            _physicsController?.CancelPreparedGrab();
+        }
+
+        _behaviorController?.Resume(BehaviorPauseReason.UserDrag);
     }
 
     private void Character_PreviewMouseLeftButtonDown(
