@@ -1,7 +1,6 @@
 using System;
 using System.Windows;
 using System.Windows.Threading;
-using System.Windows.Media;
 using LuKnight.Views;
 using LuKnight.Services;
 using System.Diagnostics;
@@ -25,10 +24,11 @@ public sealed class BehaviorController : IDisposable
     private readonly CharacterView _character;
 
     private readonly DispatcherTimer _timer;
-    private readonly Random _random = new();
-    private TimeSpan? _lastWalkRenderTime;
-    private bool _renderSubscribed;
-    private bool _canWalkOnRender;
+    private readonly DispatcherTimer _movementTimer;
+    private readonly Random _random =
+        new();
+    private long _lastMovementTimestamp;
+    private bool _canAdvanceWalk;
     private double _walkPixelRemainder;
 
     private DateTime _nextDecisionAt;
@@ -68,7 +68,7 @@ public sealed class BehaviorController : IDisposable
         _surfaceController.ApplySettings(options);
         if (!options.Enabled)
         {
-            _walking = _canWalkOnRender = false;
+            _walking = _canAdvanceWalk = false;
             CancelPendingApplicationArrival();
             if (_character.CurrentState == CharacterState.Walk) _character.SetState(CharacterState.Idle);
         }
@@ -511,7 +511,7 @@ public sealed class BehaviorController : IDisposable
             if (_character.CurrentState == CharacterState.Walk)
             {
                 _walking = false;
-                _canWalkOnRender = false;
+                _canAdvanceWalk = false;
                 _character.SetState(CharacterState.Idle);
             }
             _character.TwitchEars();
@@ -528,7 +528,7 @@ public sealed class BehaviorController : IDisposable
         if (_character.CurrentState == CharacterState.Walk)
         {
             _walking = false;
-            _canWalkOnRender = false;
+            _canAdvanceWalk = false;
             _character.SetState(CharacterState.Idle);
         }
 
@@ -1099,12 +1099,21 @@ public sealed class BehaviorController : IDisposable
         _surfaceController.DecisionDelayRequested +=
             SurfaceController_DecisionDelayRequested;
 
-        _timer = new DispatcherTimer
+        _timer = new DispatcherTimer(
+            DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(33)
         };
 
         _timer.Tick += OnTick;
+
+        _movementTimer = new DispatcherTimer(
+            DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(16)
+        };
+
+        _movementTimer.Tick += OnMovementTick;
     }
 
     public void Start()
@@ -1130,12 +1139,9 @@ public sealed class BehaviorController : IDisposable
 
         ScheduleNextBlink();
 
+        _lastMovementTimestamp = Stopwatch.GetTimestamp();
         _timer.Start();
-        if (!_renderSubscribed)
-        {
-            CompositionTarget.Rendering += OnMovementRendering;
-            _renderSubscribed = true;
-        }
+        _movementTimer.Start();
     }
 
     public void Pause(
@@ -1253,7 +1259,7 @@ public sealed class BehaviorController : IDisposable
         DateTime now =
             DateTime.UtcNow;
 
-        _canWalkOnRender = false;
+        _canAdvanceWalk = false;
         if ((_pauseReasons & BehaviorPauseReason.Hidden) != 0) return;
         UpdateMood(now);
         if (IsPaused)
@@ -1340,28 +1346,32 @@ public sealed class BehaviorController : IDisposable
         }
 
 
-        _canWalkOnRender = _walking;
+        _canAdvanceWalk = _walking;
     }
 
-    private void OnMovementRendering(object? sender, EventArgs e)
+    private void OnMovementTick(
+        object? sender,
+        EventArgs e)
     {
-        var time = ((RenderingEventArgs)e).RenderingTime;
-        if (_lastWalkRenderTime == time) return;
-        double delta = _lastWalkRenderTime is { } previous ? (time - previous).TotalSeconds : 0;
-        _lastWalkRenderTime = time;
+        long timestamp = Stopwatch.GetTimestamp();
+        double delta = _lastMovementTimestamp == 0
+            ? 0
+            : (timestamp - _lastMovementTimestamp) /
+              (double)Stopwatch.Frequency;
+        _lastMovementTimestamp = timestamp;
+
         if ((_pauseReasons & BehaviorPauseReason.Hidden) != 0) return;
-        // Follow support and animate climbing at the same cadence as walking/physics.
+
         if (_surfaceController.HasSupport && !_surfaceController.UpdateSupportWindow()) return;
         if (_options.Enabled && !IsPaused && _surfaceController.Update(DateTime.UtcNow, _thinking)) return;
-        if (!_options.Enabled || !_canWalkOnRender || !_walking || IsPaused || _surfaceController.IsBusy ||
+
+        if (!_options.Enabled || !_canAdvanceWalk || !_walking || IsPaused || _surfaceController.IsBusy ||
             _character.CurrentState != CharacterState.Walk)
         {
             _walkPixelRemainder = 0;
             return;
         }
 
-        // Keep fractional distance across frames; Win32 window positions are integer pixels.
-        // Without this, rounding each small step changes speed on 60/120/144 Hz monitors.
         double distance = CurrentWalkSpeed * Math.Clamp(delta, 0, .05) + _walkPixelRemainder;
         double pixels = Math.Floor(distance);
         _walkPixelRemainder = distance - pixels;
@@ -1848,7 +1858,7 @@ public sealed class BehaviorController : IDisposable
     public void ResetToDesktop()
     {
         ClearSupportWindow();
-        _walking = _canWalkOnRender = _sleeping = false;
+        _walking = _canAdvanceWalk = _sleeping = false;
         _pauseReasons &= ~(BehaviorPauseReason.Physics | BehaviorPauseReason.UserDrag);
         _character.SetState(CharacterState.Idle);
         _character.SetMood(_thinking ? CharacterMood.Thinking : CharacterMood.Neutral);
@@ -1875,8 +1885,6 @@ public sealed class BehaviorController : IDisposable
 
     public void Dispose()
     {
-        CompositionTarget.Rendering -= OnMovementRendering;
-        _renderSubscribed = false;
         CancelPendingApplicationArrival();
         _surfaceController.SupportLost -=
             SurfaceController_SupportLost;
@@ -1889,6 +1897,9 @@ public sealed class BehaviorController : IDisposable
 
         _surfaceController.DecisionDelayRequested -=
             SurfaceController_DecisionDelayRequested;
+
+        _movementTimer.Stop();
+        _movementTimer.Tick -= OnMovementTick;
 
         _timer.Stop();
         _timer.Tick -= OnTick;

@@ -125,7 +125,9 @@ public partial class App : Application
         }
         // Do not Show/Hide: creating a hidden startup window must not flash or steal focus.
         if (!StartupService.ShouldStartHidden(e.Args, _startup.ReadStatus().StartHidden, _tray is not null))
+        {
             _character.Show();
+        }
         _tray?.SetCharacterVisible(_character.IsVisible);
         _instanceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _instanceTimer.Tick += (_, _) => { if (_showRequest.WaitOne(0)) _character.ShowFromTray(); };

@@ -634,20 +634,28 @@ internal static partial class Program
                 DesktopMonitorService.SetWindowPosition(window, workArea.Left + 200, workArea.Bottom - 240);
                 view.SetState(CharacterState.Walk);
                 typeof(BehaviorController).GetField("_walking", Private)!.SetValue(behavior, true);
-                typeof(BehaviorController).GetField("_canWalkOnRender", Private)!.SetValue(behavior, true);
+                typeof(BehaviorController).GetField("_canAdvanceWalk", Private)!.SetValue(behavior, true);
                 typeof(BehaviorController).GetField("_direction", Private)!.SetValue(behavior, 1);
-                var update = typeof(BehaviorController).GetMethod("OnMovementRendering", Private)!;
-                update.Invoke(behavior, new object?[] { null, RenderAt(10) });
+                var update = typeof(BehaviorController).GetMethod("OnMovementTick", Private)!;
+                void Advance(double seconds)
+                {
+                    typeof(BehaviorController).GetField("_lastMovementTimestamp", Private)!.SetValue(
+                        behavior,
+                        Stopwatch.GetTimestamp() - (long)(seconds * Stopwatch.Frequency));
+                    update.Invoke(behavior, new object?[] { null, EventArgs.Empty });
+                }
+
+                Advance(0);
                 var start = DesktopMonitorService.GetWindowBounds(window);
                 for (int i = 1; i <= hz; i++)
-                    update.Invoke(behavior, new object?[] { null, RenderAt(10 + (double)i / hz) });
+                    Advance(1.0 / hz);
                 var end = DesktopMonitorService.GetWindowBounds(window);
                 double speed = (double)typeof(BehaviorController).GetField("WalkSpeed", BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
                 Require(Math.Abs(end.Left - start.Left - speed) <= 1.01, $"Walking loses fractional distance at {hz} Hz");
-                update.Invoke(behavior, new object?[] { null, RenderAt(11) });
+                Advance(0);
                 Require(DesktopMonitorService.GetWindowBounds(window) == end, "Duplicate render callback moves the window twice");
                 behavior.Pause(BehaviorPauseReason.UserDrag);
-                update.Invoke(behavior, new object?[] { null, RenderAt(11.016) });
+                Advance(0.016);
                 Require(DesktopMonitorService.GetWindowBounds(window) == end, "Autonomous movement must pause during drag");
             }
             window.Close();
