@@ -28,7 +28,7 @@ public static class ClipboardTextService
 
     private static ClipboardTextSnapshot CaptureCore()
     {
-        if (!Clipboard.ContainsText())
+        if (!Clipboard.ContainsText(TextDataFormat.UnicodeText))
         {
             return new ClipboardTextSnapshot(false, string.Empty);
         }

@@ -191,6 +191,20 @@ public static class DesktopWindowService
             out info);
     }
 
+    // Action targets include minimized windows; terrain enumeration must still exclude them.
+    public static IReadOnlyList<DesktopWindowInfo> GetApplicationWindows()
+    {
+        var result = new List<DesktopWindowInfo>();
+        int zOrder = 0;
+        EnumWindows((hwnd, _) =>
+        {
+            if (TryReadWindow(hwnd, zOrder++, out var info, includeMinimized: true))
+                result.Add(info);
+            return true;
+        }, nint.Zero);
+        return result;
+    }
+
 
     public static bool TryFindLandingSurface(
         Rect previousCharacterBounds,
@@ -310,14 +324,15 @@ public static class DesktopWindowService
     private static bool TryReadWindow(
         nint hwnd,
         int zOrder,
-        out DesktopWindowInfo info)
+        out DesktopWindowInfo info,
+        bool includeMinimized = false)
     {
         info = default;
 
 
         if (hwnd == nint.Zero ||
             !IsWindowVisible(hwnd) ||
-            IsIconic(hwnd))
+            (!includeMinimized && IsIconic(hwnd)))
         {
             return false;
         }
@@ -366,6 +381,12 @@ public static class DesktopWindowService
 
         if (IsCloaked(hwnd))
             return false;
+
+        if (includeMinimized && IsIconic(hwnd))
+        {
+            info = new DesktopWindowInfo(hwnd, Rect.Empty, zOrder);
+            return true;
+        }
 
 
         if (!TryGetBounds(

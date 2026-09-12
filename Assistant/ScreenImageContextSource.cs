@@ -20,7 +20,7 @@ public sealed class ScreenImageContextSource : IAssistantContextSource
         _capture = capture ?? ScreenCaptureService.CapturePrimaryDisplay;
     }
 
-    public Task<ContextCaptureResult> CaptureAsync(
+    public async Task<ContextCaptureResult> CaptureAsync(
         ContextInvocation invocation,
         CancellationToken cancellationToken = default)
     {
@@ -28,24 +28,25 @@ public sealed class ScreenImageContextSource : IAssistantContextSource
 
         if (!_enabled())
         {
-            return Task.FromResult(new ContextCaptureResult(
+            return new ContextCaptureResult(
                 false,
-                "Screen context sedang nonaktif. Aktifkan melalui Settings → AI & Chat."));
+                "Screen context sedang nonaktif. Aktifkan melalui Settings → AI & Chat.");
         }
 
         if (!_geminiAvailable())
         {
-            return Task.FromResult(new ContextCaptureResult(
+            return new ContextCaptureResult(
                 false,
-                "Screen context memerlukan Gemini aktif dan API key yang tersedia."));
+                "Screen context memerlukan Gemini aktif dan API key yang tersedia.");
         }
 
-        ScreenCaptureSnapshot? snapshot = _capture();
+        ScreenCaptureSnapshot? snapshot = await Task.Run(_capture, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         if (snapshot is null)
         {
-            return Task.FromResult(new ContextCaptureResult(
+            return new ContextCaptureResult(
                 false,
-                "Screenshot tidak dapat diambil saat ini."));
+                "Screenshot tidak dapat diambil saat ini.");
         }
 
         var reference = new ChatReferenceBlock(
@@ -55,9 +56,9 @@ public sealed class ScreenImageContextSource : IAssistantContextSource
             MimeType: snapshot.MimeType,
             Base64Data: snapshot.Base64Data);
 
-        return Task.FromResult(new ContextCaptureResult(
+        return new ContextCaptureResult(
             true,
             "Screenshot dimuat untuk request ini.",
-            reference));
+            reference);
     }
 }

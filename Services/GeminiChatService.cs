@@ -288,6 +288,11 @@ public sealed class GeminiChatService : IChatService
 
             {CapabilityBoundaryInstruction}
 
+            Jawaban ditampilkan sebagai teks biasa. Hindari penanda Markdown seperti
+            asterisk untuk bold/italic, heading, dan backtick untuk prosa.
+            Jangan escape tanda baca atau membungkus seluruh jawaban dengan tanda kutip.
+            Pertahankan simbol yang memang diperlukan dalam kode, path, atau kutipan.
+
             Preferensi respons saat ini:
             - {language}
             - {length}
@@ -345,7 +350,7 @@ public sealed class GeminiChatService : IChatService
         }
 
         if (textBuilder.Length > 0)
-            return textBuilder.ToString();
+            return AssistantTextFormatter.Format(textBuilder.ToString());
 
         string finishReason =
             candidate.TryGetProperty("finishReason", out JsonElement finishElement) &&

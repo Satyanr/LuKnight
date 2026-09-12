@@ -36,6 +36,9 @@ public sealed class OpenDesktopApplicationAction : IAssistantAction
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (!_enabled())
+            return Task.FromResult(new ActionExecutionResult(false, "Desktop actions sedang nonaktif."));
+
         if (!TryResolve(action, out DesktopAppTarget app))
             return Task.FromResult(new ActionExecutionResult(false, "Target aplikasi tidak valid."));
 
@@ -99,6 +102,9 @@ public sealed class FocusDesktopApplicationAction : IAssistantAction
     public Task<ActionExecutionResult> ExecuteAsync(PreparedAssistantAction action, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (!_enabled())
+            return Task.FromResult(new ActionExecutionResult(false, "Desktop actions sedang nonaktif."));
 
         if (!TryResolve(action, out DesktopAppTarget app))
             return Task.FromResult(new ActionExecutionResult(false, "Target aplikasi tidak valid."));

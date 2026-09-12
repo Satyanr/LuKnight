@@ -85,14 +85,15 @@ public sealed class LocalTextFileContextSource : IAssistantContextSource
             return new ContextCaptureResult(false, $"Format '{extension}' belum didukung oleh File Context.");
         }
 
-        FileInfo info;
         try
         {
-            info = new FileInfo(fullPath);
-            if ((info.Attributes & FileAttributes.ReparsePoint) != 0)
-                return new ContextCaptureResult(false, "Symbolic link / reparse point belum didukung.");
-            if (info.Length > MaxFileBytes)
-                return new ContextCaptureResult(false, "File terlalu besar. Maksimal 512 KB.");
+            // A parent junction can redirect an otherwise ordinary-looking local path.
+            for (FileSystemInfo? entry = new FileInfo(fullPath); entry is not null;
+                 entry = entry is FileInfo file ? file.Directory : ((DirectoryInfo)entry).Parent)
+            {
+                if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
+                    return new ContextCaptureResult(false, "Symbolic link / reparse point belum didukung.");
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -102,9 +103,17 @@ public sealed class LocalTextFileContextSource : IAssistantContextSource
         string content;
         try
         {
-            content = await File.ReadAllTextAsync(fullPath, Encoding.UTF8, cancellationToken);
+            // Check the opened handle, and cap the read even if an existing writer grows the file.
+            await using var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read,
+                FileShare.Read, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            if (stream.Length > MaxFileBytes)
+                return new ContextCaptureResult(false, "File terlalu besar. Maksimal 512 KB.");
+            using var reader = new StreamReader(stream, new UTF8Encoding(false, true), true);
+            char[] buffer = new char[MaxContextChars + 1];
+            int count = await reader.ReadBlockAsync(buffer.AsMemory(), cancellationToken);
+            content = new string(buffer, 0, count);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DecoderFallbackException)
         {
             return new ContextCaptureResult(false, "Isi file tidak dapat dibaca.");
         }

@@ -25,6 +25,9 @@ public sealed class WindowsDesktopActionExecutor : IDesktopActionExecutor
     [DllImport("user32.dll")]
     private static extern bool ShowWindowAsync(nint hwnd, int command);
 
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(nint hwnd);
+
     public DesktopActionResult Open(DesktopAppTarget app)
     {
         if (string.IsNullOrWhiteSpace(app.LaunchTarget))
@@ -32,7 +35,7 @@ public sealed class WindowsDesktopActionExecutor : IDesktopActionExecutor
 
         try
         {
-            Process.Start(new ProcessStartInfo
+            using Process? process = Process.Start(new ProcessStartInfo
             {
                 FileName = app.LaunchTarget,
                 UseShellExecute = true
@@ -49,7 +52,7 @@ public sealed class WindowsDesktopActionExecutor : IDesktopActionExecutor
 
     public DesktopActionResult Focus(DesktopAppTarget app)
     {
-        IReadOnlyList<DesktopWindowInfo> windows = DesktopWindowService.GetVisibleWindows();
+        IReadOnlyList<DesktopWindowInfo> windows = DesktopWindowService.GetApplicationWindows();
 
         DesktopWindowInfo? match = null;
         foreach (DesktopWindowInfo window in windows)
@@ -66,10 +69,11 @@ public sealed class WindowsDesktopActionExecutor : IDesktopActionExecutor
         }
 
         if (match is null || match.Value.Handle == nint.Zero)
-            return new DesktopActionResult(false, $"{app.DisplayName} tidak sedang memiliki window yang terlihat.");
+            return new DesktopActionResult(false, $"{app.DisplayName} tidak sedang memiliki window yang dapat difokuskan.");
 
         nint handle = match.Value.Handle;
-        ShowWindowAsync(handle, SwRestore);
+        if (IsIconic(handle))
+            ShowWindowAsync(handle, SwRestore);
         bool focused = SetForegroundWindow(handle);
 
         return focused

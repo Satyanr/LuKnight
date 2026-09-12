@@ -24,7 +24,7 @@ public static class ClipboardContextCommandParser
             return null;
         }
 
-        string value = input.Trim().ToLowerInvariant();
+        string value = input.Trim().TrimEnd('?', '!', '.').TrimEnd().ToLowerInvariant();
 
         return Phrases.Any(phrase =>
             value.Equals(phrase, StringComparison.Ordinal) ||

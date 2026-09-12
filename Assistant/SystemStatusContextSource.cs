@@ -32,7 +32,7 @@ public sealed class SystemStatusContextSource : IAssistantContextSource
         }
 
         if (!invocation.Arguments.TryGetValue("scope", out string? rawScope) ||
-            !Enum.TryParse(rawScope, true, out SystemContextScope scope))
+            !Enum.TryParse(rawScope, true, out SystemContextScope scope) || !Enum.IsDefined(scope))
         {
             return Task.FromResult(new ContextCaptureResult(
                 false,

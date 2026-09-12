@@ -148,9 +148,7 @@ public sealed class AssistantController
 
     public async Task<AssistantReply> ConfirmActionAsync(Guid proposalId, CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        bool entered = await _requestGate.WaitAsync(0, cancellationToken);
+        bool entered = await _requestGate.WaitAsync(0);
         if (!entered)
             throw new InvalidOperationException("Tunggu permintaan sebelumnya selesai.");
 
@@ -161,6 +159,7 @@ public sealed class AssistantController
                 throw new InvalidOperationException("Konfirmasi tindakan tidak lagi valid.");
 
             _pendingAction = null;
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (DateTimeOffset.UtcNow > pending.ExpiresAt)
             {

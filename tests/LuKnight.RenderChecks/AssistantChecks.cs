@@ -92,6 +92,7 @@ internal static partial class Program
 
     private static async Task CheckAssistantAsync()
     {
+        await CheckPhase8RegressionsAsync();
         var emotionEngine = new AssistantEmotionEngine();
         Require(emotionEngine.EvaluateConversation(
             "apa itu Lu-Knight?",

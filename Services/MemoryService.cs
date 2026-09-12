@@ -20,6 +20,7 @@ public sealed class MemoryService
     private const int MaxEntries = 200;
     private const int MaxTextLength = 500;
     private readonly string? _path;
+    private bool _readOnly;
     private readonly List<MemoryEntry> _items = new();
 
     public IReadOnlyList<MemoryEntry> Items => _items.AsReadOnly();
@@ -45,6 +46,7 @@ public sealed class MemoryService
 
             if (document.SchemaVersion > CurrentSchemaVersion)
             {
+                _readOnly = true;
                 Status = "Memory berasal dari versi aplikasi yang lebih baru.";
                 return;
             }
@@ -52,6 +54,8 @@ public sealed class MemoryService
             _items.Clear();
             foreach (MemoryEntry item in (document.Items ?? []).TakeLast(MaxEntries))
             {
+                if (item is null)
+                    throw new JsonException("Memory entry tidak valid.");
                 string text = Normalize(item.Text);
                 if (_items.Any(existing => string.Equals(existing.Text, text, StringComparison.OrdinalIgnoreCase)))
                     continue;
@@ -147,6 +151,12 @@ public sealed class MemoryService
             return true;
         }
 
+        if (_readOnly)
+        {
+            Status = "File memory dipertahankan; perubahan hanya berlaku selama sesi ini.";
+            return false;
+        }
+
         string temporary = _path + ".tmp";
         try
         {
@@ -216,7 +226,7 @@ public sealed class MemoryService
         {
             File.Copy(_path, _path + ".invalid-" + DateTime.UtcNow.ToString("yyyyMMddHHmmssfff") + ".bak", false);
         }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        catch (IOException) { _readOnly = true; }
+        catch (UnauthorizedAccessException) { _readOnly = true; }
     }
 }
