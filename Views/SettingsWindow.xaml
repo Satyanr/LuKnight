@@ -255,7 +255,7 @@
                             <StackPanel>
                                 <TextBlock Text="Desktop actions" Style="{StaticResource CardTitle}"/>
                                 <CheckBox Content="Allow Lu-Knight to perform approved desktop actions" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseDesktopActions, Mode=TwoWay}"/>
-                                <TextBlock Text="Setiap tindakan tetap meminta konfirmasi. Saat ini Lu-Knight hanya dapat membuka aplikasi yang telah diizinkan dan memfokuskan window aplikasi yang sudah terbuka. Shell, PowerShell, CMD, arbitrary executable, close/kill app, dan file modification tidak diizinkan." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                                <TextBlock Text="Buka atau fokus aplikasi Windows yang terdaftar, buka folder umum, dan cari file melalui Explorer. Contoh: ‘tolong bukain chrome dong’, ‘buka downloads’, atau ‘cari laporan di documents’. Semua perintah ini diproses lokal tanpa Gemini dan tetap meminta konfirmasi. Shell, script, executable path bebas, dan perubahan file tidak diizinkan." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>

@@ -23,8 +23,8 @@ internal static partial class Program
             "Forget intent routing is incorrect.");
 
         AssistantIntent desktopRequest = intentRouter.Route("tolong buka notepad");
-        Require(desktopRequest.Kind == AssistantIntentKind.Conversation,
-            "Unregistered desktop request was routed as a tool.");
+        Require(desktopRequest.Kind == AssistantIntentKind.Action,
+            "Natural desktop request was not routed locally.");
 
         AssistantIntent apps = intentRouter.Route("aplikasi apa yang sedang terbuka?");
         Require(apps.Kind == AssistantIntentKind.Tool &&
@@ -40,9 +40,9 @@ internal static partial class Program
             "'fokus ke' prefix tidak berfungsi.");
         Require(intentRouter.Route("focus app chrome").Kind == AssistantIntentKind.Action,
             "'focus app' prefix tidak berfungsi.");
-        Require(intentRouter.Route("buka aplikasi powershell").Kind == AssistantIntentKind.Conversation,
+        Require(intentRouter.Route("buka aplikasi powershell").Kind == AssistantIntentKind.LocalResponse,
             "PowerShell exposed through long-form prefix.");
-        Require(intentRouter.Route(@"open app C:\Temp\evil.exe").Kind == AssistantIntentKind.Conversation,
+        Require(intentRouter.Route(@"open app C:\Temp\evil.exe").Kind == AssistantIntentKind.LocalResponse,
             "Arbitrary executable exposed through long-form prefix.");
 
         var memory = new MemoryService();

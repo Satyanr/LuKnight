@@ -9,6 +9,9 @@ public sealed class AppServices
     public MemoryService Memory { get; }
     public AssistantContextProvider Context { get; }
     public AssistantIntentRouter IntentRouter { get; }
+    public IDesktopAppCatalog DesktopApps { get; }
+    public LocalDesktopCommandRouter DesktopCommands { get; }
+    public IExplorerActionExecutor ExplorerActions { get; }
     public AssistantToolRouter Tools { get; }
     public AssistantContextSourceRouter ContextSources { get; }
     public AssistantActionRouter Actions { get; }
@@ -20,14 +23,21 @@ public sealed class AppServices
         ICredentialService? credentials = null,
         MemoryService? memory = null,
         AssistantContextProvider? context = null,
-        IVoiceCaptureService? voiceCapture = null)
+        IVoiceCaptureService? voiceCapture = null,
+        IDesktopAppCatalog? desktopApps = null,
+        IDesktopActionExecutor? desktopExecutor = null,
+        IExplorerActionExecutor? explorerExecutor = null)
     {
         Settings = settings ?? new();
         Chat = new(credentials ?? new SecureCredentialService(), Settings.Current.Chat);
         VoiceCapture = voiceCapture ?? new VoiceCaptureService();
         Memory = memory ?? new();
         Context = context ?? new();
-        IntentRouter = new AssistantIntentRouter();
+        DesktopApps = desktopApps ?? DesktopAppCatalogService.Shared;
+        DesktopCommands = new LocalDesktopCommandRouter(DesktopApps);
+        IntentRouter = new AssistantIntentRouter(DesktopCommands);
+        ExplorerActions = explorerExecutor ?? new WindowsExplorerActionExecutor();
+        desktopExecutor ??= new WindowsDesktopActionExecutor();
         Tools = new AssistantToolRouter(new IAssistantTool[]
         {
             new RememberMemoryTool(Memory),
@@ -43,8 +53,10 @@ public sealed class AppServices
         });
         Actions = new AssistantActionRouter(new IAssistantAction[]
         {
-            new OpenDesktopApplicationAction(() => Chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor()),
-            new FocusDesktopApplicationAction(() => Chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor())
+            new OpenDesktopApplicationAction(() => Chat.Options.UseDesktopActions, desktopExecutor, DesktopApps),
+            new FocusDesktopApplicationAction(() => Chat.Options.UseDesktopActions, desktopExecutor, DesktopApps),
+            new OpenExplorerFolderAction(() => Chat.Options.UseDesktopActions, ExplorerActions),
+            new SearchExplorerAction(() => Chat.Options.UseDesktopActions, ExplorerActions)
         });
         Assistant = new AssistantController(
             Chat,

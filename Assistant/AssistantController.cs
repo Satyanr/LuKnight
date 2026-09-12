@@ -54,8 +54,10 @@ public sealed class AssistantController
         });
         Actions = actions ?? new AssistantActionRouter(new IAssistantAction[]
         {
-            new OpenDesktopApplicationAction(() => _chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor()),
-            new FocusDesktopApplicationAction(() => _chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor())
+            new OpenDesktopApplicationAction(() => _chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor(), IntentRouter.DesktopApps),
+            new FocusDesktopApplicationAction(() => _chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor(), IntentRouter.DesktopApps),
+            new OpenExplorerFolderAction(() => _chat.Options.UseDesktopActions, new WindowsExplorerActionExecutor()),
+            new SearchExplorerAction(() => _chat.Options.UseDesktopActions, new WindowsExplorerActionExecutor())
         });
         Emotions = emotions ?? new AssistantEmotionEngine();
     }
@@ -82,6 +84,13 @@ public sealed class AssistantController
                 throw new InvalidOperationException("Selesaikan konfirmasi tindakan desktop terlebih dahulu.");
 
             AssistantIntent intent = IntentRouter.Route(request.Text);
+            if (intent.Kind == AssistantIntentKind.LocalResponse)
+            {
+                string message = intent.LocalText ?? "Perintah lokal tidak dapat diproses.";
+                Conversation.AddUser(request);
+                Conversation.AddAssistant(message);
+                return new AssistantReply(message, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Neutral);
+            }
             if (intent.Kind == AssistantIntentKind.Tool)
             {
                 return await ExecuteToolAsync(

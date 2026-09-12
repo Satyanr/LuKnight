@@ -5,7 +5,8 @@ public enum AssistantIntentKind
     Conversation,
     Tool,
     Context,
-    Action
+    Action,
+    LocalResponse
 }
 
 public sealed record ToolInvocation(
@@ -24,7 +25,8 @@ public sealed record AssistantIntent(
     AssistantIntentKind Kind,
     ToolInvocation? Tool = null,
     ContextInvocation? Context = null,
-    ActionInvocation? Action = null)
+    ActionInvocation? Action = null,
+    string? LocalText = null)
 {
     public static AssistantIntent Conversation() =>
         new(AssistantIntentKind.Conversation);
@@ -46,6 +48,12 @@ public sealed record AssistantIntent(
         ArgumentNullException.ThrowIfNull(invocation);
         return new AssistantIntent(AssistantIntentKind.Action, Action: invocation);
     }
+
+    public static AssistantIntent RespondLocal(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) throw new ArgumentException("Local response tidak boleh kosong.", nameof(text));
+        return new(AssistantIntentKind.LocalResponse, LocalText: text.Trim());
+    }
 }
 
 public static class BuiltInToolNames
@@ -59,6 +67,8 @@ public static class BuiltInActionNames
 {
     public const string DesktopOpenApplication = "desktop.open_application";
     public const string DesktopFocusApplication = "desktop.focus_application";
+    public const string DesktopOpenFolder = "desktop.open_folder";
+    public const string DesktopSearchExplorer = "desktop.search_explorer";
 }
 
 public static class BuiltInContextNames

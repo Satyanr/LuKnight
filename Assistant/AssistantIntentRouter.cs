@@ -1,7 +1,13 @@
+using LuKnight.Services;
+
 namespace LuKnight.Assistant;
 
 public sealed class AssistantIntentRouter
 {
+    private readonly LocalDesktopCommandRouter _desktop;
+    public IDesktopAppCatalog DesktopApps => _desktop.Applications;
+    public AssistantIntentRouter(LocalDesktopCommandRouter? desktop = null) =>
+        _desktop = desktop ?? new LocalDesktopCommandRouter(Services.DesktopAppCatalogService.Shared);
     public AssistantIntent Route(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
@@ -65,22 +71,7 @@ public sealed class AssistantIntentRouter
             return AssistantIntent.UseTool(new ToolInvocation(BuiltInToolNames.DesktopListApplications, new Dictionary<string, string>()));
         }
 
-        DesktopActionCommand? desktopAction = DesktopActionCommandParser.Parse(input);
-        if (desktopAction is not null)
-        {
-            string name = desktopAction.Kind == DesktopActionCommandKind.Open
-                ? BuiltInActionNames.DesktopOpenApplication
-                : BuiltInActionNames.DesktopFocusApplication;
-
-            return AssistantIntent.UseAction(new ActionInvocation(
-                name,
-                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["appId"] = desktopAction.AppId
-                }));
-        }
-
-        return AssistantIntent.Conversation();
+        return _desktop.TryRoute(input) ?? AssistantIntent.Conversation();
     }
 
     private static bool IsApplicationAwarenessQuery(string input)

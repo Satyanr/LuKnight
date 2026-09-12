@@ -93,6 +93,7 @@ internal static partial class Program
     private static async Task CheckAssistantAsync()
     {
         await CheckPhase8RegressionsAsync();
+        await CheckLocalDesktopCommandsAsync();
         var emotionEngine = new AssistantEmotionEngine();
         Require(emotionEngine.EvaluateConversation(
             "apa itu Lu-Knight?",
@@ -597,16 +598,16 @@ internal static partial class Program
         Require(actionIntentRouter.Route("focus app chrome").Kind == AssistantIntentKind.Action,
             "'focus app' prefix tidak berfungsi.");
 
-        Require(actionIntentRouter.Route("buka aplikasi powershell").Kind == AssistantIntentKind.Conversation,
+        Require(actionIntentRouter.Route("buka aplikasi powershell").Kind == AssistantIntentKind.LocalResponse,
             "PowerShell exposed through long-form prefix.");
-        Require(actionIntentRouter.Route(@"open app C:\Temp\evil.exe").Kind == AssistantIntentKind.Conversation,
+        Require(actionIntentRouter.Route(@"open app C:\Temp\evil.exe").Kind == AssistantIntentKind.LocalResponse,
             "Arbitrary executable exposed through long-form prefix.");
 
-        Require(actionIntentRouter.Route("buka C:\\Temp\\evil.exe").Kind == AssistantIntentKind.Conversation,
+        Require(actionIntentRouter.Route("buka C:\\Temp\\evil.exe").Kind == AssistantIntentKind.LocalResponse,
             "Arbitrary executable path became a desktop action.");
-        Require(actionIntentRouter.Route("buka powershell").Kind == AssistantIntentKind.Conversation,
+        Require(actionIntentRouter.Route("buka powershell").Kind == AssistantIntentKind.LocalResponse,
             "PowerShell was accidentally exposed as a desktop action.");
-        Require(actionIntentRouter.Route("buka cmd").Kind == AssistantIntentKind.Conversation,
+        Require(actionIntentRouter.Route("buka cmd").Kind == AssistantIntentKind.LocalResponse,
             "CMD was accidentally exposed as a desktop action.");
 
         var disabledActions = new AssistantActionRouter(new IAssistantAction[]

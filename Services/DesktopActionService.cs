@@ -30,6 +30,8 @@ public sealed class WindowsDesktopActionExecutor : IDesktopActionExecutor
 
     public DesktopActionResult Open(DesktopAppTarget app)
     {
+        if (!WindowsDesktopAppDiscovery.IsLaunchUnchanged(app))
+            return new(false, "Target aplikasi berubah atau tidak diizinkan. Segarkan daftar aplikasi dan ulangi perintah.");
         if (string.IsNullOrWhiteSpace(app.LaunchTarget))
             return new DesktopActionResult(false, $"{app.DisplayName} belum mendukung launch.");
 
@@ -37,7 +39,10 @@ public sealed class WindowsDesktopActionExecutor : IDesktopActionExecutor
         {
             using Process? process = Process.Start(new ProcessStartInfo
             {
-                FileName = app.LaunchTarget,
+                // Launch the inspected executable, not a shortcut which can change after validation.
+                FileName = app.ResolvedExecutable ?? app.LaunchTarget,
+                Arguments = app.Arguments,
+                WorkingDirectory = Directory.Exists(app.WorkingDirectory) ? app.WorkingDirectory : Environment.SystemDirectory,
                 UseShellExecute = true
             });
 
@@ -52,6 +57,7 @@ public sealed class WindowsDesktopActionExecutor : IDesktopActionExecutor
 
     public DesktopActionResult Focus(DesktopAppTarget app)
     {
+        if (!DesktopAppPolicy.IsAllowed(app)) return new(false, "Target aplikasi tidak diizinkan.");
         IReadOnlyList<DesktopWindowInfo> windows = DesktopWindowService.GetApplicationWindows();
 
         DesktopWindowInfo? match = null;
@@ -60,8 +66,7 @@ public sealed class WindowsDesktopActionExecutor : IDesktopActionExecutor
             if (!DesktopApplicationService.TryGetApplication(window.Handle, out DesktopApplicationContext application))
                 continue;
 
-            if (app.ProcessNames.Any(process =>
-                string.Equals(process, application.ProcessName, StringComparison.OrdinalIgnoreCase)))
+            if (MatchesProcess(app, application.ProcessName))
             {
                 match = window;
                 break;
@@ -79,5 +84,14 @@ public sealed class WindowsDesktopActionExecutor : IDesktopActionExecutor
         return focused
             ? new DesktopActionResult(true, $"{app.DisplayName} difokuskan.")
             : new DesktopActionResult(false, $"Windows tidak mengizinkan fokus ke {app.DisplayName} saat ini.");
+    }
+
+    public static bool MatchesProcess(DesktopAppTarget app, string processName)
+    {
+        if (DesktopAppPolicy.IsRestrictedExecutable(processName)) return false;
+        if (app.ProcessNames.Any(p => p.Equals(processName, StringComparison.OrdinalIgnoreCase))) return true;
+        string process = DesktopNameNormalizer.Normalize(processName);
+        return process.Length > 0 && app.Aliases.Any(alias =>
+            DesktopNameNormalizer.Normalize(alias).Split(' ').Contains(process, StringComparer.OrdinalIgnoreCase));
     }
 }

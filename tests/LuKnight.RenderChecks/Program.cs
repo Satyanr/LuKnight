@@ -28,6 +28,11 @@ internal static partial class Program
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
+        if (args.Contains("--desktop-commands-live"))
+        {
+            Task.Run(CheckDesktopCommandsLiveAsync).GetAwaiter().GetResult();
+            return;
+        }
         if (args.Contains("--assistant-live"))
         {
             try { CheckAssistantLive(); }
