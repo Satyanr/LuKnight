@@ -28,6 +28,7 @@ internal static partial class Program
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
+        if (args.Contains("--assistant")) { CheckAssistant(); Console.WriteLine($"PASS: {_checks} assistant checks."); return; }
         if (args.Contains("--behavior-settings")) { CheckBehaviorSettings(); Console.WriteLine($"PASS: {_checks} behavior settings checks."); return; }
         if (args.Contains("--product")) { CheckProducts(); Console.WriteLine($"PASS: {_checks} product checks."); return; }
         if (args.Contains("--startup")) { CheckStartup(); Console.WriteLine($"PASS: {_checks} startup checks."); return; }
@@ -52,6 +53,7 @@ internal static partial class Program
         CheckStartup();
         CheckBehaviorSettings();
         CheckProducts();
+        CheckAssistant();
         CheckSettings(output);
         Console.WriteLine($"PASS: {_checks} checks (sprite scale, transparent bounds, state/mood transitions, cadence, lifecycle).");
     }

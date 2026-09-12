@@ -8,6 +8,7 @@ using LuKnight.Behaviors;
 using LuKnight.Physics;
 using LuKnight.ViewModels;
 using LuKnight.Models;
+using LuKnight.Assistant;
 
 namespace LuKnight;
 
@@ -31,16 +32,15 @@ public partial class MainWindow : Window
     }
 
     public AppServices Services { get; }
-    private IChatService _chatService => Services.Chat;
     private bool _usesGemini => Services.Chat.UsesGemini;
-    public bool CanInstallUpdate => !_leftMouseDown && !_dragStarted && !_isSending && !Services.Chat.IsBusy && !(_physicsController?.IsActive ?? false);
+    public bool CanInstallUpdate => !_leftMouseDown && !_dragStarted && !_isSending && !Services.Assistant.IsBusy && !(_physicsController?.IsActive ?? false);
     public void SetAlwaysOnTop(bool value)
     {
         Topmost = value;
         Services.Settings.Update(Services.Settings.Current with { General = Services.Settings.Current.General with { AlwaysOnTop = value } });
     }
     public void ClearConversation()
-    { Services.Chat.ClearConversation(); ChatPanelControl.ClearConversation(); }
+    { Services.Assistant.ClearConversation(); ChatPanelControl.ClearConversation(); }
     public bool SaveSession()
     {
         var config = Services.Settings.Current;
@@ -438,9 +438,9 @@ public partial class MainWindow : Window
 
         try
         {
-            string reply =
-                await _chatService.SendMessageAsync(
-                    message,
+            AssistantReply reply =
+                await Services.Assistant.SendAsync(
+                    new AssistantRequest(message, AssistantInputSource.Chat),
                     requestCts.Token);
 
             _behaviorController?
@@ -449,10 +449,10 @@ public partial class MainWindow : Window
             _behaviorController?
                 .ReactHappy();
 
-            ChatPanelControl.AddAssistantMessage(reply);
+            ChatPanelControl.AddAssistantMessage(reply.Text);
 
             ChatPanelControl.SetStatus(Services.Chat.Status,
-                Services.Chat.LastReplyWasGemini ? ChatStatus.Connected : ChatStatus.Local);
+                reply.Backend == AssistantBackend.Gemini ? ChatStatus.Connected : ChatStatus.Local);
         }
         catch (OperationCanceledException)
         {
