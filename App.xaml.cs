@@ -83,7 +83,10 @@ public partial class App : Application
             try { config.Update(config.Current with { General = config.Current.General with { StartHidden = new RegistryStartupStore().ReadStartHidden() } }); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
         }
-        _services = new AppServices(config);
+        string memoryPath = Path.Combine(SettingsService.UserDirectory, "memory.json");
+        var memory = new MemoryService(memoryPath);
+        memory.Load();
+        _services = new AppServices(config, memory: memory);
         _startup = new StartupService(new PersistentStartupStore(config), Environment.ProcessPath ?? "", Assembly.GetExecutingAssembly().Location, File.Exists);
         try { _startup.Validate(); }
         catch (Exception ex) { Trace.WriteLine($"[Lu-Knight] Startup registration could not be repaired: {ex.Message}"); }

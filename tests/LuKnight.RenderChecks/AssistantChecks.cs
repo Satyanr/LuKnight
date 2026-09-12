@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
@@ -75,6 +76,36 @@ internal static partial class Program
         Require(recent.Count == 20 && recent[0].Text == "user 45" && recent[^1].Text == "reply 54",
             "Short-term context does not retain exactly the latest 20 turns");
 
+        string memoryDirectory = Path.Combine(Path.GetTempPath(), "LuKnight-memory-" + Guid.NewGuid().ToString("N"));
+        string memoryPath = Path.Combine(memoryDirectory, "memory.json");
+        try
+        {
+            var storedMemory = new MemoryService(memoryPath);
+            storedMemory.Remember("kode proyek saya ORBIT-742");
+            storedMemory.Remember("kode proyek saya ORBIT-742");
+            Require(storedMemory.Count == 1, "Duplicate memory creates a second entry");
+            var reloadedMemory = new MemoryService(memoryPath);
+            reloadedMemory.Load();
+            Require(reloadedMemory.Count == 1 && reloadedMemory.Search("kode proyek")[0].Text.Contains("ORBIT-742"),
+                "Persistent memory cannot be reloaded or searched");
+            try { reloadedMemory.Remember(new string('x', 501)); throw new Exception("Oversized memory accepted"); }
+            catch (ArgumentException) { }
+            Require(reloadedMemory.ForgetExact("kode proyek saya ORBIT-742") && reloadedMemory.Count == 0,
+                "Exact memory removal failed");
+        }
+        finally
+        {
+            try { Directory.Delete(memoryDirectory, true); } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
+        Require(MemoryCommandParser.Parse("ingat bahwa kode saya ORBIT-742") is
+            { Kind: MemoryCommandKind.Remember, Text: "kode saya ORBIT-742" } &&
+            MemoryCommandParser.Parse("lupakan: kode saya ORBIT-742") is
+            { Kind: MemoryCommandKind.Forget, Text: "kode saya ORBIT-742" } &&
+            MemoryCommandParser.Parse("kamu ingat apa?") is null,
+            "Memory command parser accepts the wrong prefixes or payloads");
+
         var noKey = new ChatCoordinator(new FakeCredentials(), new(), () => null);
         var local = new AssistantController(noKey);
         var localReply = await local.SendAsync(new("halo", AssistantInputSource.System));
@@ -98,18 +129,41 @@ internal static partial class Program
         });
         using var client = new HttpClient(handler);
         var coordinator = new ChatCoordinator(new FakeCredentials { Key = "fake-assistant-test-key" }, new(), () => null, client);
-        var assistant = new AssistantController(coordinator);
+        var assistantMemory = new MemoryService();
+        var assistant = new AssistantController(coordinator, memory: assistantMemory);
+        int requestCountBeforeMemoryCommands = payloads.Count;
+        AssistantReply memoryReply = await assistant.SendAsync(new("ingat bahwa kode proyek saya ORBIT-742"));
+        Require(memoryReply.Backend == AssistantBackend.Local && assistantMemory.Count == 1 &&
+            payloads.Count == requestCountBeforeMemoryCommands, "Remember command used Gemini or was not persisted");
+        assistant.ClearConversation();
+        Require(assistant.Conversation.Count == 0 && assistantMemory.Count == 1,
+            "Clear Conversation incorrectly erased long-term memory");
         var onlineReply = await assistant.SendAsync(new("online", AssistantInputSource.Voice));
         Require(onlineReply.Backend == AssistantBackend.Gemini && onlineReply.Text == "Gemini test reply" && assistant.Conversation.Count == 2,
             "Assistant mislabels a successful Gemini reply");
         Require(onlineReply.CreatedAt >= assistant.Conversation.Turns[^1].CreatedAt, "Reply timestamp predates its transcript entry");
+        await assistant.SendAsync(new("apa kode proyek saya?"));
+        using (var memoryPayload = JsonDocument.Parse(payloads[^1]))
+        {
+            string instruction = memoryPayload.RootElement.GetProperty("system_instruction").GetProperty("parts")[0].GetProperty("text").GetString()!;
+            JsonElement contents = memoryPayload.RootElement.GetProperty("contents");
+            Require(instruction.Contains("ORBIT-742") && contents.EnumerateArray().All(item =>
+                !item.GetProperty("parts")[0].GetProperty("text").GetString()!.Contains("ORBIT-742")),
+                "Relevant long-term memory is not isolated in system instruction");
+        }
+        int requestCountBeforeForget = payloads.Count;
+        AssistantReply forgetReply = await assistant.SendAsync(new("lupakan: kode proyek saya ORBIT-742"));
+        Require(forgetReply.Backend == AssistantBackend.Local && assistantMemory.Count == 0 &&
+            payloads.Count == requestCountBeforeForget, "Forget command used Gemini or did not remove memory");
         await assistant.SendAsync(new("second"));
         using (var history = JsonDocument.Parse(payloads[^1]))
         {
             JsonElement contents = history.RootElement.GetProperty("contents");
-            Require(contents.GetArrayLength() == 3 &&
+            Require(contents.GetArrayLength() == 7 &&
                 contents[0].GetProperty("parts")[0].GetProperty("text").GetString() == "online" &&
-                contents[2].GetProperty("parts")[0].GetProperty("text").GetString() == "second" &&
+                contents[2].GetProperty("parts")[0].GetProperty("text").GetString() == "apa kode proyek saya?" &&
+                contents[4].GetProperty("parts")[0].GetProperty("text").GetString() == "lupakan: kode proyek saya ORBIT-742" &&
+                contents[6].GetProperty("parts")[0].GetProperty("text").GetString() == "second" &&
                 contents.EnumerateArray().Count(item => item.GetProperty("parts")[0].GetProperty("text").GetString() == "second") == 1,
                 "Assistant context is missing, misordered, or duplicates the current user message");
         }
