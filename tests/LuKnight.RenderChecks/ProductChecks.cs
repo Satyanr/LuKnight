@@ -44,6 +44,22 @@ internal static partial class Program
             try { SettingsService.Validate(new AppSettings { Chat = new ChatSettings { TextToSpeechRate = 11 } }); }
             catch (ArgumentException) { invalidRateRejected = true; }
             Require(invalidRateRejected, "Invalid TTS rate was accepted.");
+            bool invalidSubmissionModeRejected = false;
+            try
+            {
+                SettingsService.Validate(new AppSettings
+                {
+                    Chat = new ChatSettings
+                    {
+                        VoiceSubmissionMode = (VoiceSubmissionMode)99
+                    }
+                });
+            }
+            catch (ArgumentException)
+            {
+                invalidSubmissionModeRejected = true;
+            }
+            Require(invalidSubmissionModeRejected, "Invalid voice submission mode was accepted.");
             var customized = settings.Current with
             {
                 General = new(true, false), Behavior = new() { Activity = ActivityLevel.Active, Speed = MovementSpeed.Fast, LookAtCursor = false },

@@ -939,7 +939,7 @@ public partial class MainWindow : Window
         {
             Services.VoiceCapture.Start();
             _isVoiceRecording = true;
-            ChatPanelControl.SetVoiceState(VoiceInteractionState.Listening);
+            ChatPanelControl.SetVoiceRecording(true);
             ChatPanelControl.SetStatus("Mendengarkan...", ChatStatus.Busy);
             _behaviorController?.ReactMood(CharacterMood.Curious);
 
@@ -1101,7 +1101,7 @@ public partial class MainWindow : Window
         {
             _isVoiceRecording = false;
             _voiceDraftPending = false;
-            ChatPanelControl.SetVoiceState(VoiceInteractionState.Idle);
+            ChatPanelControl.SetVoiceRecording(false);
             ChatPanelControl.SetStatus(
                 "Voice input dimatikan · rekaman dibuang.",
                 ChatStatus.Ready);

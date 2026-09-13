@@ -20,6 +20,21 @@ internal static partial class Program
             panel.VoicePrivacySummary.Contains("Mic active", StringComparison.Ordinal),
             "Listening state does not expose active microphone.");
 
+        var messageInput =
+            (System.Windows.Controls.TextBox)panel.FindName("MessageInput");
+        var sendButton =
+            (System.Windows.Controls.Button)panel.FindName("SendButton");
+
+        panel.SetVoiceRecording(true);
+        Require(
+            !messageInput.IsEnabled && !sendButton.IsEnabled,
+            "Listening mode left text submission enabled.");
+
+        panel.SetVoiceRecording(false);
+        Require(
+            messageInput.IsEnabled && sendButton.IsEnabled,
+            "Stopping voice recording did not restore text submission.");
+
         panel.SetVoiceState(VoiceInteractionState.Transcribing);
         Require(
             panel.VoicePrivacySummary.Contains("Mic off", StringComparison.Ordinal),
@@ -42,5 +57,8 @@ internal static partial class Program
         Require(
             defaults.VoiceSubmissionMode == VoiceSubmissionMode.SendImmediately,
             "Voice submission default changed unexpectedly.");
+        Require(
+            Enum.IsDefined(defaults.VoiceSubmissionMode),
+            "Default voice submission mode is invalid.");
     }
 }
