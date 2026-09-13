@@ -17,10 +17,13 @@ public sealed class WindowsDesktopWindowActionExecutor : IDesktopWindowActionExe
     [DllImport("user32.dll")]
     private static extern bool ShowWindowAsync(nint hwnd, int command);
 
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(nint hwnd);
+
     public DesktopActionResult Focus(DesktopWindowTarget target)
     {
-        if (target.Handle == nint.Zero)
-            return new(false, "Window target tidak valid.");
+        if (target.Handle == nint.Zero || !IsWindow(target.Handle))
+            return new(false, "Window target sudah tidak tersedia.");
 
         if (target.IsMinimized)
             ShowWindowAsync(target.Handle, SwRestore);

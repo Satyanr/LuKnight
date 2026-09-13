@@ -41,4 +41,5 @@ public sealed record ConversationTurn(
     ConversationRole Role,
     string Text,
     DateTimeOffset CreatedAt,
-    AssistantInputSource Source = AssistantInputSource.Chat);
+    AssistantInputSource Source = AssistantInputSource.Chat,
+    bool IncludeInContext = true);

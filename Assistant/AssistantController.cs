@@ -56,6 +56,7 @@ public sealed class AssistantController
         {
             new OpenDesktopApplicationAction(() => _chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor(), IntentRouter.DesktopApps),
             new FocusDesktopApplicationAction(() => _chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor(), IntentRouter.DesktopApps),
+            new FocusDesktopWindowAction(() => _chat.Options.UseDesktopActions, IntentRouter.DesktopWindows, new WindowsDesktopWindowActionExecutor()),
             new OpenExplorerFolderAction(() => _chat.Options.UseDesktopActions, new WindowsExplorerActionExecutor()),
             new SearchExplorerAction(() => _chat.Options.UseDesktopActions, new WindowsExplorerActionExecutor())
         });
@@ -87,8 +88,8 @@ public sealed class AssistantController
             if (intent.Kind == AssistantIntentKind.LocalResponse)
             {
                 string message = intent.LocalText ?? "Perintah lokal tidak dapat diproses.";
-                Conversation.AddUser(request);
-                Conversation.AddAssistant(message);
+                Conversation.AddUser(request, intent.IncludeLocalResponseInContext);
+                Conversation.AddAssistant(message, intent.IncludeLocalResponseInContext);
                 return new AssistantReply(message, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Neutral);
             }
             if (intent.Kind == AssistantIntentKind.Tool)
@@ -136,12 +137,13 @@ public sealed class AssistantController
 
     private AssistantReply PrepareAction(AssistantRequest request, ActionInvocation invocation)
     {
-        Conversation.AddUser(request);
-
         ActionPreparationResult prepared = Actions.Prepare(invocation);
+        bool includeInContext = prepared.Action?.IncludeInContext ??
+            invocation.Name != BuiltInActionNames.DesktopFocusWindow;
+        Conversation.AddUser(request, includeInContext);
         if (!prepared.Success || prepared.Action is null)
         {
-            Conversation.AddAssistant(prepared.Message);
+            Conversation.AddAssistant(prepared.Message, prepared.Action?.IncludeInContext ?? true);
             return new AssistantReply(prepared.Message, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Confused);
         }
 
@@ -150,7 +152,7 @@ public sealed class AssistantController
         _pendingAction = new PendingAssistantAction(id, prepared.Action, expiresAt);
 
         string message = $"Tindakan desktop memerlukan konfirmasi: {prepared.Action.Title}.";
-        Conversation.AddAssistant(message);
+        Conversation.AddAssistant(message, prepared.Action.IncludeInContext);
         return new AssistantReply(message, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Determined,
             new AssistantActionProposal(id, prepared.Action.Title, prepared.Action.ConfirmationText, expiresAt));
     }
@@ -173,12 +175,12 @@ public sealed class AssistantController
             if (DateTimeOffset.UtcNow > pending.ExpiresAt)
             {
                 const string expired = "Konfirmasi tindakan sudah kedaluwarsa.";
-                Conversation.AddAssistant(expired);
+                Conversation.AddAssistant(expired, pending.Action.IncludeInContext);
                 return new AssistantReply(expired, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Confused);
             }
 
             ActionExecutionResult result = await Actions.ExecuteAsync(pending.Action, cancellationToken);
-            Conversation.AddAssistant(result.Message);
+            Conversation.AddAssistant(result.Message, pending.Action.IncludeInContext);
             return new AssistantReply(result.Message, AssistantBackend.Local, DateTimeOffset.UtcNow,
                 result.Success ? AssistantEmotion.Happy : AssistantEmotion.Confused);
         }

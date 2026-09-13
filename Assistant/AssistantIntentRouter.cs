@@ -6,6 +6,7 @@ public sealed class AssistantIntentRouter
 {
     private readonly LocalDesktopCommandRouter _desktop;
     public IDesktopAppCatalog DesktopApps => _desktop.Applications;
+    public IDesktopWindowTargetCatalog DesktopWindows => _desktop.Windows;
     public AssistantIntentRouter(LocalDesktopCommandRouter? desktop = null) =>
         _desktop = desktop ?? new LocalDesktopCommandRouter(Services.DesktopAppCatalogService.Shared);
     public AssistantIntent Route(string input)

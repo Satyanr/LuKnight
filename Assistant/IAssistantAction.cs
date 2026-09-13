@@ -4,7 +4,8 @@ public sealed record PreparedAssistantAction(
     string Name,
     IReadOnlyDictionary<string, string> Arguments,
     string Title,
-    string ConfirmationText);
+    string ConfirmationText,
+    bool IncludeInContext = true);
 
 public sealed record ActionPreparationResult(
     bool Success,

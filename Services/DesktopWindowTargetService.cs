@@ -91,15 +91,28 @@ public sealed class DesktopWindowTargetService : IDesktopWindowTargetCatalog
 
     public DesktopWindowResolution Resolve(string query)
     {
+        return ResolveSnapshot(Capture(), query);
+    }
+
+    public static DesktopWindowResolution ResolveSnapshot(
+        IReadOnlyList<DesktopWindowTarget> windows,
+        string query)
+    {
+        ArgumentNullException.ThrowIfNull(windows);
+
         string normalized = Normalize(query);
         if (normalized.Length < 2 || normalized.Length > 200)
             return new(null, Array.Empty<DesktopWindowTarget>());
 
-        IReadOnlyList<DesktopWindowTarget> windows = Capture();
-        if (normalized is "aktif" or "active" or "current" or "window aktif" or "current window")
+        if (normalized is "aktif" or "active" or "current" or "foreground" or "window aktif" or "current window")
         {
             DesktopWindowTarget? foreground = windows.FirstOrDefault(x => x.IsForeground);
-            return foreground is null ? new(null, Array.Empty<DesktopWindowTarget>()) : new(foreground, new[] { foreground });
+            if (foreground is not null)
+                return new(foreground, new[] { foreground });
+
+            DesktopWindowTarget? externalTop = windows.Where(x => !x.IsMinimized).OrderBy(x => x.ZOrder).FirstOrDefault();
+            externalTop ??= windows.OrderBy(x => x.ZOrder).FirstOrDefault();
+            return externalTop is null ? new(null, Array.Empty<DesktopWindowTarget>()) : new(externalTop, new[] { externalTop });
         }
 
         string[] tokens = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);

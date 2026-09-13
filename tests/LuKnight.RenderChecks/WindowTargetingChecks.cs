@@ -9,21 +9,8 @@ internal static partial class Program
 
         public IReadOnlyList<DesktopWindowTarget> Capture() => Windows.ToArray();
 
-        public DesktopWindowResolution Resolve(string query)
-        {
-            string value = query.Trim();
-            DesktopWindowTarget[] matches = Windows
-                .Where(x => x.Title.Contains(value, StringComparison.OrdinalIgnoreCase) ||
-                            x.ProcessName.Equals(value, StringComparison.OrdinalIgnoreCase))
-                .ToArray();
-
-            return matches.Length switch
-            {
-                1 => new(matches[0], matches),
-                > 1 => new(null, matches),
-                _ => new(null, matches)
-            };
-        }
+        public DesktopWindowResolution Resolve(string query) =>
+            DesktopWindowTargetService.ResolveSnapshot(Windows, query);
 
         public bool TryResolveById(string id, out DesktopWindowTarget target)
         {
@@ -73,11 +60,41 @@ internal static partial class Program
             router.TryRoute("fokus chrome")?.Action?.Name == BuiltInActionNames.DesktopFocusApplication,
             "Existing app-level focus behavior regressed.");
 
+        DesktopWindowResolution active =
+            DesktopWindowTargetService.ResolveSnapshot(catalog.Windows, "window aktif");
+        Require(active.Match?.Title == "Gmail - Work", "Foreground window was not resolved.");
+
+        DesktopWindowTarget[] noExternalForeground = catalog.Windows
+            .Select(x => x with { IsForeground = false })
+            .ToArray();
+        DesktopWindowResolution fallback =
+            DesktopWindowTargetService.ResolveSnapshot(noExternalForeground, "window aktif");
+        Require(fallback.Match?.Title == "Gmail - Work",
+            "Current external window was lost when Lu-Knight owned foreground.");
+
+        DesktopWindowTarget[] minimizedTop =
+        [
+            catalog.Windows[0] with { IsForeground = false, IsMinimized = true },
+            catalog.Windows[1] with { IsForeground = false }
+        ];
+        DesktopWindowResolution visibleFallback =
+            DesktopWindowTargetService.ResolveSnapshot(minimizedTop, "window aktif");
+        Require(visibleFallback.Match?.Title == "YouTube",
+            "Active fallback selected a minimized window over a visible window.");
+
+        Require(DesktopWindowTargetService.ResolveSnapshot(catalog.Windows, "chrome").Ambiguous,
+            "Production resolver silently chose one of several Chrome windows.");
+
         var executor = new FakeWindowActionExecutor();
         var action = new FocusDesktopWindowAction(() => true, catalog, executor);
         AssistantIntent exact = router.TryRoute("fokus window Gmail")!;
         ActionPreparationResult prepared = action.Prepare(exact.Action!);
-        Require(prepared.Success && prepared.Action is not null, "Exact window action could not be prepared.");
+        Require(prepared.Success && prepared.Action is not null && !prepared.Action.IncludeInContext,
+            "Exact window action could not be prepared privately.");
+
+        AssistantIntent ambiguous = router.TryRoute("fokus window chrome")!;
+        Require(ambiguous.Kind == AssistantIntentKind.LocalResponse && !ambiguous.IncludeLocalResponseInContext,
+            "Window ambiguity details were allowed into Gemini context.");
 
         DesktopWindowTarget original = catalog.Windows[0];
         catalog.Windows[0] = original with { Title = "Different Gmail Window" };
@@ -93,6 +110,13 @@ internal static partial class Program
         var missing = router.TryRoute("fokus window missing");
         Require(missing?.Kind == AssistantIntentKind.LocalResponse,
             "Missing window target did not remain local.");
+
+        var conversation = new ConversationManager();
+        conversation.AddAssistant("chrome — Gmail - Work", includeInContext: false);
+        conversation.AddAssistant("Pesan aman.");
+        IReadOnlyList<ConversationTurn> context = conversation.GetRecentContext();
+        Require(context.Count == 1 && context[0].Text == "Pesan aman.",
+            "Private local window title leaked into assistant context.");
 
         Console.WriteLine("Window targeting checks: exact title, ambiguity, app-level compatibility, fingerprint mutation, and local routing passed.");
     }

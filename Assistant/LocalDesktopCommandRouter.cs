@@ -13,6 +13,7 @@ public sealed class LocalDesktopCommandRouter
         _windows = windows ?? new DesktopWindowTargetService();
     }
     public IDesktopAppCatalog Applications => _apps;
+    public IDesktopWindowTargetCatalog Windows => _windows;
 
     private static readonly string[] OpenPrefixes = ["bukakan aplikasi", "bukain aplikasi", "buka aplikasi", "open app",
         "bukakan", "bukain", "buka", "jalankan", "jalanin", "launch", "open", "start"];
@@ -67,7 +68,7 @@ public sealed class LocalDesktopCommandRouter
         if (result.Ambiguous)
         {
             string alternatives = string.Join(", ", result.Alternatives.Take(3).Select(x => x.DisplayLabel));
-            return AssistantIntent.RespondLocal($"Aku menemukan beberapa window yang cocok: {alternatives}. Sebutkan judul yang lebih spesifik.");
+            return AssistantIntent.RespondLocal($"Aku menemukan beberapa window yang cocok: {alternatives}. Sebutkan judul yang lebih spesifik.", includeInContext: false);
         }
 
         return AssistantIntent.RespondLocal($"Aku tidak menemukan window yang cocok dengan \"{query}\".");

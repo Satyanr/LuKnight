@@ -39,7 +39,8 @@ public sealed class FocusDesktopWindowAction : IAssistantAction
                 ["fingerprint"] = target.Fingerprint
             },
             $"Fokus {target.DisplayLabel}",
-            $"Izinkan Lu-Knight memfokuskan window {target.DisplayLabel}?");
+            $"Izinkan Lu-Knight memfokuskan window {target.DisplayLabel}?",
+            IncludeInContext: false);
 
         return new(true, $"Siap memfokuskan {target.DisplayLabel}.", prepared);
     }

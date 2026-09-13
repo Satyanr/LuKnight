@@ -10,18 +10,18 @@ public sealed class ConversationManager
     public IReadOnlyList<ConversationTurn> Turns => _turns.AsReadOnly();
     public int Count => _turns.Count;
 
-    public void AddUser(AssistantRequest request)
+    public void AddUser(AssistantRequest request, bool includeInContext = true)
     {
         ArgumentNullException.ThrowIfNull(request);
         string text = Normalize(request.Text);
-        _turns.Add(new ConversationTurn(ConversationRole.User, text, DateTimeOffset.UtcNow, request.Source));
+        _turns.Add(new ConversationTurn(ConversationRole.User, text, DateTimeOffset.UtcNow, request.Source, includeInContext));
         Trim();
     }
 
-    public void AddAssistant(string text)
+    public void AddAssistant(string text, bool includeInContext = true)
     {
         text = Normalize(text);
-        _turns.Add(new ConversationTurn(ConversationRole.Assistant, text, DateTimeOffset.UtcNow));
+        _turns.Add(new ConversationTurn(ConversationRole.Assistant, text, DateTimeOffset.UtcNow, AssistantInputSource.Chat, includeInContext));
         Trim();
     }
 
@@ -33,8 +33,12 @@ public sealed class ConversationManager
         if (maxTurns <= 0 || _turns.Count == 0)
             return Array.Empty<ConversationTurn>();
 
-        int count = Math.Min(maxTurns, _turns.Count);
-        return _turns.Skip(_turns.Count - count).ToArray();
+        ConversationTurn[] eligible = _turns.Where(x => x.IncludeInContext).ToArray();
+        if (eligible.Length == 0)
+            return Array.Empty<ConversationTurn>();
+
+        int count = Math.Min(maxTurns, eligible.Length);
+        return eligible.Skip(eligible.Length - count).ToArray();
     }
 
     public void RollbackPendingUser()

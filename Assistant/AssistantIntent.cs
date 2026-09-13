@@ -26,7 +26,8 @@ public sealed record AssistantIntent(
     ToolInvocation? Tool = null,
     ContextInvocation? Context = null,
     ActionInvocation? Action = null,
-    string? LocalText = null)
+    string? LocalText = null,
+    bool IncludeLocalResponseInContext = true)
 {
     public static AssistantIntent Conversation() =>
         new(AssistantIntentKind.Conversation);
@@ -49,10 +50,10 @@ public sealed record AssistantIntent(
         return new AssistantIntent(AssistantIntentKind.Action, Action: invocation);
     }
 
-    public static AssistantIntent RespondLocal(string text)
+    public static AssistantIntent RespondLocal(string text, bool includeInContext = true)
     {
         if (string.IsNullOrWhiteSpace(text)) throw new ArgumentException("Local response tidak boleh kosong.", nameof(text));
-        return new(AssistantIntentKind.LocalResponse, LocalText: text.Trim());
+        return new(AssistantIntentKind.LocalResponse, LocalText: text.Trim(), IncludeLocalResponseInContext: includeInContext);
     }
 }
 
