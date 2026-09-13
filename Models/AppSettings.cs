@@ -8,6 +8,7 @@ public enum ResponseLength { Short, Normal, Detailed }
 public enum ResponseStyle { Friendly, Professional, Playful }
 public enum SpeechLanguage { Automatic, Indonesia, English }
 public enum SpeechModel { Tiny, Base }
+public enum VoiceSubmissionMode { SendImmediately, ReviewBeforeSending }
 public enum TextToSpeechMode { Off, VoiceRequestsOnly, Always }
 public sealed record GeneralSettings(bool StartHidden = false, bool AlwaysOnTop = true);
 public sealed record ChatSettings
@@ -28,6 +29,7 @@ public sealed record ChatSettings
     public bool UseVoiceInput { get; init; } = false;
     public SpeechLanguage VoiceLanguage { get; init; } = SpeechLanguage.Automatic;
     public SpeechModel VoiceModel { get; init; } = SpeechModel.Base;
+    public VoiceSubmissionMode VoiceSubmissionMode { get; init; } = VoiceSubmissionMode.SendImmediately;
     public bool UseDesktopActions { get; init; } = false;
     public TextToSpeechMode TextToSpeechMode { get; init; } = TextToSpeechMode.VoiceRequestsOnly;
     public string TextToSpeechVoice { get; init; } = string.Empty;

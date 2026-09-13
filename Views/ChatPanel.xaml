@@ -50,6 +50,12 @@
 
                 </StackPanel>
 
+                <TextBlock x:Name="VoicePrivacyText"
+                           Text="Mic off · push-to-talk only"
+                           FontSize="10"
+                           Foreground="#9A9188"
+                           Margin="0,4,0,0"/>
+
             </StackPanel>
 
             <!-- Percakapan -->

@@ -6,6 +6,15 @@ using System.Windows.Media;
 
 namespace LuKnight.Views;
 
+public enum VoiceInteractionState
+{
+    Idle,
+    Listening,
+    Transcribing,
+    Thinking,
+    Speaking
+}
+
 public enum ChatStatus
 {
     Local,
@@ -20,6 +29,9 @@ public partial class ChatPanel : UserControl
     public event Action<string>? MessageSubmitted;
     public event Action? VoiceToggleRequested;
     public ChatStatus CurrentStatus { get; private set; } = ChatStatus.Local;
+    public VoiceInteractionState CurrentVoiceState { get; private set; } = VoiceInteractionState.Idle;
+    public bool HasDraftMessage => !string.IsNullOrWhiteSpace(MessageInput.Text);
+    public string VoicePrivacySummary => VoicePrivacyText.Text;
 
     public ChatPanel()
     {
@@ -89,7 +101,6 @@ public partial class ChatPanel : UserControl
         MessageInput.IsEnabled = !isBusy;
         SendButton.IsEnabled = !isBusy;
         SendButton.Content = isBusy ? "..." : "Kirim";
-        VoiceButton.IsEnabled = !isBusy;
 
         if (!isBusy)
             FocusInput();
@@ -99,10 +110,42 @@ public partial class ChatPanel : UserControl
 
     public void SetVoiceRecording(bool recording)
     {
-        VoiceButton.Content = recording ? "■" : "🎤";
-        VoiceButton.ToolTip = recording ? "Stop recording" : "Push to talk";
+        SetVoiceState(recording ? VoiceInteractionState.Listening : VoiceInteractionState.Idle);
         MessageInput.IsEnabled = !recording;
         SendButton.IsEnabled = !recording;
+    }
+
+    public void SetVoiceState(VoiceInteractionState state)
+    {
+        CurrentVoiceState = state;
+        switch (state)
+        {
+            case VoiceInteractionState.Listening:
+                VoiceButton.Content = "■";
+                VoiceButton.ToolTip = "Stop recording";
+                VoicePrivacyText.Text = "● Mic active · audio stays in memory only";
+                break;
+            case VoiceInteractionState.Transcribing:
+                VoiceButton.Content = "…";
+                VoiceButton.ToolTip = "Transcribing locally";
+                VoicePrivacyText.Text = "Mic off · transcribing locally";
+                break;
+            case VoiceInteractionState.Thinking:
+                VoiceButton.Content = "🎤";
+                VoiceButton.ToolTip = "Voice request is being processed";
+                VoicePrivacyText.Text = "Mic off · processing request";
+                break;
+            case VoiceInteractionState.Speaking:
+                VoiceButton.Content = "⏹";
+                VoiceButton.ToolTip = "Stop speaking and listen";
+                VoicePrivacyText.Text = "Mic off · press mic to interrupt";
+                break;
+            default:
+                VoiceButton.Content = "🎤";
+                VoiceButton.ToolTip = "Push to talk";
+                VoicePrivacyText.Text = "Mic off · push-to-talk only";
+                break;
+        }
     }
 
     public void SetStatus(string text, ChatStatus status)

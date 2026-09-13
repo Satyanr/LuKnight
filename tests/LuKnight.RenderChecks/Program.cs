@@ -58,6 +58,12 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} voice routing checks.");
             return;
         }
+        if (args.Contains("--voice-ux"))
+        {
+            CheckVoiceUx();
+            Console.WriteLine($"PASS: {_checks} voice UX checks.");
+            return;
+        }
         if (args.Contains("--tts"))
         {
             Task.Run(CheckTextToSpeechAsync).GetAwaiter().GetResult();

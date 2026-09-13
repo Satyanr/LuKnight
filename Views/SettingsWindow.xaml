@@ -265,10 +265,12 @@
                                         <ComboBox ItemsSource="{Binding Product.VoiceModels}" SelectedItem="{Binding Product.VoiceModel, Mode=TwoWay}"/>
                                     </StackPanel>
                                 </Grid>
+                                <TextBlock Text="After transcription" Margin="0,14,0,6"/>
+                                <ComboBox ItemsSource="{Binding Product.VoiceSubmissionModes}" SelectedItem="{Binding Product.VoiceSubmissionMode, Mode=TwoWay}"/>
                                 <TextBlock Text="{Binding Product.VoiceModelDescription}" Style="{StaticResource Muted}" Margin="0,12,0,0"/>
                                 <TextBlock Text="{Binding Product.VoiceModelStatus}" Foreground="#67E8F9" FontSize="12" Margin="0,6,0,0"/>
                                 <Button Content="Delete selected local model" Command="{Binding Product.DeleteVoiceModelCommand}" HorizontalAlignment="Left" Margin="0,12,0,0"/>
-                                <TextBlock Text="Mengganti model tidak langsung mengunduh file. Model dipasang hanya saat microphone digunakan. Microphone hanya aktif saat push-to-talk; tidak ada background listening atau wake word." Style="{StaticResource Muted}" FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap"/>
+                                <TextBlock Text="Push-to-talk only. Microphone hanya aktif ketika status Listening. Audio rekaman tetap lokal dan hanya berada di memory; audio tidak dikirim ke Gemini dan tidak disimpan sebagai file. Setelah transkripsi, hanya teks yang dapat diteruskan ke Assistant." Style="{StaticResource Muted}" FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource Card}">

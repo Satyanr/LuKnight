@@ -48,6 +48,7 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
     public Array Styles => Enum.GetValues<ResponseStyle>();
     public Array VoiceLanguages => Enum.GetValues<SpeechLanguage>();
     public Array VoiceModels => Enum.GetValues<SpeechModel>();
+    public Array VoiceSubmissionModes => Enum.GetValues<VoiceSubmissionMode>();
     public Array TextToSpeechModes => Enum.GetValues<TextToSpeechMode>();
     private const string DefaultVoiceChoice = "Windows default";
     public IReadOnlyList<string> TextToSpeechVoices
@@ -211,6 +212,15 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
         {
             if (value == _services.Chat.Options.VoiceModel) return;
             Change(_services.Chat.Options with { VoiceModel = value });
+        }
+    }
+    public VoiceSubmissionMode VoiceSubmissionMode
+    {
+        get => _services.Chat.Options.VoiceSubmissionMode;
+        set
+        {
+            if (value == _services.Chat.Options.VoiceSubmissionMode) return;
+            Change(_services.Chat.Options with { VoiceSubmissionMode = value });
         }
     }
     public string VoiceModelDescription => SpeechToTextCatalog.GetDescription(VoiceModel);

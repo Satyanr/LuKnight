@@ -80,6 +80,7 @@ public partial class MainWindow : Window
     private bool _isTranscribing;
     private bool _isSpeaking;
     private bool _resumeListeningAfterSpeechStop;
+    private bool _voiceDraftPending;
 
     private Point _mouseDownPosition;
     private Point _mouseDownScreenPosition;
@@ -654,7 +655,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        await SendAssistantMessageAsync(message, AssistantInputSource.Chat);
+        AssistantInputSource source = _voiceDraftPending
+            ? AssistantInputSource.Voice
+            : AssistantInputSource.Chat;
+        _voiceDraftPending = false;
+        await SendAssistantMessageAsync(message, source);
     }
 
     private async Task SendAssistantMessageAsync(
@@ -669,6 +674,8 @@ public partial class MainWindow : Window
             return;
 
         _isSending = true;
+        if (source == AssistantInputSource.Voice)
+            ChatPanelControl.SetVoiceState(VoiceInteractionState.Thinking);
         _behaviorController?.NotifyUserInteraction();
 
         using var requestCts = new CancellationTokenSource();
@@ -760,6 +767,8 @@ public partial class MainWindow : Window
                 _requestCts = null;
 
             _isSending = false;
+            if (!_isVoiceRecording && !_isTranscribing && !_isSpeaking)
+                ChatPanelControl.SetVoiceState(VoiceInteractionState.Idle);
             RefreshVoiceAvailability();
 
             bool resumeListening = _resumeListeningAfterSpeechStop;
@@ -789,6 +798,7 @@ public partial class MainWindow : Window
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _speechCts = speechCts;
         _isSpeaking = true;
+        ChatPanelControl.SetVoiceState(VoiceInteractionState.Speaking);
 
         ChatPanelControl.SetStatus(
             "Lu-Knight sedang berbicara...",
@@ -814,6 +824,8 @@ public partial class MainWindow : Window
                 _speechCts = null;
 
             _isSpeaking = false;
+            ChatPanelControl.SetVoiceState(
+                _isSending ? VoiceInteractionState.Thinking : VoiceInteractionState.Idle);
             RefreshVoiceAvailability();
         }
     }
@@ -842,13 +854,18 @@ public partial class MainWindow : Window
 
     private void Chat_OptionsChanged(ChatSettings options)
     {
-        Dispatcher.BeginInvoke(() =>
-        {
-            if (options.TextToSpeechMode == TextToSpeechMode.Off && _isSpeaking)
-                InterruptCurrentSpeech(resumeListening: false);
+        Dispatcher.BeginInvoke(() => _ = ApplyVoiceOptionsAsync(options));
+    }
 
-            RefreshVoiceAvailability();
-        });
+    private async Task ApplyVoiceOptionsAsync(ChatSettings options)
+    {
+        if (!options.UseVoiceInput && _isVoiceRecording)
+            await StopAndDiscardVoiceRecordingAsync();
+
+        if (options.TextToSpeechMode == TextToSpeechMode.Off && _isSpeaking)
+            InterruptCurrentSpeech(resumeListening: false);
+
+        RefreshVoiceAvailability();
     }
 
     private async void ChatPanel_VoiceToggleRequested()
@@ -899,6 +916,15 @@ public partial class MainWindow : Window
 
     private bool TryStartVoiceRecording()
     {
+        if (Services.Chat.Options.VoiceSubmissionMode == VoiceSubmissionMode.ReviewBeforeSending &&
+            ChatPanelControl.HasDraftMessage)
+        {
+            ChatPanelControl.SetStatus(
+                "Selesaikan draft sebelum merekam voice baru.",
+                ChatStatus.Ready);
+            return false;
+        }
+
         if (!Services.Chat.Options.UseVoiceInput ||
             _isSending ||
             _isTranscribing ||
@@ -913,7 +939,7 @@ public partial class MainWindow : Window
         {
             Services.VoiceCapture.Start();
             _isVoiceRecording = true;
-            ChatPanelControl.SetVoiceRecording(true);
+            ChatPanelControl.SetVoiceState(VoiceInteractionState.Listening);
             ChatPanelControl.SetStatus("Mendengarkan...", ChatStatus.Busy);
             _behaviorController?.ReactMood(CharacterMood.Curious);
 
@@ -963,9 +989,7 @@ public partial class MainWindow : Window
                     Services.Chat.Options.VoiceLanguage);
 
             _isVoiceRecording = false;
-
-            ChatPanelControl
-                .SetVoiceRecording(false);
+            ChatPanelControl.SetVoiceState(VoiceInteractionState.Transcribing);
 
             ChatPanelControl
                 .SetBusy(true);
@@ -1024,8 +1048,8 @@ public partial class MainWindow : Window
             _isVoiceRecording = false;
             _isTranscribing = false;
 
-            ChatPanelControl
-                .SetVoiceRecording(false);
+            if (string.IsNullOrWhiteSpace(voiceTranscript))
+                ChatPanelControl.SetVoiceState(VoiceInteractionState.Idle);
 
             ChatPanelControl
                 .SetBusy(false);
@@ -1035,9 +1059,53 @@ public partial class MainWindow : Window
 
         if (!string.IsNullOrWhiteSpace(voiceTranscript))
         {
+            if (Services.Chat.Options.VoiceSubmissionMode == VoiceSubmissionMode.ReviewBeforeSending)
+            {
+                _voiceDraftPending = true;
+                ChatPanelControl.SetDraftMessage(voiceTranscript);
+                ChatPanelControl.SetVoiceState(VoiceInteractionState.Idle);
+                ChatPanelControl.SetStatus(
+                    "Transkripsi siap ditinjau. Tekan Kirim jika sudah benar.",
+                    ChatStatus.Ready);
+                return;
+            }
+
+            ChatPanelControl.SetVoiceState(VoiceInteractionState.Thinking);
             await SendAssistantMessageAsync(
                 voiceTranscript,
                 AssistantInputSource.Voice);
+        }
+    }
+
+    private async Task StopAndDiscardVoiceRecordingAsync()
+    {
+        if (!_isVoiceRecording)
+            return;
+
+        _voiceLimitCts?.Cancel();
+        _voiceLimitCts?.Dispose();
+        _voiceLimitCts = null;
+
+        try
+        {
+            await Services.VoiceCapture.StopAsync();
+            System.Diagnostics.Debug.WriteLine(
+                "[Lu-Knight][Voice] Recording discarded because voice input was disabled.");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                "[Lu-Knight][Voice] Discard recording: " + ex);
+        }
+        finally
+        {
+            _isVoiceRecording = false;
+            _voiceDraftPending = false;
+            ChatPanelControl.SetVoiceState(VoiceInteractionState.Idle);
+            ChatPanelControl.SetStatus(
+                "Voice input dimatikan · rekaman dibuang.",
+                ChatStatus.Ready);
+            RefreshVoiceAvailability();
         }
     }
 
