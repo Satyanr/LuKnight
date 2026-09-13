@@ -64,6 +64,12 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} voice UX checks.");
             return;
         }
+        if (args.Contains("--window-targeting-live"))
+        {
+            CheckWindowTargetingLive();
+            Console.WriteLine($"PASS: {_checks} live window targeting checks.");
+            return;
+        }
         if (args.Contains("--window-targeting"))
         {
             Task.Run(CheckWindowTargetingAsync).GetAwaiter().GetResult();
