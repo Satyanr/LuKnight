@@ -39,7 +39,7 @@ public partial class MainWindow : Window
 
     public AppServices Services { get; }
     private bool _usesGemini => Services.Chat.UsesGemini;
-    public bool CanInstallUpdate => !_leftMouseDown && !_dragStarted && !_isSending && !_isTranscribing && !Services.TextToSpeech.IsSpeaking && !Services.Assistant.IsBusy && !(_physicsController?.IsActive ?? false);
+    public bool CanInstallUpdate => !_leftMouseDown && !_dragStarted && !_isSending && !_isTranscribing && !_isSpeaking && !Services.TextToSpeech.IsSpeaking && !Services.Assistant.IsBusy && !(_physicsController?.IsActive ?? false);
     public void SetAlwaysOnTop(bool value)
     {
         Topmost = value;
@@ -74,9 +74,12 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _requestCts;
     private CancellationTokenSource? _voiceLimitCts;
     private CancellationTokenSource? _transcriptionCts;
+    private CancellationTokenSource? _speechCts;
     private bool _isSending;
     private bool _isVoiceRecording;
     private bool _isTranscribing;
+    private bool _isSpeaking;
+    private bool _resumeListeningAfterSpeechStop;
 
     private Point _mouseDownPosition;
     private Point _mouseDownScreenPosition;
@@ -758,6 +761,11 @@ public partial class MainWindow : Window
 
             _isSending = false;
             RefreshVoiceAvailability();
+
+            bool resumeListening = _resumeListeningAfterSpeechStop;
+            _resumeListeningAfterSpeechStop = false;
+            if (resumeListening && Services.Chat.Options.UseVoiceInput)
+                TryStartVoiceRecording();
         }
     }
 
@@ -777,11 +785,37 @@ public partial class MainWindow : Window
             Services.Chat.Options.TextToSpeechRate,
             Services.Chat.Options.TextToSpeechVolume);
 
+        using CancellationTokenSource speechCts =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _speechCts = speechCts;
+        _isSpeaking = true;
+
         ChatPanelControl.SetStatus(
             "Lu-Knight sedang berbicara...",
             ChatStatus.Busy);
+        RefreshVoiceAvailability();
 
-        await Services.TextToSpeech.SpeakAsync(text, speechOptions, cancellationToken);
+        try
+        {
+            await Services.TextToSpeech.SpeakAsync(text, speechOptions, speechCts.Token);
+        }
+        catch (OperationCanceledException)
+            when (speechCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            System.Diagnostics.Debug.WriteLine("[Lu-Knight][TTS] Speech interrupted by user.");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("[Lu-Knight][TTS] " + ex);
+        }
+        finally
+        {
+            if (ReferenceEquals(_speechCts, speechCts))
+                _speechCts = null;
+
+            _isSpeaking = false;
+            RefreshVoiceAvailability();
+        }
     }
 
     private bool ShouldSpeakAssistantReply(AssistantInputSource source) =>
@@ -795,20 +829,37 @@ public partial class MainWindow : Window
 
     private void RefreshVoiceAvailability()
     {
-        ChatPanelControl.SetVoiceEnabled(
-            Services.Chat.Options.UseVoiceInput &&
-            !_isSending &&
+        bool serviceSpeaking = Services.TextToSpeech.IsSpeaking;
+        bool canInterruptReply = _isSpeaking;
+        bool enabled = Services.Chat.Options.UseVoiceInput &&
             !_isTranscribing &&
-            !Services.TextToSpeech.IsSpeaking);
+            (!_isSending || canInterruptReply) &&
+            (!serviceSpeaking || canInterruptReply);
+
+        ChatPanelControl.SetVoiceEnabled(
+            enabled);
     }
 
     private void Chat_OptionsChanged(ChatSettings options)
     {
-        Dispatcher.BeginInvoke(RefreshVoiceAvailability);
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (options.TextToSpeechMode == TextToSpeechMode.Off && _isSpeaking)
+                InterruptCurrentSpeech(resumeListening: false);
+
+            RefreshVoiceAvailability();
+        });
     }
 
     private async void ChatPanel_VoiceToggleRequested()
     {
+        if (_isSpeaking)
+        {
+            ChatPanelControl.SetStatus("Menghentikan suara...", ChatStatus.Busy);
+            InterruptCurrentSpeech(resumeListening: true);
+            return;
+        }
+
         if (_isSending || _isTranscribing)
             return;
 
@@ -820,30 +871,65 @@ public partial class MainWindow : Window
 
         if (!_isVoiceRecording)
         {
-            try
-            {
-                Services.VoiceCapture.Start();
-                _isVoiceRecording = true;
-                ChatPanelControl.SetVoiceRecording(true);
-                ChatPanelControl.SetStatus("Mendengarkan...", ChatStatus.Busy);
-                _behaviorController?.ReactMood(CharacterMood.Curious);
-
-                _voiceLimitCts?.Cancel();
-                _voiceLimitCts?.Dispose();
-                _voiceLimitCts = new CancellationTokenSource();
-                _ = AutoStopVoiceAsync(_voiceLimitCts.Token);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine("[Lu-Knight][Voice] " + ex);
-                ChatPanelControl.SetStatus("Microphone tidak dapat digunakan.", ChatStatus.Error);
-                RefreshVoiceAvailability();
-            }
-
+            TryStartVoiceRecording();
             return;
         }
 
         await StopVoiceRecordingAsync();
+    }
+
+    private void InterruptCurrentSpeech(bool resumeListening)
+    {
+        if (!_isSpeaking)
+            return;
+
+        if (resumeListening)
+            _resumeListeningAfterSpeechStop = true;
+
+        try
+        {
+            _speechCts?.Cancel();
+        }
+        catch
+        {
+        }
+
+        Services.TextToSpeech.Stop();
+    }
+
+    private bool TryStartVoiceRecording()
+    {
+        if (!Services.Chat.Options.UseVoiceInput ||
+            _isSending ||
+            _isTranscribing ||
+            _isVoiceRecording ||
+            _isSpeaking ||
+            Services.TextToSpeech.IsSpeaking)
+        {
+            return false;
+        }
+
+        try
+        {
+            Services.VoiceCapture.Start();
+            _isVoiceRecording = true;
+            ChatPanelControl.SetVoiceRecording(true);
+            ChatPanelControl.SetStatus("Mendengarkan...", ChatStatus.Busy);
+            _behaviorController?.ReactMood(CharacterMood.Curious);
+
+            _voiceLimitCts?.Cancel();
+            _voiceLimitCts?.Dispose();
+            _voiceLimitCts = new CancellationTokenSource();
+            _ = AutoStopVoiceAsync(_voiceLimitCts.Token);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("[Lu-Knight][Voice] " + ex);
+            ChatPanelControl.SetStatus("Microphone tidak dapat digunakan.", ChatStatus.Error);
+            RefreshVoiceAvailability();
+            return false;
+        }
     }
 
     private async Task StopVoiceRecordingAsync()
@@ -1042,6 +1128,8 @@ public partial class MainWindow : Window
         Services.Chat.OptionsChanged -= Chat_OptionsChanged;
         _requestCts?.Cancel();
         _transcriptionCts?.Cancel();
+        _resumeListeningAfterSpeechStop = false;
+        _speechCts?.Cancel();
         _voiceLimitCts?.Cancel();
         _voiceLimitCts?.Dispose();
         _voiceLimitCts = null;

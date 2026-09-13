@@ -2,6 +2,44 @@ using LuKnight.Services;
 
 internal static partial class Program
 {
+    private sealed class BlockingTextToSpeechService : ITextToSpeechService
+    {
+        private readonly TaskCompletionSource<bool> _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool IsSpeaking { get; private set; }
+        public int StopCalls { get; private set; }
+        public Task Started => _started.Task;
+        public IReadOnlyList<string> GetInstalledVoices() => ["Fake Voice"];
+
+        public async Task SpeakAsync(string text, TextToSpeechOptions options, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IsSpeaking = true;
+            _started.TrySetResult(true);
+            try
+            {
+                Task cancelled = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                await Task.WhenAny(cancelled, _stopped.Task);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (_stopped.Task.IsCompleted)
+                    throw new OperationCanceledException();
+            }
+            finally
+            {
+                IsSpeaking = false;
+            }
+        }
+
+        public void Stop()
+        {
+            StopCalls++;
+            _stopped.TrySetResult(true);
+        }
+
+        public void Dispose() => Stop();
+    }
+
     private sealed class FakeTextToSpeechService : ITextToSpeechService
     {
         public bool IsSpeaking { get; private set; }
@@ -89,6 +127,27 @@ internal static partial class Program
         Require(
             localCancellationObserved && !local.IsSpeaking,
             "Windows Text-to-Speech ignored pre-cancellation.");
+
+        var blocking = new BlockingTextToSpeechService();
+        using var activeCancellation = new CancellationTokenSource();
+        Task speaking = blocking.SpeakAsync("Kalimat yang cukup panjang.", new TextToSpeechOptions(), activeCancellation.Token);
+        await blocking.Started;
+        Require(blocking.IsSpeaking, "TTS did not enter speaking state.");
+        activeCancellation.Cancel();
+        bool activeCancelled = false;
+        try { await speaking; }
+        catch (OperationCanceledException) { activeCancelled = true; }
+        Require(activeCancelled && !blocking.IsSpeaking, "Active speech did not stop after cancellation.");
+
+        var stoppable = new BlockingTextToSpeechService();
+        Task stoppableSpeech = stoppable.SpeakAsync("Kalimat kedua.", new TextToSpeechOptions());
+        await stoppable.Started;
+        stoppable.Stop();
+        bool stopCancelled = false;
+        try { await stoppableSpeech; }
+        catch (OperationCanceledException) { stopCancelled = true; }
+        Require(stopCancelled && stoppable.StopCalls == 1 && !stoppable.IsSpeaking,
+            "TTS Stop did not interrupt active speech.");
 
         local.Dispose();
         bool disposedRejected = false;
