@@ -23,6 +23,16 @@ internal static partial class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        string? fixtureToken = args.FirstOrDefault(x =>
+            x.StartsWith("--uia-fixture-token=", StringComparison.Ordinal));
+        if (args.Contains("--uia-action-fixture-host"))
+        {
+            string token = fixtureToken?["--uia-fixture-token=".Length..] ??
+                throw new ArgumentException("UIA fixture token missing.");
+            RunUiActionFixtureHost(token);
+            return;
+        }
+
         string root = AppContext.BaseDirectory;
         while (!File.Exists(Path.Combine(root, "LuKnight.csproj")))
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
@@ -80,6 +90,12 @@ internal static partial class Program
         {
             Task.Run(CheckUiAutomationLiveAsync).GetAwaiter().GetResult();
             Console.WriteLine($"PASS: {_checks} live UI Automation checks.");
+            return;
+        }
+        if (args.Contains("--uia-action-live"))
+        {
+            Task.Run(CheckUiButtonInvokeLiveAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} live UIA action checks.");
             return;
         }
         if (args.Contains("--uia"))
