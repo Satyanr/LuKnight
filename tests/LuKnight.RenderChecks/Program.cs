@@ -40,6 +40,18 @@ internal static partial class Program
             return;
         }
         if (args.Contains("--mouse-input")) { CheckMouseInput(); Console.WriteLine($"PASS: {_checks} mouse input checks."); return; }
+        if (args.Contains("--speech"))
+        {
+            Task.Run(
+                CheckSpeechToTextHardeningAsync)
+                .GetAwaiter()
+                .GetResult();
+
+            Console.WriteLine(
+                $"PASS: {_checks} speech-to-text checks.");
+
+            return;
+        }
         if (args.Contains("--assistant")) { CheckAssistant(); Console.WriteLine($"PASS: {_checks} assistant checks."); return; }
         if (args.Contains("--behavior-settings")) { CheckBehaviorSettings(); Console.WriteLine($"PASS: {_checks} behavior settings checks."); return; }
         if (args.Contains("--product")) { CheckProducts(); Console.WriteLine($"PASS: {_checks} product checks."); return; }

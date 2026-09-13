@@ -73,6 +73,7 @@ public partial class MainWindow : Window
 
     private CancellationTokenSource? _requestCts;
     private CancellationTokenSource? _voiceLimitCts;
+    private CancellationTokenSource? _transcriptionCts;
     private bool _isSending;
     private bool _isVoiceRecording;
     private bool _isTranscribing;
@@ -807,12 +808,16 @@ public partial class MainWindow : Window
         ChatPanelControl.SetBusy(true);
         RefreshVoiceAvailability();
 
+        CancellationTokenSource? transcriptionCts = null;
+
         try
         {
+            transcriptionCts = new CancellationTokenSource();
+            _transcriptionCts = transcriptionCts;
             VoiceCaptureResult result =
                 await Services
                     .VoiceCapture
-                    .StopAsync();
+                    .StopAsync(transcriptionCts.Token);
 
             _isVoiceRecording = false;
 
@@ -829,7 +834,11 @@ public partial class MainWindow : Window
                 ChatStatus.Busy);
 
             SpeechTranscriptionResult transcript =
-                await Task.Run(() => Services.SpeechToText.TranscribeAsync(result));
+                await Task.Run(
+                    () => Services.SpeechToText.TranscribeAsync(result, transcriptionCts.Token),
+                    transcriptionCts.Token);
+
+            transcriptionCts.Token.ThrowIfCancellationRequested();
 
             ChatPanelControl
                 .SetDraftMessage(
@@ -837,6 +846,12 @@ public partial class MainWindow : Window
 
             ChatPanelControl.SetStatus(
                 $"Transkripsi siap · {result.Duration.TotalSeconds:0.0}s",
+                ChatStatus.Ready);
+        }
+        catch (NoSpeechDetectedException)
+        {
+            ChatPanelControl.SetStatus(
+                "Tidak terdengar ucapan. Coba lagi.",
                 ChatStatus.Ready);
         }
         catch (OperationCanceledException)
@@ -857,6 +872,11 @@ public partial class MainWindow : Window
         }
         finally
         {
+            if (ReferenceEquals(_transcriptionCts, transcriptionCts))
+                _transcriptionCts = null;
+
+            transcriptionCts?.Dispose();
+
             _isVoiceRecording = false;
             _isTranscribing = false;
 
@@ -956,6 +976,7 @@ public partial class MainWindow : Window
         Services.Context.Detach();
         Services.Chat.OptionsChanged -= Chat_OptionsChanged;
         _requestCts?.Cancel();
+        _transcriptionCts?.Cancel();
         _voiceLimitCts?.Cancel();
         _voiceLimitCts?.Dispose();
         _voiceLimitCts = null;
