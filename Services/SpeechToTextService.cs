@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using NAudio.Wave;
 using System.IO;
 using System.Text;
+using LuKnight.Models;
 using Whisper.net;
 using Whisper.net.Ggml;
 
@@ -9,6 +10,42 @@ namespace LuKnight.Services;
 
 public sealed record SpeechTranscriptionResult(
     string Text);
+
+public sealed record SpeechToTextOptions(
+    SpeechModel Model = SpeechModel.Base,
+    SpeechLanguage Language = SpeechLanguage.Automatic);
+
+public static class SpeechToTextCatalog
+{
+    public static string GetFileName(SpeechModel model) => model switch
+    {
+        SpeechModel.Tiny => "ggml-tiny.bin",
+        SpeechModel.Base => "ggml-base.bin",
+        _ => throw new ArgumentOutOfRangeException(nameof(model))
+    };
+
+    public static GgmlType GetGgmlType(SpeechModel model) => model switch
+    {
+        SpeechModel.Tiny => GgmlType.Tiny,
+        SpeechModel.Base => GgmlType.Base,
+        _ => throw new ArgumentOutOfRangeException(nameof(model))
+    };
+
+    public static string GetLanguageCode(SpeechLanguage language) => language switch
+    {
+        SpeechLanguage.Automatic => "auto",
+        SpeechLanguage.Indonesia => "id",
+        SpeechLanguage.English => "en",
+        _ => throw new ArgumentOutOfRangeException(nameof(language))
+    };
+
+    public static string GetDescription(SpeechModel model) => model switch
+    {
+        SpeechModel.Tiny => "Tiny · sekitar 75 MB · lebih cepat, akurasi lebih rendah.",
+        SpeechModel.Base => "Base · sekitar 142 MB · direkomendasikan untuk penggunaan normal.",
+        _ => "Unknown model"
+    };
+}
 
 public sealed class NoSpeechDetectedException
     : Exception
@@ -21,10 +58,13 @@ public sealed class NoSpeechDetectedException
 
 public interface ISpeechToTextService
 {
-    bool IsModelReady { get; }
+    bool IsModelReady(SpeechModel model);
+
+    bool DeleteModel(SpeechModel model);
 
     Task<SpeechTranscriptionResult> TranscribeAsync(
         VoiceCaptureResult capture,
+        SpeechToTextOptions options,
         CancellationToken cancellationToken = default);
 }
 
@@ -42,31 +82,59 @@ public sealed class LocalWhisperSpeechToTextService
     private readonly SemaphoreSlim _gate =
         new(1, 1);
 
-    private readonly string _modelPath;
+    private readonly string _modelsDirectory;
 
     public LocalWhisperSpeechToTextService(
-        string? modelPath = null)
+        string? modelsDirectory = null)
     {
-        _modelPath =
-            modelPath ??
+        _modelsDirectory =
+            modelsDirectory ??
             Path.Combine(
                 Environment.GetFolderPath(
                     Environment.SpecialFolder.LocalApplicationData),
                 "LuKnight",
-                "Models",
-                "ggml-base.bin");
+                "Models");
     }
 
-    public bool IsModelReady =>
-        IsModelFileUsable(_modelPath);
+    private string GetModelPath(SpeechModel model) =>
+        Path.Combine(_modelsDirectory, SpeechToTextCatalog.GetFileName(model));
+
+    public bool IsModelReady(SpeechModel model) =>
+        IsModelFileUsable(GetModelPath(model));
+
+    public bool DeleteModel(SpeechModel model)
+    {
+        if (!_gate.Wait(0))
+            return false;
+
+        try
+        {
+            string path = GetModelPath(model);
+            TryDelete(path);
+            TryDelete(path + ".download");
+            return !File.Exists(path);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     public async Task<SpeechTranscriptionResult>
         TranscribeAsync(
             VoiceCaptureResult capture,
+            SpeechToTextOptions options,
             CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(
             capture);
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (!Enum.IsDefined(options.Model))
+            throw new ArgumentOutOfRangeException(nameof(options.Model));
+
+        if (!Enum.IsDefined(options.Language))
+            throw new ArgumentOutOfRangeException(nameof(options.Language));
 
         cancellationToken
             .ThrowIfCancellationRequested();
@@ -85,17 +153,21 @@ public sealed class LocalWhisperSpeechToTextService
 
         try
         {
+            string modelPath = GetModelPath(options.Model);
+
             await EnsureModelAsync(
+                modelPath,
+                options.Model,
                 cancellationToken).ConfigureAwait(false);
 
             using WhisperFactory factory =
                 WhisperFactory.FromPath(
-                    _modelPath);
+                    modelPath);
 
             using WhisperProcessor processor =
                 factory
                     .CreateBuilder()
-                    .WithLanguage("auto")
+                    .WithLanguage(SpeechToTextCatalog.GetLanguageCode(options.Language))
                     .Build();
 
             using var audioStream =
@@ -139,19 +211,21 @@ public sealed class LocalWhisperSpeechToTextService
     }
 
     private async Task EnsureModelAsync(
+        string modelPath,
+        SpeechModel model,
         CancellationToken cancellationToken)
     {
-        if (IsModelReady)
+        if (IsModelReady(model))
             return;
 
-        if (File.Exists(_modelPath))
+        if (File.Exists(modelPath))
         {
-            TryDelete(_modelPath);
+            TryDelete(modelPath);
         }
 
         string? directory =
             Path.GetDirectoryName(
-                _modelPath);
+                modelPath);
 
         if (string.IsNullOrWhiteSpace(
                 directory))
@@ -164,7 +238,7 @@ public sealed class LocalWhisperSpeechToTextService
             directory);
 
         string temporaryPath =
-            _modelPath + ".download";
+            modelPath + ".download";
 
         try
         {
@@ -179,7 +253,7 @@ public sealed class LocalWhisperSpeechToTextService
                 await WhisperGgmlDownloader
                     .Default
                     .GetGgmlModelAsync(
-                        GgmlType.Base,
+                        SpeechToTextCatalog.GetGgmlType(model),
                         cancellationToken: cancellationToken);
 
             await using (var destination =
@@ -212,7 +286,7 @@ public sealed class LocalWhisperSpeechToTextService
             cancellationToken.ThrowIfCancellationRequested();
             File.Move(
                 temporaryPath,
-                _modelPath,
+                modelPath,
                 overwrite: true);
         }
         catch

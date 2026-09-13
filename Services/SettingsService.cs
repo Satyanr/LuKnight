@@ -58,6 +58,7 @@ public sealed class SettingsService
         var b = value.Behavior; var c = value.Chat;
         if (!Enum.IsDefined(b.Activity) || !Enum.IsDefined(b.Speed) || !Enum.IsDefined(b.SleepAfter) || !Enum.IsDefined(b.Nap) ||
             !Enum.IsDefined(c.Provider) || !Enum.IsDefined(c.Language) || !Enum.IsDefined(c.ResponseLength) || !Enum.IsDefined(c.Style) ||
+            !Enum.IsDefined(c.VoiceLanguage) || !Enum.IsDefined(c.VoiceModel) ||
             c.Model is null || !Regex.IsMatch(c.Model, @"\Agemini-[a-zA-Z0-9.\-]{1,80}\z")) throw new ArgumentException("Invalid preference.");
         static bool Finite(params double[] numbers) => numbers.All(double.IsFinite);
         var w = value.SettingsWindow;

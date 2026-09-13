@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Windows.Input;
 using LuKnight.Models;
 using LuKnight.Services;
@@ -27,6 +28,7 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
         ClearCommand = new(() => Run(_clear), () => CanEditChat);
         SaveCommand = new(() => { services.Settings.Save(); Refresh(); }, () => true);
         LaterCommand = new(() => { _deferred = true; Refresh(); }, () => !services.Updates.IsBusy);
+        DeleteVoiceModelCommand = new(DeleteSelectedVoiceModel, () => CanDeleteVoiceModel);
     }
     public AsyncSettingsCommand TestCommand { get; }
     public AsyncSettingsCommand CheckCommand { get; }
@@ -36,11 +38,14 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
     public SettingsCommand ClearCommand { get; }
     public SettingsCommand SaveCommand { get; }
     public SettingsCommand LaterCommand { get; }
+    public SettingsCommand DeleteVoiceModelCommand { get; }
     private AsyncSettingsCommand[] Commands => [TestCommand, CheckCommand, DownloadCommand, InstallCommand];
     public Array Providers => Enum.GetValues<ChatProvider>();
     public Array Languages => Enum.GetValues<ChatLanguage>();
     public Array Lengths => Enum.GetValues<ResponseLength>();
     public Array Styles => Enum.GetValues<ResponseStyle>();
+    public Array VoiceLanguages => Enum.GetValues<SpeechLanguage>();
+    public Array VoiceModels => Enum.GetValues<SpeechModel>();
     public bool CanEditChat => !_services.Assistant.IsBusy;
     public string CredentialStatus => _services.Chat.CredentialStatus;
     public string ChatStatus => _message ?? _services.Chat.Status;
@@ -177,6 +182,30 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
             Change(_services.Chat.Options with { UseVoiceInput = value });
         }
     }
+    public SpeechLanguage VoiceLanguage
+    {
+        get => _services.Chat.Options.VoiceLanguage;
+        set
+        {
+            if (value == _services.Chat.Options.VoiceLanguage) return;
+            Change(_services.Chat.Options with { VoiceLanguage = value });
+        }
+    }
+    public SpeechModel VoiceModel
+    {
+        get => _services.Chat.Options.VoiceModel;
+        set
+        {
+            if (value == _services.Chat.Options.VoiceModel) return;
+            Change(_services.Chat.Options with { VoiceModel = value });
+        }
+    }
+    public string VoiceModelDescription => SpeechToTextCatalog.GetDescription(VoiceModel);
+    public string VoiceModelStatus => _services.SpeechToText.IsModelReady(VoiceModel)
+        ? $"{VoiceModel} siap digunakan secara lokal."
+        : $"{VoiceModel} belum diunduh. Model akan diunduh saat voice pertama digunakan.";
+    public bool CanDeleteVoiceModel =>
+        !_services.Assistant.IsBusy && _services.SpeechToText.IsModelReady(VoiceModel);
     public bool UseDesktopActions
     {
         get => _services.Chat.Options.UseDesktopActions;
@@ -224,11 +253,19 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
         if (!CanClearLongTermMemory) return;
         Run(_services.Memory.Clear);
     }
+    private void DeleteSelectedVoiceModel()
+    {
+        bool deleted = _services.SpeechToText.DeleteModel(VoiceModel);
+        if (!deleted)
+            throw new IOException("Model voice sedang digunakan atau tidak dapat dihapus.");
+        Refresh();
+    }
     public void Refresh()
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
         foreach (var command in Commands) command.Refresh();
         RemoveKeyCommand.Refresh(); ClearCommand.Refresh(); LaterCommand.Refresh();
+        DeleteVoiceModelCommand.Refresh();
     }
     public void Dispose() { _lifetime.Cancel(); foreach (var command in Commands) command.Completed -= Refresh; _lifetime.Dispose(); }
 }

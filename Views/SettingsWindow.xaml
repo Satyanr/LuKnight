@@ -250,7 +250,25 @@
                             <StackPanel>
                                 <TextBlock Text="Voice input" Style="{StaticResource CardTitle}"/>
                                 <CheckBox Content="Allow Lu-Knight to use the microphone for push-to-talk" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseVoiceInput, Mode=TwoWay}"/>
-                                <TextBlock Text="Microphone hanya aktif saat tombol mic ditekan. Tidak ada background listening, wake word, atau penyimpanan rekaman suara." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                                <Grid Margin="0,14,0,0" IsEnabled="{Binding Product.UseVoiceInput}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="20"/>
+                                        <ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Speech language" Margin="0,0,0,6"/>
+                                        <ComboBox ItemsSource="{Binding Product.VoiceLanguages}" SelectedItem="{Binding Product.VoiceLanguage, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="Local STT model" Margin="0,0,0,6"/>
+                                        <ComboBox ItemsSource="{Binding Product.VoiceModels}" SelectedItem="{Binding Product.VoiceModel, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Text="{Binding Product.VoiceModelDescription}" Style="{StaticResource Muted}" Margin="0,12,0,0"/>
+                                <TextBlock Text="{Binding Product.VoiceModelStatus}" Foreground="#67E8F9" FontSize="12" Margin="0,6,0,0"/>
+                                <Button Content="Delete selected local model" Command="{Binding Product.DeleteVoiceModelCommand}" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+                                <TextBlock Text="Mengganti model tidak langsung mengunduh file. Model dipasang hanya saat microphone digunakan. Microphone hanya aktif saat push-to-talk; tidak ada background listening atau wake word." Style="{StaticResource Muted}" FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource Card}">

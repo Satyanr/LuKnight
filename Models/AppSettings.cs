@@ -6,6 +6,8 @@ public enum ChatProvider { Gemini, Local }
 public enum ChatLanguage { Automatic, Indonesia, English }
 public enum ResponseLength { Short, Normal, Detailed }
 public enum ResponseStyle { Friendly, Professional, Playful }
+public enum SpeechLanguage { Automatic, Indonesia, English }
+public enum SpeechModel { Tiny, Base }
 public sealed record GeneralSettings(bool StartHidden = false, bool AlwaysOnTop = true);
 public sealed record ChatSettings
 {
@@ -23,6 +25,8 @@ public sealed record ChatSettings
     public bool UseSystemContext { get; init; } = false;
     public bool UseScreenContext { get; init; } = false;
     public bool UseVoiceInput { get; init; } = false;
+    public SpeechLanguage VoiceLanguage { get; init; } = SpeechLanguage.Automatic;
+    public SpeechModel VoiceModel { get; init; } = SpeechModel.Base;
     public bool UseDesktopActions { get; init; } = false;
 }
 public sealed record WindowPlacement(double Left, double Top, double Width, double Height);

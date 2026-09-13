@@ -17,13 +17,16 @@ internal static partial class Program
             _text = text;
         }
 
-        public bool IsModelReady => true;
+        public bool IsModelReady(SpeechModel model) => true;
+
+        public bool DeleteModel(SpeechModel model) => true;
 
         public int Calls { get; private set; }
 
         public Task<SpeechTranscriptionResult>
             TranscribeAsync(
                 VoiceCaptureResult capture,
+                SpeechToTextOptions options,
                 CancellationToken cancellationToken = default)
         {
             cancellationToken
@@ -40,6 +43,23 @@ internal static partial class Program
     private static async Task
         CheckSpeechToTextHardeningAsync()
     {
+        Require(
+            SpeechToTextCatalog.GetLanguageCode(SpeechLanguage.Automatic) == "auto" &&
+            SpeechToTextCatalog.GetLanguageCode(SpeechLanguage.Indonesia) == "id" &&
+            SpeechToTextCatalog.GetLanguageCode(SpeechLanguage.English) == "en",
+            "Speech language mapping is incorrect.");
+
+        Require(
+            SpeechToTextCatalog.GetFileName(SpeechModel.Tiny) == "ggml-tiny.bin" &&
+            SpeechToTextCatalog.GetFileName(SpeechModel.Base) == "ggml-base.bin",
+            "Speech model file mapping is incorrect.");
+
+        ChatSettings defaults = new();
+        Require(
+            defaults.VoiceLanguage == SpeechLanguage.Automatic &&
+            defaults.VoiceModel == SpeechModel.Base,
+            "Voice settings defaults changed unexpectedly.");
+
         var fake =
             new FakeSpeechToTextService(
                 "tolong buka notepad");
@@ -73,7 +93,8 @@ internal static partial class Program
             await services
                 .SpeechToText
                 .TranscribeAsync(
-                    audible);
+                    audible,
+                    new SpeechToTextOptions());
 
         Require(
             result.Text ==
@@ -98,6 +119,38 @@ internal static partial class Program
 
         try
         {
+            string settingsPath = Path.Combine(tempDirectory, "settings.json");
+            var savedSettings = new SettingsService(settingsPath);
+            savedSettings.Update(savedSettings.Current with
+            {
+                Chat = savedSettings.Current.Chat with
+                {
+                    VoiceLanguage = SpeechLanguage.Indonesia,
+                    VoiceModel = SpeechModel.Tiny
+                }
+            });
+            savedSettings.Save();
+            var loadedSettings = new SettingsService(settingsPath);
+            loadedSettings.Load();
+            Require(
+                loadedSettings.Current.Chat.VoiceLanguage == SpeechLanguage.Indonesia &&
+                loadedSettings.Current.Chat.VoiceModel == SpeechModel.Tiny,
+                "Voice language and model settings did not persist.");
+
+            bool invalidVoiceSettingRejected = false;
+            try
+            {
+                SettingsService.Validate(new AppSettings
+                {
+                    Chat = new ChatSettings { VoiceModel = (SpeechModel)99 }
+                });
+            }
+            catch (ArgumentException)
+            {
+                invalidVoiceSettingRejected = true;
+            }
+            Require(invalidVoiceSettingRejected, "Invalid voice model setting was accepted.");
+
             string modelPath =
                 Path.Combine(
                     tempDirectory,
@@ -116,16 +169,16 @@ internal static partial class Program
 
             var local =
                 new LocalWhisperSpeechToTextService(
-                    modelPath);
+                    tempDirectory);
 
             Require(
-                !local.IsModelReady,
+                !local.IsModelReady(SpeechModel.Base),
                 "Corrupt Whisper model was treated as ready.");
 
             await File.WriteAllBytesAsync(modelPath, []);
-            Require(!local.IsModelReady, "Empty model was treated as ready.");
+            Require(!local.IsModelReady(SpeechModel.Base), "Empty model was treated as ready.");
             await File.WriteAllBytesAsync(modelPath, [0x6c, 0x6d, 0x67, 0x67]);
-            Require(!local.IsModelReady, "Truncated model was treated as ready.");
+            Require(!local.IsModelReady(SpeechModel.Base), "Truncated model was treated as ready.");
 
             foreach (var quiet in new[]
             {
@@ -136,20 +189,20 @@ internal static partial class Program
             })
             {
                 bool rejected = false;
-                try { await local.TranscribeAsync(quiet); }
+                try { await local.TranscribeAsync(quiet, new SpeechToTextOptions()); }
                 catch (NoSpeechDetectedException) { rejected = true; }
                 Require(rejected, "Quiet or short WAV reached model loading.");
             }
 
             bool emptyRejected = false;
-            try { await local.TranscribeAsync(audible with { WavData = [] }); }
+            try { await local.TranscribeAsync(audible with { WavData = [] }, new SpeechToTextOptions()); }
             catch (InvalidDataException) { emptyRejected = true; }
             Require(emptyRejected, "Empty WAV was accepted.");
 
             byte[] wrongRate = (byte[])audible.WavData.Clone();
             BinaryPrimitives.WriteInt32LittleEndian(wrongRate.AsSpan(24, 4), 8000);
             bool formatRejected = false;
-            try { await local.TranscribeAsync(audible with { WavData = wrongRate }); }
+            try { await local.TranscribeAsync(audible with { WavData = wrongRate }, new SpeechToTextOptions()); }
             catch (InvalidDataException) { formatRejected = true; }
             Require(formatRejected, "Unsupported WAV sample rate was accepted.");
             Require(new FileInfo(modelPath).Length == 4 && !File.Exists(modelPath + ".download"),
@@ -165,7 +218,8 @@ internal static partial class Program
             {
                 await local
                     .TranscribeAsync(
-                        silence);
+                        silence,
+                        new SpeechToTextOptions());
             }
             catch (
                 NoSpeechDetectedException)
@@ -190,6 +244,7 @@ internal static partial class Program
                 await local
                     .TranscribeAsync(
                         audible,
+                        new SpeechToTextOptions(),
                         cancelled.Token);
             }
             catch (
@@ -219,7 +274,8 @@ internal static partial class Program
             {
                 await local
                     .TranscribeAsync(
-                        invalidCapture);
+                        invalidCapture,
+                        new SpeechToTextOptions());
             }
             catch (
                 InvalidDataException)
@@ -231,6 +287,28 @@ internal static partial class Program
             Require(
                 invalidAudioRejected,
                 "Invalid WAV data was accepted.");
+
+            string tinyPath = Path.Combine(tempDirectory, "ggml-tiny.bin");
+            await using (FileStream tiny = new(tinyPath, FileMode.Create, FileAccess.Write))
+            {
+                tiny.SetLength(2 * 1024 * 1024);
+                tiny.Position = 0;
+                await tiny.WriteAsync(new byte[] { 0x6c, 0x6d, 0x67, 0x67 });
+            }
+            await using (FileStream baseModel = new(modelPath, FileMode.Create, FileAccess.Write))
+            {
+                baseModel.SetLength(2 * 1024 * 1024);
+                baseModel.Position = 0;
+                await baseModel.WriteAsync(new byte[] { 0x6c, 0x6d, 0x67, 0x67 });
+            }
+            Require(
+                local.IsModelReady(SpeechModel.Tiny) && local.IsModelReady(SpeechModel.Base),
+                "Valid local model fixtures were not recognized.");
+            Require(
+                local.DeleteModel(SpeechModel.Tiny) &&
+                !File.Exists(tinyPath) &&
+                File.Exists(modelPath),
+                "Deleting Tiny removed the wrong selected model.");
         }
         finally
         {

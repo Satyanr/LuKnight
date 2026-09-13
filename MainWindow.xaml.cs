@@ -819,6 +819,11 @@ public partial class MainWindow : Window
                     .VoiceCapture
                     .StopAsync(transcriptionCts.Token);
 
+            SpeechToTextOptions speechOptions =
+                new(
+                    Services.Chat.Options.VoiceModel,
+                    Services.Chat.Options.VoiceLanguage);
+
             _isVoiceRecording = false;
 
             ChatPanelControl
@@ -828,14 +833,17 @@ public partial class MainWindow : Window
                 .SetBusy(true);
 
             ChatPanelControl.SetStatus(
-                Services.SpeechToText.IsModelReady
+                Services.SpeechToText.IsModelReady(speechOptions.Model)
                     ? "Mengubah suara menjadi teks..."
                     : "Menyiapkan model voice lokal pertama kali...",
                 ChatStatus.Busy);
 
             SpeechTranscriptionResult transcript =
                 await Task.Run(
-                    () => Services.SpeechToText.TranscribeAsync(result, transcriptionCts.Token),
+                    () => Services.SpeechToText.TranscribeAsync(
+                        result,
+                        speechOptions,
+                        transcriptionCts.Token),
                     transcriptionCts.Token);
 
             transcriptionCts.Token.ThrowIfCancellationRequested();
