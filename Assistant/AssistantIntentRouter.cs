@@ -67,6 +67,20 @@ public sealed class AssistantIntentRouter
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)));
         }
 
+        DesktopUiActionCommand? uiAction = DesktopUiActionCommandParser.Parse(input);
+        if (uiAction is not null)
+        {
+            return AssistantIntent.UseAction(new ActionInvocation(
+                BuiltInActionNames.DesktopInvokeUiControl,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["window"] = uiAction.WindowQuery,
+                    ["type"] = uiAction.ControlType,
+                    ["query"] = uiAction.Query
+                },
+                IncludeInContext: false));
+        }
+
         DesktopUiQueryCommand? uiQuery = DesktopUiQueryCommandParser.Parse(input);
         if (uiQuery is not null)
         {

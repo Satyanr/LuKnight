@@ -61,6 +61,11 @@ public sealed class AssistantController
             new OpenDesktopApplicationAction(() => _chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor(), IntentRouter.DesktopApps),
             new FocusDesktopApplicationAction(() => _chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor(), IntentRouter.DesktopApps),
             new FocusDesktopWindowAction(() => _chat.Options.UseDesktopActions, IntentRouter.DesktopWindows, new WindowsDesktopWindowActionExecutor()),
+            new InvokeDesktopUiControlAction(
+                () => _chat.Options.UseDesktopActions,
+                IntentRouter.DesktopWindows,
+                new WindowsDesktopUiAutomationReader(),
+                new WindowsDesktopUiActionExecutor()),
             new OpenExplorerFolderAction(() => _chat.Options.UseDesktopActions, new WindowsExplorerActionExecutor()),
             new SearchExplorerAction(() => _chat.Options.UseDesktopActions, new WindowsExplorerActionExecutor())
         });
@@ -123,9 +128,10 @@ public sealed class AssistantController
 
             if (intent.Kind == AssistantIntentKind.Action)
             {
-                return PrepareAction(
+                return await PrepareActionAsync(
                     request,
-                    intent.Action ?? throw new InvalidOperationException("Action intent tidak memiliki invocation."));
+                    intent.Action ?? throw new InvalidOperationException("Action intent tidak memiliki invocation."),
+                    cancellationToken);
             }
 
             return await SendConversationAsync(
@@ -139,11 +145,14 @@ public sealed class AssistantController
         }
     }
 
-    private AssistantReply PrepareAction(AssistantRequest request, ActionInvocation invocation)
+    private async Task<AssistantReply> PrepareActionAsync(
+        AssistantRequest request,
+        ActionInvocation invocation,
+        CancellationToken cancellationToken)
     {
-        ActionPreparationResult prepared = Actions.Prepare(invocation);
-        bool includeInContext = prepared.Action?.IncludeInContext ??
-            invocation.Name != BuiltInActionNames.DesktopFocusWindow;
+        ActionPreparationResult prepared =
+            await Actions.PrepareAsync(invocation, cancellationToken);
+        bool includeInContext = prepared.Action?.IncludeInContext ?? invocation.IncludeInContext;
         Conversation.AddUser(request, includeInContext);
         if (!prepared.Success || prepared.Action is null)
         {

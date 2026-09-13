@@ -20,7 +20,8 @@ public sealed record ContextInvocation(
 
 public sealed record ActionInvocation(
     string Name,
-    IReadOnlyDictionary<string, string> Arguments);
+    IReadOnlyDictionary<string, string> Arguments,
+    bool IncludeInContext = true);
 
 public sealed record AssistantIntent(
     AssistantIntentKind Kind,
@@ -71,6 +72,7 @@ public static class BuiltInActionNames
     public const string DesktopOpenApplication = "desktop.open_application";
     public const string DesktopFocusApplication = "desktop.focus_application";
     public const string DesktopFocusWindow = "desktop.focus_window";
+    public const string DesktopInvokeUiControl = "desktop.invoke_ui_control";
     public const string DesktopOpenFolder = "desktop.open_folder";
     public const string DesktopSearchExplorer = "desktop.search_explorer";
 }

@@ -64,7 +64,8 @@ public sealed class LocalDesktopCommandRouter
         {
             return AssistantIntent.UseAction(new ActionInvocation(
                 BuiltInActionNames.DesktopFocusWindow,
-                new Dictionary<string, string> { ["windowId"] = window.Id }));
+                new Dictionary<string, string> { ["windowId"] = window.Id },
+                IncludeInContext: false));
         }
 
         if (result.Ambiguous)

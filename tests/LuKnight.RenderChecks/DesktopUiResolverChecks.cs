@@ -6,6 +6,22 @@ using LuKnight.Services;
 
 internal static partial class Program
 {
+    private sealed class FakeUiActionExecutor : IDesktopUiActionExecutor
+    {
+        public int Calls;
+
+        public Task<DesktopActionResult> InvokeAsync(
+            DesktopWindowTarget window,
+            string controlPath,
+            string expectedFingerprint,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Calls++;
+            return Task.FromResult(new DesktopActionResult(true, "Button invoked."));
+        }
+    }
+
     private static async Task CheckDesktopUiResolverAsync()
     {
         DesktopWindowTarget window = new(
@@ -24,6 +40,11 @@ internal static partial class Program
         DesktopUiControlResolution save =
             DesktopUiControlResolver.Resolve(snapshot, "Save", "Button");
         Require(save.Match?.Name == "Save", "Exact button was not resolved.");
+        Require(
+            DesktopUiNodeIdentity.Fingerprint(snapshot.Nodes[0]) ==
+            DesktopUiNodeIdentity.Fingerprint(
+                snapshot.Nodes[0] with { Bounds = new Rect(20, 30, 80, 40) }),
+            "Control identity changed when only bounds changed.");
 
         DesktopUiControlResolution search =
             DesktopUiControlResolver.Resolve(snapshot, "search", "textbox");
@@ -109,5 +130,74 @@ internal static partial class Program
             assistant.Conversation.GetRecentContext().Count == 0,
             "UI control metadata leaked into Gemini short-term context.");
         Require(reply.ActionProposal is null, "Read-only UI inspection created an action proposal.");
+
+        AssistantIntent click = router.Route("klik tombol Save di window Notepad");
+        Require(
+            click.Kind == AssistantIntentKind.Action &&
+            click.Action?.Name == BuiltInActionNames.DesktopInvokeUiControl &&
+            click.Action.IncludeInContext == false,
+            "UI button invoke did not route privately.");
+        Require(
+            router.Route("klik textbox password di window Notepad").Kind !=
+                AssistantIntentKind.Action,
+            "Non-button/protected UI command became executable.");
+
+        var executor = new FakeUiActionExecutor();
+        var action = new InvokeDesktopUiControlAction(
+            () => true,
+            catalog,
+            fakeUi,
+            executor);
+        fakeUi.Snapshot = snapshot;
+        ActionPreparationResult prepared = await action.PrepareAsync(click.Action!);
+        Require(
+            prepared.Success && prepared.Action is not null && !prepared.Action.IncludeInContext,
+            "UI button action was not prepared safely.");
+        ActionExecutionResult executed = await action.ExecuteAsync(prepared.Action!);
+        Require(
+            executed.Success && executor.Calls == 1,
+            "Confirmed UI button action did not execute.");
+
+        fakeUi.Snapshot = snapshot;
+        ActionPreparationResult stalePrepared = await action.PrepareAsync(click.Action!);
+        fakeUi.Snapshot = snapshot with
+        {
+            Nodes = snapshot.Nodes.Select(x =>
+                x.Name == "Save" ? x with { Name = "Different Button" } : x).ToArray()
+        };
+        ActionExecutionResult stale = await action.ExecuteAsync(stalePrepared.Action!);
+        Require(
+            !stale.Success && executor.Calls == 1,
+            "Changed UI control executed after confirmation.");
+
+        fakeUi.Snapshot = snapshot;
+        var actionRouter = new AssistantActionRouter(new IAssistantAction[] { action });
+        var actionAssistant = new AssistantController(
+            chat,
+            intentRouter: router,
+            tools: tools,
+            actions: actionRouter);
+        AssistantReply proposal = await actionAssistant.SendAsync(
+            new AssistantRequest("klik tombol Save di window Notepad"));
+        Require(
+            proposal.Backend == AssistantBackend.Local &&
+            proposal.ActionProposal is not null &&
+            handler.Calls == 0 &&
+            executor.Calls == 1,
+            "UI button confirmation gate or zero-Gemini routing failed.");
+        Require(
+            actionAssistant.Conversation.GetRecentContext().Count == 0,
+            "UI button preparation leaked into Gemini short-term context.");
+
+        AssistantReply confirmed = await actionAssistant.ConfirmActionAsync(
+            proposal.ActionProposal!.Id);
+        Require(
+            confirmed.Backend == AssistantBackend.Local &&
+            executor.Calls == 2 &&
+            handler.Calls == 0,
+            "Confirmed UI button action did not remain local or execute once.");
+        Require(
+            actionAssistant.Conversation.GetRecentContext().Count == 0,
+            "Confirmed UI button result leaked into Gemini short-term context.");
     }
 }

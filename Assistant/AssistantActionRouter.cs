@@ -35,6 +35,22 @@ public sealed class AssistantActionRouter
         return action.Prepare(invocation);
     }
 
+    public Task<ActionPreparationResult> PrepareAsync(
+        ActionInvocation invocation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(invocation);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!_actions.TryGetValue(invocation.Name, out IAssistantAction? action))
+        {
+            return Task.FromResult(
+                new ActionPreparationResult(false, "Tindakan itu belum tersedia."));
+        }
+
+        return action.PrepareAsync(invocation, cancellationToken);
+    }
+
     public Task<ActionExecutionResult> ExecuteAsync(PreparedAssistantAction action, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);

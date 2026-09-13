@@ -22,6 +22,14 @@ public interface IAssistantAction
 
     ActionPreparationResult Prepare(ActionInvocation invocation);
 
+    Task<ActionPreparationResult> PrepareAsync(
+        ActionInvocation invocation,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(Prepare(invocation));
+    }
+
     Task<ActionExecutionResult> ExecuteAsync(
         PreparedAssistantAction action,
         CancellationToken cancellationToken = default);
