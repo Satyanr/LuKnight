@@ -10,6 +10,8 @@ public sealed class AppServices
     public AssistantContextProvider Context { get; }
     public AssistantIntentRouter IntentRouter { get; }
     public IDesktopAppCatalog DesktopApps { get; }
+    public IDesktopWindowTargetCatalog DesktopWindows { get; }
+    public IDesktopWindowActionExecutor WindowActions { get; }
     public LocalDesktopCommandRouter DesktopCommands { get; }
     public IExplorerActionExecutor ExplorerActions { get; }
     public AssistantToolRouter Tools { get; }
@@ -30,7 +32,9 @@ public sealed class AppServices
         ITextToSpeechService? textToSpeech = null,
         IDesktopAppCatalog? desktopApps = null,
         IDesktopActionExecutor? desktopExecutor = null,
-        IExplorerActionExecutor? explorerExecutor = null)
+        IExplorerActionExecutor? explorerExecutor = null,
+        IDesktopWindowTargetCatalog? desktopWindows = null,
+        IDesktopWindowActionExecutor? windowExecutor = null)
     {
         Settings = settings ?? new();
         Chat = new(credentials ?? new SecureCredentialService(), Settings.Current.Chat);
@@ -40,8 +44,10 @@ public sealed class AppServices
         Memory = memory ?? new();
         Context = context ?? new();
         DesktopApps = desktopApps ?? DesktopAppCatalogService.Shared;
+        DesktopWindows = desktopWindows ?? new DesktopWindowTargetService();
+        WindowActions = windowExecutor ?? new WindowsDesktopWindowActionExecutor();
         DesktopAppIndexWarmup.Start(DesktopApps);
-        DesktopCommands = new LocalDesktopCommandRouter(DesktopApps);
+        DesktopCommands = new LocalDesktopCommandRouter(DesktopApps, DesktopWindows);
         IntentRouter = new AssistantIntentRouter(DesktopCommands);
         ExplorerActions = explorerExecutor ?? new WindowsExplorerActionExecutor();
         desktopExecutor ??= new WindowsDesktopActionExecutor();
@@ -62,6 +68,7 @@ public sealed class AppServices
         {
             new OpenDesktopApplicationAction(() => Chat.Options.UseDesktopActions, desktopExecutor, DesktopApps),
             new FocusDesktopApplicationAction(() => Chat.Options.UseDesktopActions, desktopExecutor, DesktopApps),
+            new FocusDesktopWindowAction(() => Chat.Options.UseDesktopActions, DesktopWindows, WindowActions),
             new OpenExplorerFolderAction(() => Chat.Options.UseDesktopActions, ExplorerActions),
             new SearchExplorerAction(() => Chat.Options.UseDesktopActions, ExplorerActions)
         });

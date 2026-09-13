@@ -64,6 +64,12 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} voice UX checks.");
             return;
         }
+        if (args.Contains("--window-targeting"))
+        {
+            Task.Run(CheckWindowTargetingAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} window targeting checks.");
+            return;
+        }
         if (args.Contains("--tts"))
         {
             Task.Run(CheckTextToSpeechAsync).GetAwaiter().GetResult();

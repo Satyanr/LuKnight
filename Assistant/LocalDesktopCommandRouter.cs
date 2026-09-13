@@ -6,18 +6,25 @@ namespace LuKnight.Assistant;
 public sealed class LocalDesktopCommandRouter
 {
     private readonly IDesktopAppCatalog _apps;
-    public LocalDesktopCommandRouter(IDesktopAppCatalog apps) => _apps = apps ?? throw new ArgumentNullException(nameof(apps));
+    private readonly IDesktopWindowTargetCatalog _windows;
+    public LocalDesktopCommandRouter(IDesktopAppCatalog apps, IDesktopWindowTargetCatalog? windows = null)
+    {
+        _apps = apps ?? throw new ArgumentNullException(nameof(apps));
+        _windows = windows ?? new DesktopWindowTargetService();
+    }
     public IDesktopAppCatalog Applications => _apps;
 
     private static readonly string[] OpenPrefixes = ["bukakan aplikasi", "bukain aplikasi", "buka aplikasi", "open app",
         "bukakan", "bukain", "buka", "jalankan", "jalanin", "launch", "open", "start"];
     private static readonly string[] FocusPrefixes = ["fokuskan ke", "fokus ke", "fokuskan", "fokus", "pindah ke", "balik ke", "switch to", "focus app", "focus"];
+    private static readonly string[] FocusWindowPrefixes = ["fokuskan window", "fokus window", "pindah ke window", "switch to window", "focus window"];
 
     public AssistantIntent? TryRoute(string input)
     {
         string text = NormalizeCommand(input);
         if (text.Length == 0) return null;
         if (TrySearch(text) is { } search) return search;
+        if (Extract(text, FocusWindowPrefixes) is { } windowTarget) return Window(windowTarget);
         if (Extract(text, FocusPrefixes) is { } focus) return Application(focus, true);
         if (Extract(text, OpenPrefixes) is not { } target) return null;
 
@@ -42,6 +49,28 @@ public sealed class LocalDesktopCommandRouter
         if (result.Ambiguous)
             return AssistantIntent.RespondLocal($"Aku menemukan beberapa aplikasi yang mirip: {string.Join(", ", result.Alternatives.Take(3).Select(a => a.DisplayName))}. Sebutkan nama yang lebih spesifik.");
         return AssistantIntent.RespondLocal($"Aku tidak menemukan aplikasi \"{target}\" di aplikasi Windows yang terdaftar.");
+    }
+
+    private AssistantIntent Window(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return AssistantIntent.RespondLocal("Sebutkan window yang ingin difokuskan.");
+
+        DesktopWindowResolution result = _windows.Resolve(query);
+        if (result.Found && result.Match is { } window)
+        {
+            return AssistantIntent.UseAction(new ActionInvocation(
+                BuiltInActionNames.DesktopFocusWindow,
+                new Dictionary<string, string> { ["windowId"] = window.Id }));
+        }
+
+        if (result.Ambiguous)
+        {
+            string alternatives = string.Join(", ", result.Alternatives.Take(3).Select(x => x.DisplayLabel));
+            return AssistantIntent.RespondLocal($"Aku menemukan beberapa window yang cocok: {alternatives}. Sebutkan judul yang lebih spesifik.");
+        }
+
+        return AssistantIntent.RespondLocal($"Aku tidak menemukan window yang cocok dengan \"{query}\".");
     }
 
     private static AssistantIntent Folder(string target) => ExplorerLocationCatalog.TryResolve(target, out var location)
