@@ -105,7 +105,7 @@ internal static partial class Program
         Require(
             services.Assistant
                 .Conversation.Count == 0,
-            "Phase 9B routed transcript into Assistant before Phase 9C.");
+            "Speech-to-Text service routed into Assistant by itself.");
 
         string tempDirectory =
             Path.Combine(

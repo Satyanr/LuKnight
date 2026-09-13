@@ -646,38 +646,48 @@ public partial class MainWindow : Window
             return;
 
         if (_isVoiceRecording)
+        {
             await StopVoiceRecordingAsync();
+            return;
+        }
+
+        await SendAssistantMessageAsync(message, AssistantInputSource.Chat);
+    }
+
+    private async Task SendAssistantMessageAsync(
+        string message,
+        AssistantInputSource source)
+    {
+        if (_isSending)
+            return;
+
+        string normalized = message.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return;
 
         _isSending = true;
-
-        _behaviorController?
-            .NotifyUserInteraction();
+        _behaviorController?.NotifyUserInteraction();
 
         using var requestCts = new CancellationTokenSource();
         _requestCts = requestCts;
 
-        ChatPanelControl.AddUserMessage(message);
+        ChatPanelControl.AddUserMessage(normalized);
         ChatPanelControl.SetBusy(true);
-        _behaviorController?
-            .SetThinking(true);
-
-        if (_usesGemini)
-        {
-            ChatPanelControl.SetStatus("Lu-Knight sedang berpikir...", ChatStatus.Busy);
-        }
+        _behaviorController?.SetThinking(true);
+        ChatPanelControl.SetStatus(
+            source == AssistantInputSource.Voice
+                ? "Memproses perintah suara..."
+                : "Lu-Knight sedang memproses...",
+            ChatStatus.Busy);
 
         try
         {
-            AssistantReply reply =
-                await Services.Assistant.SendAsync(
-                    new AssistantRequest(message, AssistantInputSource.Chat),
-                    requestCts.Token);
+            AssistantReply reply = await Services.Assistant.SendAsync(
+                new AssistantRequest(normalized, source),
+                requestCts.Token);
 
-            _behaviorController?
-                .SetThinking(false);
-
+            _behaviorController?.SetThinking(false);
             ReactToAssistantEmotion(reply.Emotion);
-
             ChatPanelControl.AddAssistantMessage(reply.Text);
 
             if (reply.ActionProposal is { } proposal)
@@ -700,48 +710,46 @@ public partial class MainWindow : Window
                 ChatPanelControl.AddAssistantMessage(actionReply.Text);
                 ChatPanelControl.SetStatus(
                     actionReply.Text,
-                    actionReply.Emotion == AssistantEmotion.Confused ? ChatStatus.Error : ChatStatus.Local);
+                    actionReply.Emotion == AssistantEmotion.Confused
+                        ? ChatStatus.Error
+                        : ChatStatus.Local);
             }
             else
             {
-                ChatPanelControl.SetStatus(Services.Chat.Status,
-                    reply.Backend == AssistantBackend.Gemini ? ChatStatus.Connected : ChatStatus.Local);
+                ChatPanelControl.SetStatus(
+                    Services.Chat.Status,
+                    reply.Backend == AssistantBackend.Gemini
+                        ? ChatStatus.Connected
+                        : ChatStatus.Local);
             }
         }
         catch (OperationCanceledException)
         {
-            _behaviorController?
-                .SetThinking(false);
+            _behaviorController?.SetThinking(false);
             ChatPanelControl.AddAssistantMessage("Permintaan dibatalkan.");
-
-            if (_usesGemini)
-                ChatPanelControl.SetStatus("Gemini • dibatalkan", ChatStatus.Ready);
+            ChatPanelControl.SetStatus(
+                source == AssistantInputSource.Voice
+                    ? "Voice request dibatalkan."
+                    : "Permintaan dibatalkan.",
+                ChatStatus.Ready);
         }
         catch (Exception ex)
         {
-            _behaviorController?
-                .SetThinking(false);
-
-            _behaviorController?
-                .ReactConfused();
+            _behaviorController?.SetThinking(false);
+            _behaviorController?.ReactConfused();
             ChatPanelControl.AddAssistantMessage($"Terjadi kesalahan: {ex.Message}");
-
-            ChatPanelControl.SetStatus(
-                _usesGemini ? "Gemini • error" : "Local mode • error",
-                ChatStatus.Error);
+            ChatPanelControl.SetStatus("Lu-Knight • error", ChatStatus.Error);
         }
         finally
         {
-            _behaviorController?
-                .SetThinking(false);
-
+            _behaviorController?.SetThinking(false);
             ChatPanelControl.SetBusy(false);
-            RefreshVoiceAvailability();
 
             if (ReferenceEquals(_requestCts, requestCts))
                 _requestCts = null;
 
             _isSending = false;
+            RefreshVoiceAvailability();
         }
     }
 
@@ -809,6 +817,7 @@ public partial class MainWindow : Window
         RefreshVoiceAvailability();
 
         CancellationTokenSource? transcriptionCts = null;
+        string? voiceTranscript = null;
 
         try
         {
@@ -848,9 +857,7 @@ public partial class MainWindow : Window
 
             transcriptionCts.Token.ThrowIfCancellationRequested();
 
-            ChatPanelControl
-                .SetDraftMessage(
-                    transcript.Text);
+            voiceTranscript = transcript.Text;
 
             ChatPanelControl.SetStatus(
                 $"Transkripsi siap · {result.Duration.TotalSeconds:0.0}s",
@@ -895,6 +902,13 @@ public partial class MainWindow : Window
                 .SetBusy(false);
 
             RefreshVoiceAvailability();
+        }
+
+        if (!string.IsNullOrWhiteSpace(voiceTranscript))
+        {
+            await SendAssistantMessageAsync(
+                voiceTranscript,
+                AssistantInputSource.Voice);
         }
     }
 
