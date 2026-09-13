@@ -1,5 +1,7 @@
 using LuKnight.Assistant;
+using LuKnight.Models;
 using LuKnight.Services;
+using System.Net.Http;
 
 internal static partial class Program
 {
@@ -96,6 +98,12 @@ internal static partial class Program
         Require(ambiguous.Kind == AssistantIntentKind.LocalResponse && !ambiguous.IncludeLocalResponseInContext,
             "Window ambiguity details were allowed into Gemini context.");
 
+        AssistantIntent emptyWindow = router.TryRoute("fokus window")!;
+        Require(
+            emptyWindow.Kind == AssistantIntentKind.LocalResponse &&
+            !emptyWindow.IncludeLocalResponseInContext,
+            "Empty exact-window request was allowed into Gemini context.");
+
         DesktopWindowTarget original = catalog.Windows[0];
         catalog.Windows[0] = original with { Title = "Different Gmail Window" };
         ActionExecutionResult changed = await action.ExecuteAsync(prepared.Action!);
@@ -107,9 +115,46 @@ internal static partial class Program
         Require(confirmed.Success && executor.FocusCalls == 1 && executor.LastTarget?.Id == original.Id,
             "Unchanged window target did not execute after confirmation.");
 
-        var missing = router.TryRoute("fokus window missing");
-        Require(missing?.Kind == AssistantIntentKind.LocalResponse,
-            "Missing window target did not remain local.");
+        var missing = router.TryRoute("fokus window Private Payroll Q3");
+        Require(
+            missing?.Kind == AssistantIntentKind.LocalResponse &&
+            missing.IncludeLocalResponseInContext == false,
+            "Missing exact-window query was allowed into Gemini context.");
+
+        var privacyChat = new ChatCoordinator(
+            new FakeCredentials { Key = "fake-window-privacy-key" },
+            new ChatSettings
+            {
+                Provider = ChatProvider.Gemini,
+                UseDesktopActions = true
+            },
+            () => null,
+            new HttpClient(new FakeHttp((_, _) =>
+                throw new InvalidOperationException("Gemini must not be called."))));
+        var privacyRouter = new AssistantIntentRouter(router);
+        var privacyActions = new AssistantActionRouter(new IAssistantAction[]
+        {
+            new FocusDesktopWindowAction(() => true, catalog, executor)
+        });
+        var privacyAssistant = new AssistantController(
+            privacyChat,
+            intentRouter: privacyRouter,
+            actions: privacyActions);
+
+        AssistantReply proposal = await privacyAssistant.SendAsync(
+            new AssistantRequest("fokus window Gmail"));
+        Require(
+            proposal.ActionProposal is not null,
+            "Window privacy test did not create proposal.");
+
+        AssistantReply cancelledReply = privacyAssistant.CancelAction(
+            proposal.ActionProposal!.Id);
+        Require(
+            cancelledReply.Backend == AssistantBackend.Local,
+            "Window cancellation was not local.");
+        Require(
+            privacyAssistant.Conversation.GetRecentContext().Count == 0,
+            "Exact-window interaction leaked into Gemini short-term context.");
 
         var conversation = new ConversationManager();
         conversation.AddAssistant("chrome — Gmail - Work", includeInContext: false);

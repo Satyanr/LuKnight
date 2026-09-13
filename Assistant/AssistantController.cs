@@ -143,7 +143,7 @@ public sealed class AssistantController
         Conversation.AddUser(request, includeInContext);
         if (!prepared.Success || prepared.Action is null)
         {
-            Conversation.AddAssistant(prepared.Message, prepared.Action?.IncludeInContext ?? true);
+            Conversation.AddAssistant(prepared.Message, includeInContext);
             return new AssistantReply(prepared.Message, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Confused);
         }
 
@@ -197,12 +197,13 @@ public sealed class AssistantController
 
         try
         {
-            if (_pendingAction is null || _pendingAction.Id != proposalId)
+            PendingAssistantAction? pending = _pendingAction;
+            if (pending is null || pending.Id != proposalId)
                 throw new InvalidOperationException("Konfirmasi tindakan tidak lagi valid.");
 
             _pendingAction = null;
             const string message = "Tindakan desktop dibatalkan.";
-            Conversation.AddAssistant(message);
+            Conversation.AddAssistant(message, pending.Action.IncludeInContext);
             return new AssistantReply(message, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Neutral);
         }
         finally

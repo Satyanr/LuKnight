@@ -55,7 +55,9 @@ public sealed class LocalDesktopCommandRouter
     private AssistantIntent Window(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
-            return AssistantIntent.RespondLocal("Sebutkan window yang ingin difokuskan.");
+            return AssistantIntent.RespondLocal(
+                "Sebutkan window yang ingin difokuskan.",
+                includeInContext: false);
 
         DesktopWindowResolution result = _windows.Resolve(query);
         if (result.Found && result.Match is { } window)
@@ -71,7 +73,9 @@ public sealed class LocalDesktopCommandRouter
             return AssistantIntent.RespondLocal($"Aku menemukan beberapa window yang cocok: {alternatives}. Sebutkan judul yang lebih spesifik.", includeInContext: false);
         }
 
-        return AssistantIntent.RespondLocal($"Aku tidak menemukan window yang cocok dengan \"{query}\".");
+        return AssistantIntent.RespondLocal(
+            $"Aku tidak menemukan window yang cocok dengan \"{query}\".",
+            includeInContext: false);
     }
 
     private static AssistantIntent Folder(string target) => ExplorerLocationCatalog.TryResolve(target, out var location)
