@@ -37,6 +37,13 @@ internal static partial class Program
         {
             string file = Path.Combine(directory, "settings.json"); var settings = new SettingsService(file); settings.Load();
             Require(settings.Current == new AppSettings(), "Fresh configuration is not default");
+            ChatSettings defaults = new();
+            Require(defaults.TextToSpeechMode == TextToSpeechMode.VoiceRequestsOnly && defaults.TextToSpeechRate == 0 && defaults.TextToSpeechVolume == 100 && defaults.TextToSpeechVoice == string.Empty,
+                "TTS defaults changed unexpectedly.");
+            bool invalidRateRejected = false;
+            try { SettingsService.Validate(new AppSettings { Chat = new ChatSettings { TextToSpeechRate = 11 } }); }
+            catch (ArgumentException) { invalidRateRejected = true; }
+            Require(invalidRateRejected, "Invalid TTS rate was accepted.");
             var customized = settings.Current with
             {
                 General = new(true, false), Behavior = new() { Activity = ActivityLevel.Active, Speed = MovementSpeed.Fast, LookAtCursor = false },

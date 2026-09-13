@@ -23,6 +23,7 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
         CheckCommand = new(async () => { _deferred = false; await services.Updates.CheckForUpdate(false, _lifetime.Token); }, () => !services.Updates.IsBusy);
         DownloadCommand = new(async () => { _deferred = false; await services.Updates.DownloadUpdate(_lifetime.Token); }, () => CanDownload);
         InstallCommand = new(async () => { await services.Updates.InstallUpdate(_safeToInstall, _save, _shutdown, _lifetime.Token); }, () => CanInstall);
+        PreviewVoiceCommand = new(PreviewVoiceAsync, () => !_services.Assistant.IsBusy && !_services.TextToSpeech.IsSpeaking);
         foreach (var command in Commands) command.Completed += Refresh;
         RemoveKeyCommand = new(() => Run(services.Chat.RemoveKey), () => CanEditChat);
         ClearCommand = new(() => Run(_clear), () => CanEditChat);
@@ -34,18 +35,30 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
     public AsyncSettingsCommand CheckCommand { get; }
     public AsyncSettingsCommand DownloadCommand { get; }
     public AsyncSettingsCommand InstallCommand { get; }
+    public AsyncSettingsCommand PreviewVoiceCommand { get; }
     public SettingsCommand RemoveKeyCommand { get; }
     public SettingsCommand ClearCommand { get; }
     public SettingsCommand SaveCommand { get; }
     public SettingsCommand LaterCommand { get; }
     public SettingsCommand DeleteVoiceModelCommand { get; }
-    private AsyncSettingsCommand[] Commands => [TestCommand, CheckCommand, DownloadCommand, InstallCommand];
+    private AsyncSettingsCommand[] Commands => [TestCommand, CheckCommand, DownloadCommand, InstallCommand, PreviewVoiceCommand];
     public Array Providers => Enum.GetValues<ChatProvider>();
     public Array Languages => Enum.GetValues<ChatLanguage>();
     public Array Lengths => Enum.GetValues<ResponseLength>();
     public Array Styles => Enum.GetValues<ResponseStyle>();
     public Array VoiceLanguages => Enum.GetValues<SpeechLanguage>();
     public Array VoiceModels => Enum.GetValues<SpeechModel>();
+    public Array TextToSpeechModes => Enum.GetValues<TextToSpeechMode>();
+    private const string DefaultVoiceChoice = "Windows default";
+    public IReadOnlyList<string> TextToSpeechVoices
+    {
+        get
+        {
+            List<string> voices = [DefaultVoiceChoice];
+            voices.AddRange(_services.TextToSpeech.GetInstalledVoices());
+            return voices;
+        }
+    }
     public bool CanEditChat => !_services.Assistant.IsBusy;
     public string CredentialStatus => _services.Chat.CredentialStatus;
     public string ChatStatus => _message ?? _services.Chat.Status;
@@ -201,6 +214,41 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
         }
     }
     public string VoiceModelDescription => SpeechToTextCatalog.GetDescription(VoiceModel);
+    public string TextToSpeechVoice
+    {
+        get
+        {
+            string voice = _services.Chat.Options.TextToSpeechVoice;
+            return string.IsNullOrWhiteSpace(voice) ? DefaultVoiceChoice : voice;
+        }
+        set
+        {
+            string stored = string.Equals(value, DefaultVoiceChoice, StringComparison.Ordinal)
+                ? string.Empty
+                : value ?? string.Empty;
+            if (stored == _services.Chat.Options.TextToSpeechVoice) return;
+            Change(_services.Chat.Options with { TextToSpeechVoice = stored });
+        }
+    }
+    public TextToSpeechMode TextToSpeechMode
+    {
+        get => _services.Chat.Options.TextToSpeechMode;
+        set
+        {
+            if (value == _services.Chat.Options.TextToSpeechMode) return;
+            Change(_services.Chat.Options with { TextToSpeechMode = value });
+        }
+    }
+    public int TextToSpeechRate
+    {
+        get => _services.Chat.Options.TextToSpeechRate;
+        set => Change(_services.Chat.Options with { TextToSpeechRate = value });
+    }
+    public int TextToSpeechVolume
+    {
+        get => _services.Chat.Options.TextToSpeechVolume;
+        set => Change(_services.Chat.Options with { TextToSpeechVolume = value });
+    }
     public string VoiceModelStatus => _services.SpeechToText.IsModelReady(VoiceModel)
         ? $"{VoiceModel} siap digunakan secara lokal."
         : $"{VoiceModel} belum diunduh. Model akan diunduh saat voice pertama digunakan.";
@@ -259,6 +307,12 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
         if (!deleted)
             throw new IOException("Model voice sedang digunakan atau tidak dapat dihapus.");
         Refresh();
+    }
+    private async Task PreviewVoiceAsync()
+    {
+        string voice = _services.Chat.Options.TextToSpeechVoice;
+        TextToSpeechOptions options = new(voice, TextToSpeechRate, TextToSpeechVolume);
+        await _services.TextToSpeech.SpeakAsync("Halo, saya Lu-Knight.", options, _lifetime.Token);
     }
     public void Refresh()
     {

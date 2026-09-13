@@ -1,13 +1,22 @@
 using System.Speech.Synthesis;
+using System.Linq;
 
 namespace LuKnight.Services;
+
+public sealed record TextToSpeechOptions(
+    string VoiceName = "",
+    int Rate = 0,
+    int Volume = 100);
 
 public interface ITextToSpeechService : IDisposable
 {
     bool IsSpeaking { get; }
 
+    IReadOnlyList<string> GetInstalledVoices();
+
     Task SpeakAsync(
         string text,
+        TextToSpeechOptions options,
         CancellationToken cancellationToken = default);
 
     void Stop();
@@ -29,11 +38,37 @@ public sealed class WindowsTextToSpeechService : ITextToSpeechService
         }
     }
 
+    public IReadOnlyList<string> GetInstalledVoices()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        try
+        {
+            using var synthesizer = new SpeechSynthesizer();
+            return synthesizer.GetInstalledVoices()
+                .Where(x => x.Enabled)
+                .Select(x => x.VoiceInfo.Name)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                .ToArray();
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
+    }
+
     public async Task SpeakAsync(
         string text,
+        TextToSpeechOptions options,
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.Rate is < -10 or > 10)
+            throw new ArgumentOutOfRangeException(nameof(options.Rate));
+        if (options.Volume is < 0 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(options.Volume));
 
         string normalized = (text ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(normalized))
@@ -49,6 +84,17 @@ public sealed class WindowsTextToSpeechService : ITextToSpeechService
         {
             cancellationToken.ThrowIfCancellationRequested();
             synthesizer = new SpeechSynthesizer();
+            synthesizer.Rate = options.Rate;
+            synthesizer.Volume = options.Volume;
+            if (!string.IsNullOrWhiteSpace(options.VoiceName))
+            {
+                string? installedVoice = synthesizer.GetInstalledVoices()
+                    .Where(x => x.Enabled)
+                    .Select(x => x.VoiceInfo.Name)
+                    .FirstOrDefault(x => string.Equals(x, options.VoiceName, StringComparison.Ordinal));
+                if (installedVoice is not null)
+                    synthesizer.SelectVoice(installedVoice);
+            }
             synthesizer.SetOutputToDefaultAudioDevice();
 
             lock (_sync)

@@ -273,6 +273,28 @@
                         </Border>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
+                                <TextBlock Text="Voice replies" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Text="Spoken replies" Margin="0,0,0,6"/>
+                                <ComboBox ItemsSource="{Binding Product.TextToSpeechModes}" SelectedItem="{Binding Product.TextToSpeechMode, Mode=TwoWay}"/>
+                                <TextBlock Text="Windows voice" Margin="0,14,0,6"/>
+                                <ComboBox ItemsSource="{Binding Product.TextToSpeechVoices}" SelectedItem="{Binding Product.TextToSpeechVoice, Mode=TwoWay}"/>
+                                <Grid Margin="0,16,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="20"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Product.TextToSpeechRate, StringFormat=Speaking rate: {0}}"/>
+                                        <Slider Minimum="-10" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding Product.TextToSpeechRate, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="{Binding Product.TextToSpeechVolume, StringFormat=Volume: {0}%}"/>
+                                        <Slider Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding Product.TextToSpeechVolume, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Button Content="Preview voice" Command="{Binding Product.PreviewVoiceCommand}" HorizontalAlignment="Left" Margin="0,16,0,0"/>
+                                <TextBlock Text="Voice tersedia mengikuti speech voices yang terpasang di Windows. Jika voice yang dipilih tidak lagi tersedia, Lu-Knight menggunakan Windows default." Style="{StaticResource Muted}" FontSize="12" Margin="0,12,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
                                 <TextBlock Text="Desktop actions" Style="{StaticResource CardTitle}"/>
                                 <CheckBox Content="Allow Lu-Knight to perform approved desktop actions" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseDesktopActions, Mode=TwoWay}"/>
                                 <TextBlock Text="Buka atau fokus aplikasi Windows yang terdaftar, buka folder umum, dan cari file melalui Explorer. Contoh: ‘tolong bukain chrome dong’, ‘buka downloads’, atau ‘cari laporan di documents’. Semua perintah ini diproses lokal tanpa Gemini dan tetap meminta konfirmasi. Shell, script, executable path bebas, dan perubahan file tidak diizinkan." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>

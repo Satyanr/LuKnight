@@ -766,18 +766,32 @@ public partial class MainWindow : Window
         string text,
         CancellationToken cancellationToken)
     {
-        if (source != AssistantInputSource.Voice ||
+        if (!ShouldSpeakAssistantReply(source) ||
             string.IsNullOrWhiteSpace(text))
         {
             return;
         }
 
+        TextToSpeechOptions speechOptions = new(
+            Services.Chat.Options.TextToSpeechVoice,
+            Services.Chat.Options.TextToSpeechRate,
+            Services.Chat.Options.TextToSpeechVolume);
+
         ChatPanelControl.SetStatus(
             "Lu-Knight sedang berbicara...",
             ChatStatus.Busy);
 
-        await Services.TextToSpeech.SpeakAsync(text, cancellationToken);
+        await Services.TextToSpeech.SpeakAsync(text, speechOptions, cancellationToken);
     }
+
+    private bool ShouldSpeakAssistantReply(AssistantInputSource source) =>
+        Services.Chat.Options.TextToSpeechMode switch
+        {
+            TextToSpeechMode.Off => false,
+            TextToSpeechMode.VoiceRequestsOnly => source == AssistantInputSource.Voice,
+            TextToSpeechMode.Always => true,
+            _ => false
+        };
 
     private void RefreshVoiceAvailability()
     {
