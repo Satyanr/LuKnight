@@ -58,7 +58,11 @@ public sealed class AppServices
         {
             new RememberMemoryTool(Memory),
             new ForgetMemoryTool(Memory),
-            new ListApplicationsTool(() => Chat.Options.UseApplicationContext)
+            new ListApplicationsTool(() => Chat.Options.UseApplicationContext),
+            new InspectDesktopUiTool(
+                () => Chat.Options.UseDesktopActions,
+                DesktopWindows,
+                UiAutomation)
         });
         ContextSources = new AssistantContextSourceRouter(new IAssistantContextSource[]
         {

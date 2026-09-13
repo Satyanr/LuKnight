@@ -43,7 +43,11 @@ public sealed class AssistantController
         {
             new RememberMemoryTool(Memory),
             new ForgetMemoryTool(Memory),
-            new ListApplicationsTool(() => _chat.Options.UseApplicationContext)
+            new ListApplicationsTool(() => _chat.Options.UseApplicationContext),
+            new InspectDesktopUiTool(
+                () => _chat.Options.UseDesktopActions,
+                IntentRouter.DesktopWindows,
+                new WindowsDesktopUiAutomationReader())
         });
         ContextSources = contextSources ?? new AssistantContextSourceRouter(new IAssistantContextSource[]
         {
@@ -217,11 +221,11 @@ public sealed class AssistantController
         ToolInvocation invocation,
         CancellationToken cancellationToken)
     {
-        Conversation.AddUser(request);
+        Conversation.AddUser(request, invocation.IncludeInContext);
         try
         {
             ToolExecutionResult result = await Tools.ExecuteAsync(invocation, cancellationToken);
-            Conversation.AddAssistant(result.Message);
+            Conversation.AddAssistant(result.Message, invocation.IncludeInContext);
             AssistantEmotion emotion = Emotions.EvaluateTool(invocation, result);
             return new AssistantReply(result.Message, AssistantBackend.Local, DateTimeOffset.UtcNow, emotion);
         }

@@ -67,6 +67,21 @@ public sealed class AssistantIntentRouter
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)));
         }
 
+        DesktopUiQueryCommand? uiQuery = DesktopUiQueryCommandParser.Parse(input);
+        if (uiQuery is not null)
+        {
+            return AssistantIntent.UseTool(new ToolInvocation(
+                BuiltInToolNames.DesktopInspectUi,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["mode"] = uiQuery.Mode.ToString(),
+                    ["window"] = uiQuery.WindowQuery,
+                    ["type"] = uiQuery.ControlType,
+                    ["query"] = uiQuery.Query
+                },
+                IncludeInContext: false));
+        }
+
         if (IsApplicationAwarenessQuery(input))
         {
             return AssistantIntent.UseTool(new ToolInvocation(BuiltInToolNames.DesktopListApplications, new Dictionary<string, string>()));

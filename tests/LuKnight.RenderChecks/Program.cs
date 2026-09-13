@@ -88,6 +88,12 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} UI Automation checks.");
             return;
         }
+        if (args.Contains("--uia-resolver"))
+        {
+            Task.Run(CheckDesktopUiResolverAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} UI control resolver checks.");
+            return;
+        }
         if (args.Contains("--tts"))
         {
             Task.Run(CheckTextToSpeechAsync).GetAwaiter().GetResult();
