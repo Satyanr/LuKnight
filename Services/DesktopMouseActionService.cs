@@ -18,12 +18,26 @@ public sealed class WindowsDesktopMouseActionExecutor : IDesktopMouseActionExecu
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private const uint InputMouse = 0;
+    private const uint MouseMove = 0x0001;
     private const uint MouseLeftDown = 0x0002;
     private const uint MouseLeftUp = 0x0004;
+    private const uint MouseVirtualDesk = 0x4000;
+    private const uint MouseAbsolute = 0x8000;
     private const uint GetAncestorRoot = 2;
     private const int VkLeftButton = 0x01;
     private const int VkRightButton = 0x02;
     private const int VkMiddleButton = 0x04;
+    private const int VkXButton1 = 0x05;
+    private const int VkXButton2 = 0x06;
+    private const int VkShift = 0x10;
+    private const int VkControl = 0x11;
+    private const int VkAlt = 0x12;
+    private const int VkLeftWindows = 0x5B;
+    private const int VkRightWindows = 0x5C;
+    private const int SmXVirtualScreen = 76;
+    private const int SmYVirtualScreen = 77;
+    private const int SmCxVirtualScreen = 78;
+    private const int SmCyVirtualScreen = 79;
 
     [DllImport("user32.dll")]
     private static extern bool IsWindow(nint hwnd);
@@ -35,7 +49,7 @@ public sealed class WindowsDesktopMouseActionExecutor : IDesktopMouseActionExecu
     private static extern bool GetCursorPos(out NativePoint point);
 
     [DllImport("user32.dll")]
-    private static extern bool SetCursorPos(int x, int y);
+    private static extern int GetSystemMetrics(int index);
 
     [DllImport("user32.dll")]
     private static extern nint WindowFromPoint(NativePoint point);
@@ -154,48 +168,109 @@ public sealed class WindowsDesktopMouseActionExecutor : IDesktopMouseActionExecu
                 X = checked((int)center.X),
                 Y = checked((int)center.Y)
             };
-            if (AnyMouseButtonPressed())
-                return new(false, "Mouse sedang digunakan. Aksi dibatalkan.");
+            if (!GetCursorPos(out NativePoint cursorBeforeValidation))
+                return new(false, "Posisi pointer tidak dapat dibaca.");
+            if (AnyUserInputModifierPressed())
+            {
+                return new(
+                    false,
+                    "Mouse atau modifier keyboard sedang digunakan. Aksi dibatalkan.");
+            }
             if (!ValidatePoint(window, element, point))
                 return new(false, "Area tombol tertutup atau target pointer berubah.");
-            if (!GetCursorPos(out NativePoint original))
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Expired(deadline) || !ValidateWindow(window))
+                return new(false, "Target berubah sebelum klik.");
+            if (!GetCursorPos(out NativePoint cursorBeforeSend))
                 return new(false, "Posisi pointer tidak dapat dibaca.");
-
-            bool pointerMoved = false;
-            try
+            if (!Near(cursorBeforeValidation, cursorBeforeSend))
+                return new(false, "Pointer bergerak saat validasi. Aksi dibatalkan.");
+            if (AnyUserInputModifierPressed())
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (Expired(deadline) || !ValidateWindow(window))
-                    return new(false, "Target berubah sebelum klik.");
-                if (!SetCursorPos(point.X, point.Y))
-                    return new(false, "Pointer tidak dapat dipindahkan.");
-                pointerMoved = true;
-
-                if (Expired(deadline) ||
-                    AnyMouseButtonPressed() ||
-                    !ValidateWindow(window) ||
-                    !ValidatePoint(window, element, point))
-                {
-                    return new(false, "Mouse target berubah sebelum klik.");
-                }
-
-                cancellationToken.ThrowIfCancellationRequested();
-                Input[] inputs = [MouseInput(MouseLeftDown), MouseInput(MouseLeftUp)];
-                uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
-                if (sent != inputs.Length)
-                    return new(false, "Windows menolak mouse input.");
-                return new(true, $"Tombol {snapshot.DisplayName} diklik.");
+                return new(
+                    false,
+                    "Mouse atau modifier keyboard sedang digunakan. Aksi dibatalkan.");
             }
-            finally
+
+            AutomationElement.AutomationElementInformation finalInfo = element.Current;
+            string finalType = NormalizeControlType(finalInfo.ControlType);
+            var finalSnapshot = new DesktopUiNodeSnapshot(
+                path,
+                DepthFromPath(path),
+                finalType,
+                DesktopUiText.Normalize(finalInfo.Name),
+                DesktopUiText.Normalize(finalInfo.AutomationId),
+                DesktopUiText.Normalize(finalInfo.ClassName),
+                finalInfo.BoundingRectangle,
+                finalInfo.IsEnabled,
+                finalInfo.IsOffscreen,
+                finalInfo.HasKeyboardFocus,
+                finalInfo.IsPassword);
+            if (!string.Equals(
+                    DesktopUiNodeIdentity.Fingerprint(finalSnapshot),
+                    expectedFingerprint,
+                    StringComparison.Ordinal))
             {
-                if (pointerMoved &&
-                    GetCursorPos(out NativePoint current) &&
-                    Math.Abs(current.X - point.X) <= 2 &&
-                    Math.Abs(current.Y - point.Y) <= 2)
-                {
-                    SetCursorPos(original.X, original.Y);
-                }
+                return new(false, "Control berubah tepat sebelum klik.");
             }
+            if (DesktopUiActionPolicy.IsTemporarilyBlocked(
+                    finalSnapshot,
+                    out string finalPolicyReason))
+            {
+                return new(false, finalPolicyReason);
+            }
+            if (!DesktopMouseGeometry.TryGetCenter(
+                    finalSnapshot.Bounds,
+                    out System.Windows.Point finalCenter))
+            {
+                return new(false, "Control tidak lagi memiliki area klik yang aman.");
+            }
+
+            var finalPoint = new NativePoint
+            {
+                X = checked((int)finalCenter.X),
+                Y = checked((int)finalCenter.Y)
+            };
+            if (!Near(point, finalPoint))
+                return new(false, "Control berpindah saat validasi. Ulangi perintah.");
+            if (!ValidatePoint(window, element, finalPoint))
+                return new(false, "Target klik berubah tepat sebelum eksekusi.");
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Expired(deadline) ||
+                !ValidateWindow(window) ||
+                AnyUserInputModifierPressed())
+            {
+                return new(false, "Kondisi input berubah tepat sebelum klik.");
+            }
+            if (!GetCursorPos(out NativePoint finalCursor) ||
+                !Near(cursorBeforeSend, finalCursor))
+            {
+                return new(false, "User menggerakkan pointer. Aksi dibatalkan.");
+            }
+            if (!TryCreateAbsoluteMove(finalPoint, out Input moveToTarget) ||
+                !TryCreateAbsoluteMove(finalCursor, out Input restoreCursor))
+            {
+                return new(false, "Koordinat mouse berada di luar virtual desktop.");
+            }
+
+            Input[] inputs =
+            [
+                moveToTarget,
+                MouseButtonInput(MouseLeftDown),
+                MouseButtonInput(MouseLeftUp),
+                restoreCursor
+            ];
+            uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
+            if (sent != inputs.Length)
+            {
+                return new(
+                    false,
+                    "Windows hanya menerima sebagian mouse input. Status klik tidak diketahui; jangan retry otomatis.");
+            }
+
+            return new(true, $"Tombol {finalSnapshot.DisplayName} diklik.");
         }
         catch (ElementNotAvailableException)
         {
@@ -252,13 +327,59 @@ public sealed class WindowsDesktopMouseActionExecutor : IDesktopMouseActionExecu
         return false;
     }
 
-    private static bool AnyMouseButtonPressed() =>
-        IsPressed(VkLeftButton) || IsPressed(VkRightButton) || IsPressed(VkMiddleButton);
+    private static bool AnyUserInputModifierPressed() =>
+        IsPressed(VkLeftButton) ||
+        IsPressed(VkRightButton) ||
+        IsPressed(VkMiddleButton) ||
+        IsPressed(VkXButton1) ||
+        IsPressed(VkXButton2) ||
+        IsPressed(VkShift) ||
+        IsPressed(VkControl) ||
+        IsPressed(VkAlt) ||
+        IsPressed(VkLeftWindows) ||
+        IsPressed(VkRightWindows);
 
     private static bool IsPressed(int virtualKey) =>
         (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
 
-    private static Input MouseInput(uint flags) => new()
+    private static bool Near(NativePoint first, NativePoint second, int tolerance = 2) =>
+        Math.Abs(first.X - second.X) <= tolerance &&
+        Math.Abs(first.Y - second.Y) <= tolerance;
+
+    private static bool TryCreateAbsoluteMove(NativePoint point, out Input input)
+    {
+        input = default;
+        int left = GetSystemMetrics(SmXVirtualScreen);
+        int top = GetSystemMetrics(SmYVirtualScreen);
+        int width = GetSystemMetrics(SmCxVirtualScreen);
+        int height = GetSystemMetrics(SmCyVirtualScreen);
+        if (width <= 1 || height <= 1)
+            return false;
+
+        long relativeX = (long)point.X - left;
+        long relativeY = (long)point.Y - top;
+        if (relativeX < 0 || relativeY < 0 || relativeX >= width || relativeY >= height)
+            return false;
+
+        int normalizedX = (int)Math.Round(relativeX * 65535d / (width - 1));
+        int normalizedY = (int)Math.Round(relativeY * 65535d / (height - 1));
+        input = new Input
+        {
+            Type = InputMouse,
+            Data = new InputUnion
+            {
+                Mouse = new MouseInputData
+                {
+                    Dx = normalizedX,
+                    Dy = normalizedY,
+                    Flags = MouseMove | MouseAbsolute | MouseVirtualDesk
+                }
+            }
+        };
+        return true;
+    }
+
+    private static Input MouseButtonInput(uint flags) => new()
     {
         Type = InputMouse,
         Data = new InputUnion { Mouse = new MouseInputData { Flags = flags } }

@@ -171,6 +171,20 @@ internal static partial class Program
             new DesktopAppCatalogService(() => Array.Empty<DesktopAppTarget>()),
             catalog);
         var router = new AssistantIntentRouter(desktopRouter);
+        foreach (string unsupported in new[]
+        {
+            "klik koordinat 100 200",
+            "klik posisi 100 200",
+            "klik layar 300 400",
+            "mouse click 100 200"
+        })
+        {
+            AssistantIntent routed = router.Route(unsupported);
+            Require(
+                routed.Kind != AssistantIntentKind.Action,
+                $"Arbitrary coordinate command became executable: {unsupported}");
+        }
+
         AssistantIntent intent = router.Route("cari tombol Save di window Notepad");
         Require(
             intent.Kind == AssistantIntentKind.Tool &&

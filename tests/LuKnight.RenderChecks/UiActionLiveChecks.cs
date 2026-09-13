@@ -22,7 +22,8 @@ internal static partial class Program
             Width = 420,
             Height = 300,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
-            ShowInTaskbar = true
+            ShowInTaskbar = true,
+            Topmost = true
         };
         var panel = new StackPanel { Margin = new Thickness(24) };
         var description = new TextBlock
@@ -216,7 +217,30 @@ internal static partial class Program
                 button.Path,
                 DesktopUiNodeIdentity.Fingerprint(button));
             Require(result.Success, result.Message);
-            await WaitForFixtureWindowAsync(windows, fixture, clickedTitle);
+            DesktopWindowTarget clickedWindow = await WaitForFixtureWindowAsync(
+                windows,
+                fixture,
+                clickedTitle);
+
+            DesktopUiSnapshot afterClickSnapshot = await ui.CaptureAsync(clickedWindow);
+            Require(
+                afterClickSnapshot.Success,
+                afterClickSnapshot.Error ?? "Mouse fixture recapture failed.");
+            DesktopUiControlResolution save = DesktopUiControlResolver.Resolve(
+                afterClickSnapshot,
+                "Save",
+                "Button");
+            Require(save.Match is not null, "Save button disappeared from mouse fixture.");
+            DesktopActionResult blockedSave = await mouse.ClickAsync(
+                clickedWindow,
+                save.Match!.Path,
+                DesktopUiNodeIdentity.Fingerprint(save.Match));
+            Require(!blockedSave.Success, "Safe mouse bypassed sensitive-button policy.");
+            await Task.Delay(250);
+            Require(
+                windows.Capture().Any(x =>
+                    x.ProcessId == fixture.Id && x.Title == clickedTitle),
+                "Blocked Save button was clicked by mouse fallback.");
 
             Console.WriteLine();
             Console.WriteLine("Native bounded mouse click activated Mouse Target.");
