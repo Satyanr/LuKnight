@@ -39,7 +39,7 @@ public partial class MainWindow : Window
 
     public AppServices Services { get; }
     private bool _usesGemini => Services.Chat.UsesGemini;
-    public bool CanInstallUpdate => !_leftMouseDown && !_dragStarted && !_isSending && !Services.Assistant.IsBusy && !(_physicsController?.IsActive ?? false);
+    public bool CanInstallUpdate => !_leftMouseDown && !_dragStarted && !_isSending && !_isTranscribing && !Services.Assistant.IsBusy && !(_physicsController?.IsActive ?? false);
     public void SetAlwaysOnTop(bool value)
     {
         Topmost = value;
@@ -75,6 +75,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _voiceLimitCts;
     private bool _isSending;
     private bool _isVoiceRecording;
+    private bool _isTranscribing;
 
     private Point _mouseDownPosition;
     private Point _mouseDownScreenPosition;
@@ -640,7 +641,7 @@ public partial class MainWindow : Window
 
     private async void ChatPanel_MessageSubmitted(string message)
     {
-        if (_isSending)
+        if (_isSending || _isTranscribing)
             return;
 
         if (_isVoiceRecording)
@@ -746,7 +747,7 @@ public partial class MainWindow : Window
     private void RefreshVoiceAvailability()
     {
         ChatPanelControl.SetVoiceEnabled(
-            Services.Chat.Options.UseVoiceInput && !_isSending);
+            Services.Chat.Options.UseVoiceInput && !_isSending && !_isTranscribing);
     }
 
     private void Chat_OptionsChanged(ChatSettings options)
@@ -756,7 +757,7 @@ public partial class MainWindow : Window
 
     private async void ChatPanel_VoiceToggleRequested()
     {
-        if (_isSending)
+        if (_isSending || _isTranscribing)
             return;
 
         if (!Services.Chat.Options.UseVoiceInput)
@@ -795,29 +796,76 @@ public partial class MainWindow : Window
 
     private async Task StopVoiceRecordingAsync()
     {
-        if (!_isVoiceRecording)
+        if (!_isVoiceRecording || _isTranscribing)
             return;
 
         _voiceLimitCts?.Cancel();
         _voiceLimitCts?.Dispose();
         _voiceLimitCts = null;
 
+        _isTranscribing = true;
+        ChatPanelControl.SetBusy(true);
+        RefreshVoiceAvailability();
+
         try
         {
-            VoiceCaptureResult result = await Services.VoiceCapture.StopAsync();
+            VoiceCaptureResult result =
+                await Services
+                    .VoiceCapture
+                    .StopAsync();
+
+            _isVoiceRecording = false;
+
+            ChatPanelControl
+                .SetVoiceRecording(false);
+
+            ChatPanelControl
+                .SetBusy(true);
+
             ChatPanelControl.SetStatus(
-                $"Voice captured · {result.Duration.TotalSeconds:0.0}s",
+                Services.SpeechToText.IsModelReady
+                    ? "Mengubah suara menjadi teks..."
+                    : "Menyiapkan model voice lokal pertama kali...",
+                ChatStatus.Busy);
+
+            SpeechTranscriptionResult transcript =
+                await Task.Run(() => Services.SpeechToText.TranscribeAsync(result));
+
+            ChatPanelControl
+                .SetDraftMessage(
+                    transcript.Text);
+
+            ChatPanelControl.SetStatus(
+                $"Transkripsi siap · {result.Duration.TotalSeconds:0.0}s",
+                ChatStatus.Ready);
+        }
+        catch (OperationCanceledException)
+        {
+            ChatPanelControl.SetStatus(
+                "Transkripsi dibatalkan.",
                 ChatStatus.Ready);
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine("[Lu-Knight][Voice] " + ex);
-            ChatPanelControl.SetStatus("Rekaman suara gagal.", ChatStatus.Error);
+            System.Diagnostics.Debug.WriteLine(
+                "[Lu-Knight][SpeechToText] " +
+                ex);
+
+            ChatPanelControl.SetStatus(
+                "Suara tidak dapat ditranskripsikan.",
+                ChatStatus.Error);
         }
         finally
         {
             _isVoiceRecording = false;
-            ChatPanelControl.SetVoiceRecording(false);
+            _isTranscribing = false;
+
+            ChatPanelControl
+                .SetVoiceRecording(false);
+
+            ChatPanelControl
+                .SetBusy(false);
+
             RefreshVoiceAvailability();
         }
     }

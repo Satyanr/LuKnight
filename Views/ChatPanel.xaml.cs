@@ -157,6 +157,18 @@ public partial class ChatPanel : UserControl
         MessagesScrollViewer.ScrollToEnd();
     }
 
+    public void SetDraftMessage(
+        string message)
+    {
+        MessageInput.Text =
+            message;
+
+        MessageInput.CaretIndex =
+            MessageInput.Text.Length;
+
+        FocusInput();
+    }
+
     public void FocusInput()
     {
         if (!MessageInput.IsEnabled)
