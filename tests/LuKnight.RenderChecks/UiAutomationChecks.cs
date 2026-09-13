@@ -41,7 +41,7 @@ internal static partial class Program
                 new Rect(10, 50, 700, 500),
                 true, false, true, false),
             new(
-                "0/1", 1, "Edit", "[protected]", "PasswordBox", "Edit",
+                "0/1", 1, "Edit", "secret-password-123", "PasswordBox", "SensitiveEdit",
                 Rect.Empty,
                 true, false, false, true),
             new(
@@ -68,8 +68,8 @@ internal static partial class Program
             formatted.Contains("[protected]", StringComparison.Ordinal),
             "UI Automation formatter lost control metadata.");
         Require(
-            !formatted.Contains("secret-password", StringComparison.OrdinalIgnoreCase),
-            "Protected content leaked from UI snapshot.");
+            !formatted.Contains("secret-password-123", StringComparison.OrdinalIgnoreCase),
+            "Protected content leaked through formatter.");
 
         DesktopUiReadOptions defaults = new();
         Require(
@@ -77,6 +77,46 @@ internal static partial class Program
             defaults.MaxNodes == 250 &&
             defaults.EffectiveTimeout == TimeSpan.FromSeconds(4),
             "UI Automation safety limits changed unexpectedly.");
+
+        var realReader = new WindowsDesktopUiAutomationReader();
+        bool badDepthRejected = false;
+        try
+        {
+            await realReader.CaptureAsync(
+                window,
+                new DesktopUiReadOptions(MaxDepth: 13));
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            badDepthRejected = true;
+        }
+        Require(badDepthRejected, "UI Automation accepted excessive depth.");
+
+        bool badNodeLimitRejected = false;
+        try
+        {
+            await realReader.CaptureAsync(
+                window,
+                new DesktopUiReadOptions(MaxNodes: 1001));
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            badNodeLimitRejected = true;
+        }
+        Require(badNodeLimitRejected, "UI Automation accepted excessive node count.");
+
+        bool badTimeoutRejected = false;
+        try
+        {
+            await realReader.CaptureAsync(
+                window,
+                new DesktopUiReadOptions(Timeout: TimeSpan.FromSeconds(30)));
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            badTimeoutRejected = true;
+        }
+        Require(badTimeoutRejected, "UI Automation accepted excessive timeout.");
 
         var fake = new FakeUiAutomationReader { Snapshot = snapshot };
         DesktopUiSnapshot captured = await fake.CaptureAsync(window);

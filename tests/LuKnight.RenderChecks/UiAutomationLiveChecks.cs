@@ -33,8 +33,12 @@ internal static partial class Program
         Console.WriteLine(DesktopUiSnapshotFormatter.Format(snapshot, interactiveOnly: true));
 
         Require(
-            snapshot.Nodes.All(x => !x.IsPassword || x.Name == "[protected]"),
-            "Password metadata was exposed.");
+            snapshot.Nodes.All(x =>
+                !x.IsPassword ||
+                (x.Name == "[protected]" &&
+                 string.IsNullOrEmpty(x.AutomationId) &&
+                 string.IsNullOrEmpty(x.ClassName))),
+            "Protected UI Automation metadata was exposed.");
 
         Console.WriteLine();
         Console.WriteLine("PASS: read-only UI Automation tree captured.");

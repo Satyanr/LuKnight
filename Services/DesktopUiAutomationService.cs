@@ -14,6 +14,8 @@ public interface IDesktopUiAutomationReader
 
 public sealed class WindowsDesktopUiAutomationReader : IDesktopUiAutomationReader
 {
+    private readonly SemaphoreSlim _captureGate = new(1, 1);
+
     public async Task<DesktopUiSnapshot> CaptureAsync(
         DesktopWindowTarget window,
         DesktopUiReadOptions? options = null,
@@ -27,11 +29,39 @@ public sealed class WindowsDesktopUiAutomationReader : IDesktopUiAutomationReade
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        bool entered = await _captureGate.WaitAsync(0, cancellationToken);
+        if (!entered)
+        {
+            return DesktopUiSnapshot.Failure(
+                window,
+                "UI Automation sedang sibuk membaca window lain.");
+        }
+
+        Task<DesktopUiSnapshot> capture;
         try
         {
-            Task<DesktopUiSnapshot> capture = Task.Run(
-                () => CaptureCore(window, options),
+            capture = Task.Run(
+                () =>
+                {
+                    try
+                    {
+                        return CaptureCore(window, options);
+                    }
+                    finally
+                    {
+                        _captureGate.Release();
+                    }
+                },
                 CancellationToken.None);
+        }
+        catch
+        {
+            _captureGate.Release();
+            throw;
+        }
+
+        try
+        {
             return await capture.WaitAsync(options.EffectiveTimeout, cancellationToken);
         }
         catch (TimeoutException)
@@ -95,8 +125,14 @@ public sealed class WindowsDesktopUiAutomationReader : IDesktopUiAutomationReade
                 item.Path,
                 item.Depth,
                 options.MaxTextLength);
-            if (snapshot is not null)
-                nodes.Add(snapshot);
+
+            if (snapshot is null)
+                continue;
+
+            nodes.Add(snapshot);
+
+            if (snapshot.IsProtected)
+                continue;
 
             if (item.Depth >= options.MaxDepth)
                 continue;
@@ -159,14 +195,20 @@ public sealed class WindowsDesktopUiAutomationReader : IDesktopUiAutomationReade
             AutomationElement.AutomationElementInformation info = element.Current;
             bool isPassword = info.IsPassword;
             string name = isPassword ? "[protected]" : Limit(info.Name, maxTextLength);
+            string automationId = isPassword
+                ? string.Empty
+                : Limit(info.AutomationId, maxTextLength);
+            string className = isPassword
+                ? string.Empty
+                : Limit(info.ClassName, maxTextLength);
 
             return new DesktopUiNodeSnapshot(
                 path,
                 depth,
                 NormalizeControlType(info.ControlType),
                 name,
-                Limit(info.AutomationId, maxTextLength),
-                Limit(info.ClassName, maxTextLength),
+                automationId,
+                className,
                 NormalizeBounds(info.BoundingRectangle),
                 info.IsEnabled,
                 info.IsOffscreen,
