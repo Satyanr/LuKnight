@@ -24,6 +24,20 @@ internal static partial class Program
 
     private static async Task CheckDesktopUiResolverAsync()
     {
+        Require(
+            DesktopMouseGeometry.TryGetCenter(
+                new Rect(100, 200, 80, 40),
+                out Point center) &&
+            center.X == 140 &&
+            center.Y == 220,
+            "Safe mouse center calculation failed.");
+        Require(
+            !DesktopMouseGeometry.TryGetCenter(Rect.Empty, out _),
+            "Safe mouse accepted an empty rectangle.");
+        Require(
+            !DesktopMouseGeometry.TryGetCenter(new Rect(10, 10, 2, 2), out _),
+            "Safe mouse accepted an unsafe tiny target.");
+
         DesktopWindowTarget window = new(
             (nint)100, 10, "notepad", "Notes", 0, false, true);
         DesktopUiSnapshot snapshot = new(

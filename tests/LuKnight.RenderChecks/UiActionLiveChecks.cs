@@ -20,7 +20,7 @@ internal static partial class Program
         {
             Title = initialTitle,
             Width = 420,
-            Height = 220,
+            Height = 300,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             ShowInTaskbar = true
         };
@@ -40,12 +40,22 @@ internal static partial class Program
         AutomationProperties.SetName(refresh, "Refresh");
         var save = new Button { Content = "Save", Width = 140, Height = 40 };
         AutomationProperties.SetName(save, "Save");
+        var mouseTarget = new Button
+        {
+            Content = "Mouse Target",
+            Width = 140,
+            Height = 40,
+            Margin = new Thickness(0, 12, 0, 0)
+        };
+        AutomationProperties.SetName(mouseTarget, "Mouse Target");
 
         refresh.Click += (_, _) => window.Title = $"{initialTitle} — REFRESH INVOKED";
         save.Click += (_, _) => window.Title = $"{initialTitle} — SAVE INVOKED";
+        mouseTarget.Click += (_, _) => window.Title = $"{initialTitle} — MOUSE CLICKED";
         panel.Children.Add(description);
         panel.Children.Add(refresh);
         panel.Children.Add(save);
+        panel.Children.Add(mouseTarget);
         window.Content = panel;
 
         var application = new Application
@@ -172,6 +182,51 @@ internal static partial class Program
         info.ArgumentList.Add($"--uia-fixture-token={token}");
         return Process.Start(info) ??
             throw new InvalidOperationException("Failed to start UIA fixture process.");
+    }
+
+    private static async Task CheckSafeMouseLiveAsync()
+    {
+        string token = Guid.NewGuid().ToString("N")[..8];
+        string initialTitle = $"{UiFixturePrefix} {token}";
+        string clickedTitle = $"{initialTitle} — MOUSE CLICKED";
+        using Process fixture = StartUiFixtureProcess(token);
+
+        try
+        {
+            var windows = new DesktopWindowTargetService();
+            DesktopWindowTarget target = await WaitForFixtureWindowAsync(
+                windows,
+                fixture,
+                initialTitle);
+            var ui = new WindowsDesktopUiAutomationReader();
+            DesktopUiSnapshot snapshot = await ui.CaptureAsync(target);
+            Require(snapshot.Success, snapshot.Error ?? "Mouse fixture UIA capture failed.");
+
+            DesktopUiControlResolution control =
+                DesktopUiControlResolver.Resolve(snapshot, "Mouse Target", "Button");
+            Require(control.Match is not null, "Mouse Target button was not resolved.");
+            DesktopUiNodeSnapshot button = control.Match!;
+            Require(
+                !DesktopUiActionPolicy.IsTemporarilyBlocked(button, out _),
+                "Safe mouse fixture button was blocked.");
+
+            var mouse = new WindowsDesktopMouseActionExecutor();
+            DesktopActionResult result = await mouse.ClickAsync(
+                target,
+                button.Path,
+                DesktopUiNodeIdentity.Fingerprint(button));
+            Require(result.Success, result.Message);
+            await WaitForFixtureWindowAsync(windows, fixture, clickedTitle);
+
+            Console.WriteLine();
+            Console.WriteLine("Native bounded mouse click activated Mouse Target.");
+            Console.WriteLine("Cursor restoration was attempted only if the user had not moved it.");
+            Console.WriteLine("PASS: safe mouse primitive live acceptance.");
+        }
+        finally
+        {
+            await StopUiFixtureAsync(fixture);
+        }
     }
 
     private static async Task<DesktopWindowTarget> WaitForFixtureWindowAsync(

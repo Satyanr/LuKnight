@@ -102,7 +102,7 @@ public sealed class WindowsDesktopUiActionExecutor : IDesktopUiActionExecutor
             if (root.Current.ProcessId != window.ProcessId)
                 return new(false, "Window target berubah sebelum eksekusi.");
 
-            AutomationElement? element = ResolvePath(root, path);
+            AutomationElement? element = DesktopUiAutomationLocator.ResolvePath(root, path);
             if (element is null)
                 return new(false, "Control target sudah tidak tersedia.");
 
@@ -160,30 +160,6 @@ public sealed class WindowsDesktopUiActionExecutor : IDesktopUiActionExecutor
         {
             return new(false, "UI Automation gagal mengaktifkan tombol.");
         }
-    }
-
-    private static AutomationElement? ResolvePath(AutomationElement root, string path)
-    {
-        string[] parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0 || parts[0] != "0")
-            return null;
-
-        AutomationElement current = root;
-        TreeWalker walker = TreeWalker.ControlViewWalker;
-        for (int level = 1; level < parts.Length; level++)
-        {
-            if (!int.TryParse(parts[level], out int index) || index < 0)
-                return null;
-
-            AutomationElement? child = walker.GetFirstChild(current);
-            for (int i = 0; i < index && child is not null; i++)
-                child = walker.GetNextSibling(child);
-            if (child is null)
-                return null;
-            current = child;
-        }
-
-        return current;
     }
 
     private static int DepthFromPath(string path) =>
