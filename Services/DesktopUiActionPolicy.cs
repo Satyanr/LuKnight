@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace LuKnight.Services;
 
 public static class DesktopUiActionPolicy
@@ -5,13 +7,21 @@ public static class DesktopUiActionPolicy
     private static readonly string[] BlockedPhrases =
     [
         "save", "save as", "overwrite", "replace", "delete", "remove", "erase",
-        "wipe", "format", "reset", "factory reset", "uninstall",
-        "send", "submit", "upload", "publish", "post", "buy", "purchase",
-        "pay", "checkout", "order", "subscribe",
+        "discard", "clear", "wipe", "format", "reset", "factory reset", "uninstall",
+        "rename", "move", "archive",
+        "send", "submit", "upload", "publish", "post", "share",
+        "buy", "purchase", "pay", "checkout", "order", "subscribe",
+        "download", "export", "import", "install", "update",
+        "accept", "allow", "authorize", "grant", "finish",
+        "restart", "reboot", "shutdown",
         "close", "exit", "quit", "sign out", "log out", "logout",
         "simpan", "simpan sebagai", "timpa", "ganti file", "hapus", "buang",
-        "kirim", "unggah", "publikasikan", "beli", "bayar", "pesan",
-        "berlangganan", "tutup", "keluar"
+        "bersihkan", "ganti nama", "pindahkan", "arsipkan",
+        "kirim", "unggah", "publikasikan", "bagikan",
+        "beli", "bayar", "pesan", "berlangganan",
+        "unduh", "ekspor", "impor", "instal", "perbarui",
+        "terima", "izinkan", "otorisasi", "selesai",
+        "mulai ulang", "matikan", "tutup", "keluar"
     ];
 
     private static readonly HashSet<string> GenericConfirmationLabels = new(StringComparer.Ordinal)
@@ -70,9 +80,25 @@ public static class DesktopUiActionPolicy
     {
         if (string.IsNullOrWhiteSpace(value))
             return string.Empty;
-        return string.Join(
-            ' ',
-            value.Trim().ToLowerInvariant()
-                .Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries));
+
+        string source = value.Trim().ToLowerInvariant();
+        var builder = new StringBuilder(source.Length);
+        bool pendingSpace = false;
+        foreach (char character in source)
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                if (pendingSpace && builder.Length > 0)
+                    builder.Append(' ');
+                builder.Append(character);
+                pendingSpace = false;
+                continue;
+            }
+
+            if (builder.Length > 0)
+                pendingSpace = true;
+        }
+
+        return builder.ToString().Trim();
     }
 }

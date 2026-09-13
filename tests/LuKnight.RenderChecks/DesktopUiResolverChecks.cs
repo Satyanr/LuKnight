@@ -75,6 +75,39 @@ internal static partial class Program
                     out _),
                 $"Sensitive button escaped policy: {dangerous}");
         }
+        foreach (string disguised in new[]
+        {
+            "Save...", "Save As…", "&Save", "_Save", "Delete…", "&Delete",
+            "OK!", "&Kirim", "Hapus...", "_Simpan"
+        })
+        {
+            Require(
+                DesktopUiActionPolicy.IsTemporarilyBlocked(
+                    refresh with { Name = disguised },
+                    out _),
+                $"Decorated sensitive button escaped policy: {disguised}");
+        }
+        foreach (string dangerous in new[]
+        {
+            "Discard", "Clear", "Rename", "Move", "Archive", "Install", "Update",
+            "Accept", "Allow", "Authorize", "Download", "Export", "Import",
+            "Restart", "Shutdown", "Finish"
+        })
+        {
+            Require(
+                DesktopUiActionPolicy.IsTemporarilyBlocked(
+                    refresh with { Name = dangerous },
+                    out _),
+                $"Sensitive button escaped policy: {dangerous}");
+        }
+        foreach (string safe in new[] { "Refresh", "Reload", "Back", "Previous" })
+        {
+            Require(
+                !DesktopUiActionPolicy.IsTemporarilyBlocked(
+                    refresh with { Name = safe },
+                    out _),
+                $"Safe navigation button was blocked: {safe}");
+        }
         Require(
             DesktopUiActionPolicy.IsTemporarilyBlocked(refresh with { Name = "" }, out _),
             "Unnamed UI button became executable.");
