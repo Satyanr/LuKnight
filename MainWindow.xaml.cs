@@ -39,7 +39,7 @@ public partial class MainWindow : Window
 
     public AppServices Services { get; }
     private bool _usesGemini => Services.Chat.UsesGemini;
-    public bool CanInstallUpdate => !_leftMouseDown && !_dragStarted && !_isSending && !_isTranscribing && !Services.Assistant.IsBusy && !(_physicsController?.IsActive ?? false);
+    public bool CanInstallUpdate => !_leftMouseDown && !_dragStarted && !_isSending && !_isTranscribing && !Services.TextToSpeech.IsSpeaking && !Services.Assistant.IsBusy && !(_physicsController?.IsActive ?? false);
     public void SetAlwaysOnTop(bool value)
     {
         Topmost = value;
@@ -708,6 +708,10 @@ public partial class MainWindow : Window
 
                 ReactToAssistantEmotion(actionReply.Emotion);
                 ChatPanelControl.AddAssistantMessage(actionReply.Text);
+                await SpeakAssistantReplyAsync(
+                    source,
+                    actionReply.Text,
+                    requestCts.Token);
                 ChatPanelControl.SetStatus(
                     actionReply.Text,
                     actionReply.Emotion == AssistantEmotion.Confused
@@ -716,6 +720,10 @@ public partial class MainWindow : Window
             }
             else
             {
+                await SpeakAssistantReplyAsync(
+                    source,
+                    reply.Text,
+                    requestCts.Token);
                 ChatPanelControl.SetStatus(
                     Services.Chat.Status,
                     reply.Backend == AssistantBackend.Gemini
@@ -753,10 +761,31 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task SpeakAssistantReplyAsync(
+        AssistantInputSource source,
+        string text,
+        CancellationToken cancellationToken)
+    {
+        if (source != AssistantInputSource.Voice ||
+            string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        ChatPanelControl.SetStatus(
+            "Lu-Knight sedang berbicara...",
+            ChatStatus.Busy);
+
+        await Services.TextToSpeech.SpeakAsync(text, cancellationToken);
+    }
+
     private void RefreshVoiceAvailability()
     {
         ChatPanelControl.SetVoiceEnabled(
-            Services.Chat.Options.UseVoiceInput && !_isSending && !_isTranscribing);
+            Services.Chat.Options.UseVoiceInput &&
+            !_isSending &&
+            !_isTranscribing &&
+            !Services.TextToSpeech.IsSpeaking);
     }
 
     private void Chat_OptionsChanged(ChatSettings options)
@@ -1003,6 +1032,8 @@ public partial class MainWindow : Window
         _voiceLimitCts?.Dispose();
         _voiceLimitCts = null;
         Services.VoiceCapture.Dispose();
+        Services.TextToSpeech.Stop();
+        Services.TextToSpeech.Dispose();
 
         if (_physicsController is not null)
         {

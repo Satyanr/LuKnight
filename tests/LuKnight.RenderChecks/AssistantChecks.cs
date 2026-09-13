@@ -97,6 +97,7 @@ internal static partial class Program
         await CheckGeminiFailoverAsync();
         await CheckSpeechToTextHardeningAsync();
         await CheckVoiceRoutingAsync();
+        await CheckTextToSpeechAsync();
         CheckPackagedApps();
         var emotionEngine = new AssistantEmotionEngine();
         Require(emotionEngine.EvaluateConversation(

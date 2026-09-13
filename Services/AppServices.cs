@@ -18,6 +18,7 @@ public sealed class AppServices
     public AssistantController Assistant { get; }
     public IVoiceCaptureService VoiceCapture { get; }
     public ISpeechToTextService SpeechToText { get; }
+    public ITextToSpeechService TextToSpeech { get; }
     public UpdateService Updates { get; }
     public AppServices(
         SettingsService? settings = null,
@@ -26,6 +27,7 @@ public sealed class AppServices
         AssistantContextProvider? context = null,
         IVoiceCaptureService? voiceCapture = null,
         ISpeechToTextService? speechToText = null,
+        ITextToSpeechService? textToSpeech = null,
         IDesktopAppCatalog? desktopApps = null,
         IDesktopActionExecutor? desktopExecutor = null,
         IExplorerActionExecutor? explorerExecutor = null)
@@ -34,6 +36,7 @@ public sealed class AppServices
         Chat = new(credentials ?? new SecureCredentialService(), Settings.Current.Chat);
         VoiceCapture = voiceCapture ?? new VoiceCaptureService();
         SpeechToText = speechToText ?? new LocalWhisperSpeechToTextService();
+        TextToSpeech = textToSpeech ?? new WindowsTextToSpeechService();
         Memory = memory ?? new();
         Context = context ?? new();
         DesktopApps = desktopApps ?? DesktopAppCatalogService.Shared;

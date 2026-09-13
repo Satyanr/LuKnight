@@ -58,6 +58,12 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} voice routing checks.");
             return;
         }
+        if (args.Contains("--tts"))
+        {
+            Task.Run(CheckTextToSpeechAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} text-to-speech checks.");
+            return;
+        }
         if (args.Contains("--assistant")) { CheckAssistant(); Console.WriteLine($"PASS: {_checks} assistant checks."); return; }
         if (args.Contains("--behavior-settings")) { CheckBehaviorSettings(); Console.WriteLine($"PASS: {_checks} behavior settings checks."); return; }
         if (args.Contains("--product")) { CheckProducts(); Console.WriteLine($"PASS: {_checks} product checks."); return; }
