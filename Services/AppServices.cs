@@ -12,6 +12,7 @@ public sealed class AppServices
     public IDesktopAppCatalog DesktopApps { get; }
     public IDesktopWindowTargetCatalog DesktopWindows { get; }
     public IDesktopWindowActionExecutor WindowActions { get; }
+    public IDesktopUiAutomationReader UiAutomation { get; }
     public LocalDesktopCommandRouter DesktopCommands { get; }
     public IExplorerActionExecutor ExplorerActions { get; }
     public AssistantToolRouter Tools { get; }
@@ -34,7 +35,8 @@ public sealed class AppServices
         IDesktopActionExecutor? desktopExecutor = null,
         IExplorerActionExecutor? explorerExecutor = null,
         IDesktopWindowTargetCatalog? desktopWindows = null,
-        IDesktopWindowActionExecutor? windowExecutor = null)
+        IDesktopWindowActionExecutor? windowExecutor = null,
+        IDesktopUiAutomationReader? uiAutomation = null)
     {
         Settings = settings ?? new();
         Chat = new(credentials ?? new SecureCredentialService(), Settings.Current.Chat);
@@ -46,6 +48,7 @@ public sealed class AppServices
         DesktopApps = desktopApps ?? DesktopAppCatalogService.Shared;
         DesktopWindows = desktopWindows ?? new DesktopWindowTargetService();
         WindowActions = windowExecutor ?? new WindowsDesktopWindowActionExecutor();
+        UiAutomation = uiAutomation ?? new WindowsDesktopUiAutomationReader();
         DesktopAppIndexWarmup.Start(DesktopApps);
         DesktopCommands = new LocalDesktopCommandRouter(DesktopApps, DesktopWindows);
         IntentRouter = new AssistantIntentRouter(DesktopCommands);

@@ -76,6 +76,18 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} window targeting checks.");
             return;
         }
+        if (args.Contains("--uia-live"))
+        {
+            Task.Run(CheckUiAutomationLiveAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} live UI Automation checks.");
+            return;
+        }
+        if (args.Contains("--uia"))
+        {
+            Task.Run(CheckUiAutomationAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} UI Automation checks.");
+            return;
+        }
         if (args.Contains("--tts"))
         {
             Task.Run(CheckTextToSpeechAsync).GetAwaiter().GetResult();
