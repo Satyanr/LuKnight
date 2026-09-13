@@ -33,7 +33,8 @@ internal static partial class Program
                 new("0/0", 1, "Button", "Save", "SaveButton", "Button", Rect.Empty, true, false, false, false),
                 new("0/1", 1, "Button", "Save As", "SaveAsButton", "Button", Rect.Empty, true, false, false, false),
                 new("0/2", 1, "Edit", "Search", "SearchBox", "Edit", Rect.Empty, true, false, true, false),
-                new("0/3", 1, "Edit", "[protected]", "", "", Rect.Empty, true, false, false, true)
+                new("0/3", 1, "Edit", "[protected]", "", "", Rect.Empty, true, false, false, true),
+                new("0/4", 1, "Button", "Refresh", "RefreshButton", "Button", Rect.Empty, true, false, false, false)
             },
             false);
 
@@ -45,6 +46,38 @@ internal static partial class Program
             DesktopUiNodeIdentity.Fingerprint(
                 snapshot.Nodes[0] with { Bounds = new Rect(20, 30, 80, 40) }),
             "Control identity changed when only bounds changed.");
+
+        string longMetadata = new('A', 300);
+        Require(
+            DesktopUiText.Normalize(longMetadata).Length == DesktopUiText.DefaultMaxLength,
+            "UI metadata normalization exceeded the fingerprint limit.");
+        Require(
+            DesktopUiText.Normalize("Hello\r\nWorld") == "Hello  World",
+            "UI metadata normalization diverged from reader behavior.");
+
+        DesktopUiNodeSnapshot refresh = snapshot.Nodes.First(x => x.Name == "Refresh");
+        Require(
+            !DesktopUiActionPolicy.IsTemporarilyBlocked(refresh, out _),
+            "Safe Refresh button was blocked.");
+        DesktopUiNodeSnapshot saveButton = snapshot.Nodes.First(x => x.Name == "Save");
+        Require(
+            DesktopUiActionPolicy.IsTemporarilyBlocked(saveButton, out _),
+            "Save button bypassed temporary mutation policy.");
+        foreach (string dangerous in new[]
+        {
+            "Delete", "Remove", "Send", "Submit", "Buy", "Pay", "Close", "OK",
+            "Yes", "Simpan", "Hapus", "Kirim"
+        })
+        {
+            Require(
+                DesktopUiActionPolicy.IsTemporarilyBlocked(
+                    refresh with { Name = dangerous },
+                    out _),
+                $"Sensitive button escaped policy: {dangerous}");
+        }
+        Require(
+            DesktopUiActionPolicy.IsTemporarilyBlocked(refresh with { Name = "" }, out _),
+            "Unnamed UI button became executable.");
 
         DesktopUiControlResolution search =
             DesktopUiControlResolver.Resolve(snapshot, "search", "textbox");
@@ -61,7 +94,7 @@ internal static partial class Program
         IReadOnlyList<DesktopUiNodeSnapshot> buttons =
             DesktopUiControlResolver.List(snapshot, "tombol");
         Require(
-            buttons.Count == 2 && buttons.All(x => x.ControlType == "Button"),
+            buttons.Count == 3 && buttons.All(x => x.ControlType == "Button"),
             "Control-type list filtering failed.");
 
         DesktopUiQueryCommand? find = DesktopUiQueryCommandParser.Parse(
@@ -131,7 +164,7 @@ internal static partial class Program
             "UI control metadata leaked into Gemini short-term context.");
         Require(reply.ActionProposal is null, "Read-only UI inspection created an action proposal.");
 
-        AssistantIntent click = router.Route("klik tombol Save di window Notepad");
+        AssistantIntent click = router.Route("klik tombol Refresh di window Notepad");
         Require(
             click.Kind == AssistantIntentKind.Action &&
             click.Action?.Name == BuiltInActionNames.DesktopInvokeUiControl &&
@@ -163,7 +196,7 @@ internal static partial class Program
         fakeUi.Snapshot = snapshot with
         {
             Nodes = snapshot.Nodes.Select(x =>
-                x.Name == "Save" ? x with { Name = "Different Button" } : x).ToArray()
+                x.Name == "Refresh" ? x with { Name = "Different Button" } : x).ToArray()
         };
         ActionExecutionResult stale = await action.ExecuteAsync(stalePrepared.Action!);
         Require(
@@ -178,7 +211,7 @@ internal static partial class Program
             tools: tools,
             actions: actionRouter);
         AssistantReply proposal = await actionAssistant.SendAsync(
-            new AssistantRequest("klik tombol Save di window Notepad"));
+            new AssistantRequest("klik tombol Refresh di window Notepad"));
         Require(
             proposal.Backend == AssistantBackend.Local &&
             proposal.ActionProposal is not null &&
@@ -199,5 +232,17 @@ internal static partial class Program
         Require(
             actionAssistant.Conversation.GetRecentContext().Count == 0,
             "Confirmed UI button result leaked into Gemini short-term context.");
+
+        AssistantReply blockedSave = await actionAssistant.SendAsync(
+            new AssistantRequest("klik tombol Save di window Notepad"));
+        Require(
+            blockedSave.Backend == AssistantBackend.Local &&
+            blockedSave.ActionProposal is null &&
+            handler.Calls == 0 &&
+            executor.Calls == 2,
+            "Sensitive Save action escaped local policy.");
+        Require(
+            actionAssistant.Conversation.GetRecentContext().Count == 0,
+            "Blocked UI action leaked into Gemini context.");
     }
 }

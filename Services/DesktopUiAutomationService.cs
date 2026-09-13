@@ -194,13 +194,13 @@ public sealed class WindowsDesktopUiAutomationReader : IDesktopUiAutomationReade
         {
             AutomationElement.AutomationElementInformation info = element.Current;
             bool isPassword = info.IsPassword;
-            string name = isPassword ? "[protected]" : Limit(info.Name, maxTextLength);
+            string name = isPassword ? "[protected]" : DesktopUiText.Normalize(info.Name, maxTextLength);
             string automationId = isPassword
                 ? string.Empty
-                : Limit(info.AutomationId, maxTextLength);
+                : DesktopUiText.Normalize(info.AutomationId, maxTextLength);
             string className = isPassword
                 ? string.Empty
-                : Limit(info.ClassName, maxTextLength);
+                : DesktopUiText.Normalize(info.ClassName, maxTextLength);
 
             return new DesktopUiNodeSnapshot(
                 path,
@@ -254,17 +254,6 @@ public sealed class WindowsDesktopUiAutomationReader : IDesktopUiAutomationReade
         return name.StartsWith(prefix, StringComparison.Ordinal)
             ? name[prefix.Length..]
             : name;
-    }
-
-    private static string Limit(string? value, int maximum)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return string.Empty;
-
-        string normalized = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
-        return normalized.Length <= maximum
-            ? normalized
-            : normalized[..maximum];
     }
 
     private static void ValidateOptions(DesktopUiReadOptions options)

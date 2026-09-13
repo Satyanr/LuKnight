@@ -60,8 +60,8 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
             return new(false, $"Tombol \"{query}\" tidak ditemukan.");
 
         DesktopUiNodeSnapshot button = control.Match;
-        if (button.IsProtected || !button.IsEnabled || button.IsOffscreen)
-            return new(false, "Tombol target tidak tersedia untuk diaktifkan.");
+        if (DesktopUiActionPolicy.IsTemporarilyBlocked(button, out string policyReason))
+            return new(false, policyReason);
 
         var prepared = new PreparedAssistantAction(
             Name,
@@ -106,18 +106,16 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
             return new(false, snapshot.Error ?? "UI Automation gagal membaca ulang window.");
 
         DesktopUiNodeSnapshot? current = snapshot.Nodes.FirstOrDefault(x => x.Path == path);
-        if (current is null ||
-            current.IsProtected ||
-            current.ControlType != "Button" ||
-            !current.IsEnabled ||
-            current.IsOffscreen ||
-            !string.Equals(
+        if (current is null || !string.Equals(
                 DesktopUiNodeIdentity.Fingerprint(current),
                 fingerprint,
                 StringComparison.Ordinal))
         {
             return new(false, "Tombol berubah sejak konfirmasi. Ulangi perintah.");
         }
+
+        if (DesktopUiActionPolicy.IsTemporarilyBlocked(current, out string policyReason))
+            return new(false, policyReason);
 
         DesktopActionResult result = await _executor.InvokeAsync(
             window,
