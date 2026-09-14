@@ -11,6 +11,8 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
 
     private readonly IDesktopMouseActionExecutor? _mouseFallback;
 
+    private readonly IDesktopUiAssistedResolver? _assistedResolver;
+
     public string Name => BuiltInActionNames.DesktopInvokeUiControl;
 
     public InvokeDesktopUiControlAction(
@@ -18,13 +20,15 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
         IDesktopWindowTargetCatalog windows,
         IDesktopUiAutomationReader ui,
         IDesktopUiActionExecutor executor,
-        IDesktopMouseActionExecutor? mouseFallback = null)
+        IDesktopMouseActionExecutor? mouseFallback = null,
+        IDesktopUiAssistedResolver? assistedResolver = null)
     {
         _enabled = enabled ?? throw new ArgumentNullException(nameof(enabled));
         _windows = windows ?? throw new ArgumentNullException(nameof(windows));
         _ui = ui ?? throw new ArgumentNullException(nameof(ui));
         _executor = executor ?? throw new ArgumentNullException(nameof(executor));
         _mouseFallback = mouseFallback;
+        _assistedResolver = assistedResolver;
     }
 
     public ActionPreparationResult Prepare(ActionInvocation invocation) =>
@@ -57,7 +61,29 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
             return new(false, snapshot.Error ?? "UI Automation gagal membaca window.");
 
         DesktopUiControlResolution control =
-            DesktopUiControlResolver.Resolve(snapshot, query, "Button");
+            DesktopUiControlResolver.Resolve(
+                snapshot,
+                query,
+                "Button");
+
+        bool screenAssisted =
+            false;
+
+        if (control.Ambiguous &&
+            _assistedResolver is not null)
+        {
+            DesktopUiAssistedResolution assisted =
+                await _assistedResolver.ResolveAsync(
+                    window,
+                    control,
+                    cancellationToken);
+
+            control =
+                assisted.Resolution;
+
+            screenAssisted =
+                assisted.UsedScreenEvidence;
+        }
         if (control.Ambiguous)
             return new(false, "Ada beberapa tombol yang cocok. Gunakan nama yang lebih spesifik.");
         if (!control.Found || control.Match is null)
@@ -66,6 +92,11 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
         DesktopUiNodeSnapshot button = control.Match;
         if (DesktopUiActionPolicy.IsTemporarilyBlocked(button, out string policyReason))
             return new(false, policyReason);
+
+        string screenNotice =
+            screenAssisted
+                ? " Target dipilih dari kandidat UIA yang ambigu melalui validasi layar lokal; screenshot tidak dikirim ke AI."
+                : string.Empty;
 
         var prepared = new PreparedAssistantAction(
             Name,
@@ -79,7 +110,7 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
             $"Tekan tombol {button.DisplayName}",
             $"Izinkan Lu-Knight menekan tombol {button.DisplayName} pada window {window.DisplayLabel}? " +
             "UI Automation akan diprioritaskan; jika tombol tidak menyediakan InvokePattern, " +
-            "Lu-Knight boleh menggunakan klik mouse tervalidasi pada tombol yang sama.",
+            "Lu-Knight boleh menggunakan klik mouse tervalidasi pada tombol yang sama." + screenNotice,
             IncludeInContext: false);
         return new(true, $"Siap menekan tombol {button.DisplayName}.", prepared);
     }

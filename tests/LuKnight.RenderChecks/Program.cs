@@ -132,6 +132,7 @@ internal static partial class Program
         if (args.Contains("--screen-assist"))
         {
             CheckDesktopScreenAssist();
+            Task.Run(CheckAssistedResolverAsync).GetAwaiter().GetResult();
             Console.WriteLine($"PASS: {_checks} screen-assist foundation checks.");
             return;
         }

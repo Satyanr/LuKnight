@@ -6,10 +6,53 @@ using Forms = System.Windows.Forms;
 
 namespace LuKnight.Services;
 
+public enum DesktopUiScreenEvidenceOutcome
+{
+    Captured,
+    NotMapped,
+    Rejected,
+    Indeterminate
+}
+
 public sealed record DesktopUiScreenEvidenceResult(
-    bool Success,
+    DesktopUiScreenEvidenceOutcome Outcome,
     string Message,
-    DesktopUiScreenEvidence? Evidence = null);
+    DesktopUiScreenEvidence? Evidence = null)
+{
+    public bool Success =>
+        Outcome ==
+        DesktopUiScreenEvidenceOutcome.Captured;
+
+    public bool CanEliminateCandidate =>
+        Outcome ==
+        DesktopUiScreenEvidenceOutcome.NotMapped;
+
+    public static DesktopUiScreenEvidenceResult Captured(
+        string message,
+        DesktopUiScreenEvidence evidence) =>
+        new(
+            DesktopUiScreenEvidenceOutcome.Captured,
+            message,
+            evidence);
+
+    public static DesktopUiScreenEvidenceResult NotMapped(
+        string message) =>
+        new(
+            DesktopUiScreenEvidenceOutcome.NotMapped,
+            message);
+
+    public static DesktopUiScreenEvidenceResult Rejected(
+        string message) =>
+        new(
+            DesktopUiScreenEvidenceOutcome.Rejected,
+            message);
+
+    public static DesktopUiScreenEvidenceResult Indeterminate(
+        string message) =>
+        new(
+            DesktopUiScreenEvidenceOutcome.Indeterminate,
+            message);
+}
 
 public interface IDesktopUiScreenEvidenceService
 {
@@ -85,9 +128,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
 
         if (!entered)
         {
-            return new(
-                false,
-                "Screen-assisted UIA sedang sibuk.");
+            return DesktopUiScreenEvidenceResult.Indeterminate("Screen-assisted UIA sedang sibuk.");
         }
 
         long deadline =
@@ -132,9 +173,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
         }
         catch (TimeoutException)
         {
-            return new(
-                false,
-                "Screen-assisted UIA melewati batas waktu.");
+            return DesktopUiScreenEvidenceResult.Indeterminate("Screen-assisted UIA melewati batas waktu.");
         }
     }
 
@@ -151,10 +190,12 @@ public sealed class WindowsDesktopUiScreenEvidenceService
             cancellationToken
                 .ThrowIfCancellationRequested();
 
-            if (Expired(deadline) ||
-                !ValidateWindow(window))
+            if (Expired(deadline))
+                return DesktopUiScreenEvidenceResult.Indeterminate("Screen-assisted UIA melewati batas waktu.");
+
+            if (!ValidateWindow(window))
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Rejected(
                     "Window target berubah atau tidak tersedia.");
             }
 
@@ -165,7 +206,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
             if (root.Current.ProcessId !=
                 window.ProcessId)
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Rejected(
                     "Window target berubah.");
             }
 
@@ -177,7 +218,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
 
             if (element is null)
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Rejected(
                     "UI target tidak ditemukan.");
             }
 
@@ -192,7 +233,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
                     expectedFingerprint,
                     StringComparison.Ordinal))
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Rejected(
                     "UI target berubah sejak snapshot.");
             }
 
@@ -201,7 +242,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
                         node,
                         out string reason))
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Rejected(
                     reason);
             }
 
@@ -211,7 +252,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
                     out Drawing.Rectangle
                         windowBounds))
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Rejected(
                     "Bounding rectangle window tidak valid.");
             }
 
@@ -228,7 +269,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
                         out Drawing.Rectangle
                             captureBounds))
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Rejected(
                     "Region screen evidence tidak valid.");
             }
 
@@ -237,7 +278,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
                         node.Bounds,
                         out Point center))
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Rejected(
                     "Center UI target tidak valid.");
             }
 
@@ -255,8 +296,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
                 !virtualScreen.Contains(
                     centerPoint))
             {
-                return Fail(
-                    "Center UI target berada di luar window.");
+                return DesktopUiScreenEvidenceResult.NotMapped("Center UI target berada di luar window.");
             }
 
             if (!ValidateHitTarget(
@@ -264,16 +304,14 @@ public sealed class WindowsDesktopUiScreenEvidenceService
                     element,
                     centerPoint))
             {
-                return Fail(
-                    "Screen hit-test tidak cocok dengan UI target.");
+                return DesktopUiScreenEvidenceResult.NotMapped("Screen hit-test tidak cocok dengan UI target.");
             }
 
             if (!ValidateRegionOwnership(
                     window,
                     captureBounds))
             {
-                return Fail(
-                    "Region target tertutup atau dimiliki window lain.");
+                return DesktopUiScreenEvidenceResult.NotMapped("Region target tertutup atau dimiliki window lain.");
             }
 
             cancellationToken
@@ -281,8 +319,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
 
             if (Expired(deadline))
             {
-                return Fail(
-                    "Screen evidence melewati batas waktu sebelum capture.");
+                return DesktopUiScreenEvidenceResult.Indeterminate("Screen evidence melewati batas waktu sebelum capture.");
             }
 
             ScreenRegionCaptureSnapshot?
@@ -293,15 +330,13 @@ public sealed class WindowsDesktopUiScreenEvidenceService
 
             if (captured is null)
             {
-                return Fail(
-                    "Region layar tidak dapat diambil.");
+                return DesktopUiScreenEvidenceResult.Indeterminate("Region layar tidak dapat diambil.");
             }
 
             if (captured.SourceBounds !=
                 captureBounds)
             {
-                return Fail(
-                    "Captured region berubah.");
+                return DesktopUiScreenEvidenceResult.Indeterminate("Captured region berubah.");
             }
 
             cancellationToken
@@ -310,7 +345,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
             if (Expired(deadline) ||
                 !ValidateWindow(window))
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Indeterminate(
                     "Target berubah setelah screen capture.");
             }
 
@@ -321,7 +356,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
             if (freshRoot.Current.ProcessId !=
                 window.ProcessId)
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Indeterminate(
                     "Window berubah setelah capture.");
             }
 
@@ -333,7 +368,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
 
             if (freshElement is null)
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Indeterminate(
                     "UI target hilang setelah capture.");
             }
 
@@ -348,7 +383,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
                     expectedFingerprint,
                     StringComparison.Ordinal))
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Indeterminate(
                     "UI target berubah selama screen capture.");
             }
 
@@ -357,7 +392,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
                         fresh,
                         out reason))
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Indeterminate(
                     reason);
             }
 
@@ -365,14 +400,14 @@ public sealed class WindowsDesktopUiScreenEvidenceService
                     node.Bounds,
                     fresh.Bounds))
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Indeterminate(
                     "UI target berpindah selama screen capture.");
             }
 
             if (!TryToDrawingRectangle(freshRoot.Current.BoundingRectangle, out Drawing.Rectangle freshWindowBounds) ||
                 freshWindowBounds != windowBounds ||
                 Forms.SystemInformation.VirtualScreen != virtualScreen)
-                return Fail("Window atau virtual screen berubah selama capture.");
+                return DesktopUiScreenEvidenceResult.Indeterminate("Window atau virtual screen berubah selama capture.");
 
             if (!ValidateHitTarget(
                     window,
@@ -382,16 +417,15 @@ public sealed class WindowsDesktopUiScreenEvidenceService
                     window,
                     captureBounds))
             {
-                return Fail(
+                return DesktopUiScreenEvidenceResult.Indeterminate(
                     "Screen mapping berubah selama capture.");
             }
 
             cancellationToken.ThrowIfCancellationRequested();
             if (Expired(deadline) || !ValidateWindow(window))
-                return Fail("Screen mapping melewati batas waktu atau window berubah setelah revalidation.");
+                return DesktopUiScreenEvidenceResult.Indeterminate("Screen mapping melewati batas waktu atau window berubah setelah revalidation.");
 
-            return new DesktopUiScreenEvidenceResult(
-                true,
+            return DesktopUiScreenEvidenceResult.Captured(
                 "Bounded screen evidence berhasil dikaitkan ke UIA target yang sama.",
                 new DesktopUiScreenEvidence(
                     path,
@@ -405,22 +439,22 @@ public sealed class WindowsDesktopUiScreenEvidenceService
         }
         catch (ElementNotAvailableException)
         {
-            return Fail(
+            return DesktopUiScreenEvidenceResult.Indeterminate(
                 "UI target sudah tidak tersedia.");
         }
         catch (COMException)
         {
-            return Fail(
+            return DesktopUiScreenEvidenceResult.Indeterminate(
                 "UI Automation gagal saat memetakan screen evidence.");
         }
         catch (InvalidOperationException)
         {
-            return Fail(
+            return DesktopUiScreenEvidenceResult.Indeterminate(
                 "UI target tidak lagi valid.");
         }
         catch (OverflowException)
         {
-            return Fail(
+            return DesktopUiScreenEvidenceResult.Rejected(
                 "Koordinat screen evidence tidak valid.");
         }
     }
@@ -453,22 +487,8 @@ public sealed class WindowsDesktopUiScreenEvidenceService
             return false;
         }
 
-        AutomationElement hit;
-
-        try
-        {
-            hit =
-                AutomationElement
-                    .FromPoint(
-                        new Point(
-                            point.X,
-                            point.Y));
-        }
-        catch (
-            ElementNotAvailableException)
-        {
-            return false;
-        }
+        // UIA failures are indeterminate, never evidence for eliminating a candidate.
+        AutomationElement hit = AutomationElement.FromPoint(new Point(point.X, point.Y));
 
         return IsSameOrDescendant(
             hit,
@@ -738,11 +758,4 @@ public sealed class WindowsDesktopUiScreenEvidenceService
         Environment.TickCount64 >=
         deadline;
 
-    private static
-        DesktopUiScreenEvidenceResult
-        Fail(
-            string message) =>
-        new(
-            false,
-            message);
 }

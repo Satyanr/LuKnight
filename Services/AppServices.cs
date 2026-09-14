@@ -17,6 +17,8 @@ public sealed class AppServices
     public IDesktopMouseActionExecutor MouseActions { get; }
     public IDesktopUiTextActionExecutor UiTextActions { get; }
     public IDesktopKeyboardTextActionExecutor KeyboardTextActions { get; }
+    public IDesktopUiScreenEvidenceService UiScreenEvidence { get; }
+    public IDesktopUiAssistedResolver UiAssistedResolver { get; }
     public LocalDesktopCommandRouter DesktopCommands { get; }
     public IExplorerActionExecutor ExplorerActions { get; }
     public AssistantToolRouter Tools { get; }
@@ -44,7 +46,9 @@ public sealed class AppServices
         IDesktopUiActionExecutor? uiActionExecutor = null,
         IDesktopMouseActionExecutor? mouseActionExecutor = null,
         IDesktopUiTextActionExecutor? uiTextActionExecutor = null,
-        IDesktopKeyboardTextActionExecutor? keyboardTextActionExecutor = null)
+        IDesktopKeyboardTextActionExecutor? keyboardTextActionExecutor = null,
+        IDesktopUiScreenEvidenceService? uiScreenEvidenceService = null,
+        IDesktopUiAssistedResolver? uiAssistedResolver = null)
     {
         Settings = settings ?? new();
         Chat = new(credentials ?? new SecureCredentialService(), Settings.Current.Chat);
@@ -61,6 +65,14 @@ public sealed class AppServices
         MouseActions = mouseActionExecutor ?? new WindowsDesktopMouseActionExecutor();
         UiTextActions = uiTextActionExecutor ?? new WindowsDesktopUiTextActionExecutor();
         KeyboardTextActions = keyboardTextActionExecutor ?? new WindowsDesktopKeyboardTextActionExecutor();
+        UiScreenEvidence =
+            uiScreenEvidenceService ??
+            new WindowsDesktopUiScreenEvidenceService();
+
+        UiAssistedResolver =
+            uiAssistedResolver ??
+            new DesktopUiAssistedResolver(
+                UiScreenEvidence);
         DesktopAppIndexWarmup.Start(DesktopApps);
         DesktopCommands = new LocalDesktopCommandRouter(DesktopApps, DesktopWindows);
         IntentRouter = new AssistantIntentRouter(DesktopCommands);
@@ -100,7 +112,8 @@ public sealed class AppServices
                 DesktopWindows,
                 UiAutomation,
                 UiActions,
-                MouseActions),
+                MouseActions,
+                UiAssistedResolver),
             new OpenExplorerFolderAction(() => Chat.Options.UseDesktopActions, ExplorerActions),
             new SearchExplorerAction(() => Chat.Options.UseDesktopActions, ExplorerActions)
         });
