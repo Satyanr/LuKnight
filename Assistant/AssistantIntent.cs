@@ -69,6 +69,7 @@ public static class BuiltInToolNames
 
 public static class BuiltInActionNames
 {
+    public const string DesktopSetUiText = "desktop.set_ui_text";
     public const string DesktopOpenApplication = "desktop.open_application";
     public const string DesktopFocusApplication = "desktop.focus_application";
     public const string DesktopFocusWindow = "desktop.focus_window";

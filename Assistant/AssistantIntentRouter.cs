@@ -67,6 +67,36 @@ public sealed class AssistantIntentRouter
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)));
         }
 
+        DesktopUiTextCommand?
+            uiText =
+                DesktopUiTextCommandParser
+                    .Parse(input);
+
+        if (uiText is not null)
+        {
+            return AssistantIntent.UseAction(
+                new ActionInvocation(
+                    BuiltInActionNames
+                        .DesktopSetUiText,
+                    new Dictionary<string, string>(
+                        StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["window"] =
+                            uiText.WindowQuery,
+
+                        ["control"] =
+                            uiText.ControlQuery,
+
+                        ["value"] =
+                            uiText.Value
+                    },
+                    IncludeInContext: false));
+        }
+        if (DesktopUiTextCommandParser.IsTextInputCommand(input))
+            return AssistantIntent.RespondLocal(
+                "Perintah text input tidak valid. Gunakan teks satu baris, maksimum 1000 karakter, dan target window yang eksplisit.",
+                includeInContext: false);
+
         DesktopUiActionCommand? uiAction = DesktopUiActionCommandParser.Parse(input);
         if (uiAction is not null)
         {

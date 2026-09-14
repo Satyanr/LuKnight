@@ -45,6 +45,7 @@ internal static partial class Program
 
     private static async Task CheckDesktopUiResolverAsync()
     {
+        await CheckDesktopUiTextAsync();
         Require(
             DesktopMouseGeometry.TryGetCenter(
                 new Rect(100, 200, 80, 40),

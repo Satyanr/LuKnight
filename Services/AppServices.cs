@@ -15,6 +15,7 @@ public sealed class AppServices
     public IDesktopUiAutomationReader UiAutomation { get; }
     public IDesktopUiActionExecutor UiActions { get; }
     public IDesktopMouseActionExecutor MouseActions { get; }
+    public IDesktopUiTextActionExecutor UiTextActions { get; }
     public LocalDesktopCommandRouter DesktopCommands { get; }
     public IExplorerActionExecutor ExplorerActions { get; }
     public AssistantToolRouter Tools { get; }
@@ -40,7 +41,8 @@ public sealed class AppServices
         IDesktopWindowActionExecutor? windowExecutor = null,
         IDesktopUiAutomationReader? uiAutomation = null,
         IDesktopUiActionExecutor? uiActionExecutor = null,
-        IDesktopMouseActionExecutor? mouseActionExecutor = null)
+        IDesktopMouseActionExecutor? mouseActionExecutor = null,
+        IDesktopUiTextActionExecutor? uiTextActionExecutor = null)
     {
         Settings = settings ?? new();
         Chat = new(credentials ?? new SecureCredentialService(), Settings.Current.Chat);
@@ -55,6 +57,7 @@ public sealed class AppServices
         UiAutomation = uiAutomation ?? new WindowsDesktopUiAutomationReader();
         UiActions = uiActionExecutor ?? new WindowsDesktopUiActionExecutor();
         MouseActions = mouseActionExecutor ?? new WindowsDesktopMouseActionExecutor();
+        UiTextActions = uiTextActionExecutor ?? new WindowsDesktopUiTextActionExecutor();
         DesktopAppIndexWarmup.Start(DesktopApps);
         DesktopCommands = new LocalDesktopCommandRouter(DesktopApps, DesktopWindows);
         IntentRouter = new AssistantIntentRouter(DesktopCommands);
@@ -82,6 +85,12 @@ public sealed class AppServices
             new OpenDesktopApplicationAction(() => Chat.Options.UseDesktopActions, desktopExecutor, DesktopApps),
             new FocusDesktopApplicationAction(() => Chat.Options.UseDesktopActions, desktopExecutor, DesktopApps),
             new FocusDesktopWindowAction(() => Chat.Options.UseDesktopActions, DesktopWindows, WindowActions),
+            new SetDesktopUiTextAction(
+                () =>
+                    Chat.Options.UseDesktopActions,
+                DesktopWindows,
+                UiAutomation,
+                UiTextActions),
             new InvokeDesktopUiControlAction(
                 () => Chat.Options.UseDesktopActions,
                 DesktopWindows,
