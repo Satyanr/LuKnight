@@ -10,6 +10,8 @@ public sealed class SetDesktopUiTextAction
     private readonly IDesktopUiAutomationReader _ui;
     private readonly IDesktopUiTextActionExecutor _executor;
 
+    private readonly IDesktopKeyboardTextActionExecutor? _keyboardFallback;
+
     public string Name =>
         BuiltInActionNames.DesktopSetUiText;
 
@@ -17,8 +19,10 @@ public sealed class SetDesktopUiTextAction
         Func<bool> enabled,
         IDesktopWindowTargetCatalog windows,
         IDesktopUiAutomationReader ui,
-        IDesktopUiTextActionExecutor executor)
+        IDesktopUiTextActionExecutor executor,
+        IDesktopKeyboardTextActionExecutor? keyboardFallback = null)
     {
+        _keyboardFallback = keyboardFallback;
         _enabled =
             enabled ??
             throw new ArgumentNullException(
@@ -182,7 +186,8 @@ public sealed class SetDesktopUiTextAction
                 },
                 $"Isi text field {field.DisplayName}",
                 $"Izinkan Lu-Knight mengganti isi text field {field.DisplayName} pada window {window.DisplayLabel}? " +
-                $"Teks sepanjang {value.Length} karakter akan dimasukkan melalui UI Automation.",
+                $"Teks sepanjang {value.Length} karakter akan dimasukkan. UI Automation ValuePattern diprioritaskan; " +
+                "jika field tidak menyediakan ValuePattern, Lu-Knight boleh menggunakan keyboard fallback tervalidasi pada field yang sama.",
                 IncludeInContext: false);
 
         return new(
@@ -301,9 +306,47 @@ public sealed class SetDesktopUiTextAction
                 value,
                 cancellationToken);
 
+        if (result.Success)
+        {
+            return new(
+                true,
+                result.Message);
+        }
+
+        if (!result.CanKeyboardFallback)
+        {
+            return new(
+                false,
+                result.Message);
+        }
+
+        if (_keyboardFallback is null)
+        {
+            return new(
+                false,
+                "Text field tidak menyediakan ValuePattern dan keyboard fallback tidak tersedia.");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        DesktopActionResult keyboard =
+            await _keyboardFallback.ReplaceTextAsync(
+                window,
+                path,
+                fingerprint,
+                value,
+                cancellationToken);
+
+        if (!keyboard.Success)
+        {
+            return new(
+                false,
+                $"ValuePattern tidak tersedia. Keyboard fallback juga dibatalkan: {keyboard.Message}");
+        }
+
         return new(
-            result.Success,
-            result.Message);
+            true,
+            $"{keyboard.Message} ValuePattern tidak tersedia, jadi digunakan keyboard fallback tervalidasi.");
     }
 
     private static bool TryArg(

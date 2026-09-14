@@ -11,7 +11,7 @@ internal static partial class Program
         public int Calls;
         public string? LastValue;
         public (DesktopWindowTarget Window, string Path, string Fingerprint)? Target;
-        public DesktopUiTextResult Result = new(true, "Text set.");
+        public DesktopUiTextResult Result = DesktopUiTextResult.Set("Text set.");
 
         public Task<DesktopUiTextResult> SetTextAsync(
             DesktopWindowTarget window, string controlPath, string expectedFingerprint,
@@ -21,6 +21,22 @@ internal static partial class Program
             Calls++;
             LastValue = value;
             Target = (window, controlPath, expectedFingerprint);
+            return Task.FromResult(Result);
+        }
+    }
+
+    private sealed class FakeKeyboardTextExecutor : IDesktopKeyboardTextActionExecutor
+    {
+        public int Calls;
+        public DesktopActionResult Result = new(true, "Keyboard text set.");
+        public (DesktopWindowTarget Window, string Path, string Fingerprint, string Value)? Target;
+        public Task<DesktopActionResult> ReplaceTextAsync(DesktopWindowTarget window,
+            string controlPath, string expectedFingerprint, string value,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Calls++;
+            Target = (window, controlPath, expectedFingerprint, value);
             return Task.FromResult(Result);
         }
     }
@@ -86,8 +102,9 @@ internal static partial class Program
             new DesktopAppCatalogService(() => Array.Empty<DesktopAppTarget>()), catalog));
         var ui = new FakeUiAutomationReader { Snapshot = snapshot };
         var executor = new FakeUiTextExecutor();
+        var keyboard = new FakeKeyboardTextExecutor();
         bool enabled = true;
-        var action = new SetDesktopUiTextAction(() => enabled, catalog, ui, executor);
+        var action = new SetDesktopUiTextAction(() => enabled, catalog, ui, executor, keyboard);
         using var handler = new FakeHttp((_, _) => throw new InvalidOperationException("Text input reached Gemini."));
         using var client = new HttpClient(handler);
         var chat = new ChatCoordinator(new FakeCredentials { Key = "unused-text-test-key" },
@@ -107,7 +124,7 @@ internal static partial class Program
             proposal.ActionProposal.ConfirmationText.Contains($"{exactValue.Length} karakter", StringComparison.Ordinal),
             "Text confirmation exposed content or lost length.");
         AssistantReply confirmed = await assistant.ConfirmActionAsync(proposal.ActionProposal.Id);
-        Require(confirmed.Backend == AssistantBackend.Local && executor.Calls == 1 && executor.LastValue == exactValue &&
+        Require(confirmed.Backend == AssistantBackend.Local && executor.Calls == 1 && keyboard.Calls == 0 && executor.LastValue == exactValue &&
             executor.Target == (window, field.Path, DesktopUiNodeIdentity.Fingerprint(field)) &&
             handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
             "Confirmed text lost exact value, identity, or privacy.");
@@ -118,7 +135,7 @@ internal static partial class Program
             Require(router.Route(blockedCommand).Kind == AssistantIntentKind.Action,
                 "Protected target was filtered by parser instead of target validation.");
             AssistantReply blocked = await assistant.SendAsync(new AssistantRequest(blockedCommand));
-            Require(blocked.ActionProposal is null && executor.Calls == 1 && handler.Calls == 0 &&
+            Require(blocked.ActionProposal is null && executor.Calls == 1 && keyboard.Calls == 0 && handler.Calls == 0 &&
                 assistant.Conversation.GetRecentContext().Count == 0, "Sensitive field reached execution or Gemini.");
         }
         foreach (string badCommand in new[]
@@ -146,7 +163,7 @@ internal static partial class Program
             Require(proposal.ActionProposal is not null, "Stale test preparation failed.");
             ui.Snapshot = snapshot with { Nodes = new[] { changed } };
             await assistant.ConfirmActionAsync(proposal.ActionProposal!.Id);
-            Require(executor.Calls == 1 && handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
+            Require(executor.Calls == 1 && keyboard.Calls == 0 && handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
                 "Changed text field reached executor or Gemini.");
         }
         ui.Snapshot = snapshot;
@@ -159,7 +176,7 @@ internal static partial class Program
         foreach (string reason in new[] { "Read-only", "ValuePattern unavailable", "Timeout", "COM failure" })
         {
             int before = executor.Calls;
-            executor.Result = new(false, reason);
+            executor.Result = DesktopUiTextResult.Rejected(reason);
             ActionExecutionResult failed = await action.ExecuteAsync(prepared.Action!);
             Require(!failed.Success && failed.Message == reason && executor.Calls == before + 1,
                 "Text executor failure retried or was not preserved.");
@@ -174,5 +191,63 @@ internal static partial class Program
         }
         catch (OperationCanceledException) { }
         Require(executor.Calls == calls, "Cancelled text input reached executor.");
+
+        Require(prepared.Action!.ConfirmationText.Contains("keyboard", StringComparison.OrdinalIgnoreCase),
+            "Keyboard fallback was not disclosed.");
+        foreach (DesktopUiTextResult outcome in new[]
+        {
+            DesktopUiTextResult.Set("Set."),
+            DesktopUiTextResult.Rejected("ValuePattern unavailable."),
+            DesktopUiTextResult.Rejected("Read-only."),
+            DesktopUiTextResult.Indeterminate("Timeout."),
+            DesktopUiTextResult.Indeterminate("COM failure."),
+            new DesktopUiTextResult((DesktopUiTextOutcome)999, "Unknown.")
+        })
+        {
+            executor.Result = outcome;
+            int uiBefore = executor.Calls;
+            int keyboardBefore = keyboard.Calls;
+            ActionExecutionResult result = await action.ExecuteAsync(prepared.Action!);
+            Require(result.Success == outcome.Success && executor.Calls == uiBefore + 1 &&
+                keyboard.Calls == keyboardBefore, $"Keyboard escaped typed boundary: {outcome.Outcome}");
+        }
+        executor.Result = DesktopUiTextResult.Unsupported("ValuePattern unavailable.");
+        int uiBeforeFallback = executor.Calls;
+        int keyboardBeforeFallback = keyboard.Calls;
+        ActionExecutionResult fallback = await action.ExecuteAsync(prepared.Action!);
+        Require(fallback.Success && executor.Calls == uiBeforeFallback + 1 && keyboard.Calls == keyboardBeforeFallback + 1 &&
+            keyboard.Target == (window, field.Path, DesktopUiNodeIdentity.Fingerprint(field), exactValue),
+            "Unsupported ValuePattern did not use exactly one keyboard fallback with exact target/text.");
+        var noKeyboard = new SetDesktopUiTextAction(() => true, catalog, ui, executor);
+        Require(!(await noKeyboard.ExecuteAsync(prepared.Action!)).Success,
+            "Missing keyboard executor did not fail safely.");
+        keyboard.Result = new(false, "Focus changed.");
+        int beforeRejectedKeyboard = keyboard.Calls;
+        ActionExecutionResult rejectedKeyboard = await action.ExecuteAsync(prepared.Action!);
+        Require(!rejectedKeyboard.Success && keyboard.Calls == beforeRejectedKeyboard + 1 &&
+            rejectedKeyboard.Message.Contains("Focus changed.", StringComparison.Ordinal),
+            "Keyboard validation failure was retried or lost.");
+        foreach (string sensitive in new[] { "Password", "PIN", "OTP", "API Key", "CVV", "Token" })
+        {
+            ui.Snapshot = snapshot with { Nodes = new[] { field with { Name = sensitive } } };
+            int uiBefore = executor.Calls;
+            int keyboardBefore = keyboard.Calls;
+            AssistantReply blocked = await assistant.SendAsync(new AssistantRequest(
+                $"isi textbox {sensitive} dengan harmless di window Notepad"));
+            Require(blocked.ActionProposal is null && executor.Calls == uiBefore && keyboard.Calls == keyboardBefore &&
+                handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
+                $"Sensitive field reached text or keyboard executor: {sensitive}");
+        }
+        foreach (string unsupported in new[]
+        {
+            "tekan Ctrl+A", "tekan Enter", "tekan tombol A", "shortcut Ctrl+S", "ketik di posisi cursor"
+        })
+            Require(router.Route(unsupported).Kind != AssistantIntentKind.Action,
+                $"Arbitrary keyboard command became executable: {unsupported}");
+
+        Type nativeInput = typeof(WindowsDesktopKeyboardTextActionExecutor).GetNestedType(
+            "Input", System.Reflection.BindingFlags.NonPublic)!;
+        Require(System.Runtime.InteropServices.Marshal.SizeOf(nativeInput) == (IntPtr.Size == 8 ? 40 : 28),
+            "Keyboard INPUT struct does not match native architecture size.");
     }
 }

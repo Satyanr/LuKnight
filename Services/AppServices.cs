@@ -16,6 +16,7 @@ public sealed class AppServices
     public IDesktopUiActionExecutor UiActions { get; }
     public IDesktopMouseActionExecutor MouseActions { get; }
     public IDesktopUiTextActionExecutor UiTextActions { get; }
+    public IDesktopKeyboardTextActionExecutor KeyboardTextActions { get; }
     public LocalDesktopCommandRouter DesktopCommands { get; }
     public IExplorerActionExecutor ExplorerActions { get; }
     public AssistantToolRouter Tools { get; }
@@ -42,7 +43,8 @@ public sealed class AppServices
         IDesktopUiAutomationReader? uiAutomation = null,
         IDesktopUiActionExecutor? uiActionExecutor = null,
         IDesktopMouseActionExecutor? mouseActionExecutor = null,
-        IDesktopUiTextActionExecutor? uiTextActionExecutor = null)
+        IDesktopUiTextActionExecutor? uiTextActionExecutor = null,
+        IDesktopKeyboardTextActionExecutor? keyboardTextActionExecutor = null)
     {
         Settings = settings ?? new();
         Chat = new(credentials ?? new SecureCredentialService(), Settings.Current.Chat);
@@ -58,6 +60,7 @@ public sealed class AppServices
         UiActions = uiActionExecutor ?? new WindowsDesktopUiActionExecutor();
         MouseActions = mouseActionExecutor ?? new WindowsDesktopMouseActionExecutor();
         UiTextActions = uiTextActionExecutor ?? new WindowsDesktopUiTextActionExecutor();
+        KeyboardTextActions = keyboardTextActionExecutor ?? new WindowsDesktopKeyboardTextActionExecutor();
         DesktopAppIndexWarmup.Start(DesktopApps);
         DesktopCommands = new LocalDesktopCommandRouter(DesktopApps, DesktopWindows);
         IntentRouter = new AssistantIntentRouter(DesktopCommands);
@@ -90,7 +93,8 @@ public sealed class AppServices
                     Chat.Options.UseDesktopActions,
                 DesktopWindows,
                 UiAutomation,
-                UiTextActions),
+                UiTextActions,
+                KeyboardTextActions),
             new InvokeDesktopUiControlAction(
                 () => Chat.Options.UseDesktopActions,
                 DesktopWindows,

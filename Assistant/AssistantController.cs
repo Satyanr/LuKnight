@@ -66,7 +66,8 @@ public sealed class AssistantController
                     _chat.Options.UseDesktopActions,
                 IntentRouter.DesktopWindows,
                 new WindowsDesktopUiAutomationReader(),
-                new WindowsDesktopUiTextActionExecutor()),
+                new WindowsDesktopUiTextActionExecutor(),
+                new WindowsDesktopKeyboardTextActionExecutor()),
             new InvokeDesktopUiControlAction(
                 () => _chat.Options.UseDesktopActions,
                 IntentRouter.DesktopWindows,

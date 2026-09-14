@@ -3,9 +3,50 @@ using System.Windows.Automation;
 
 namespace LuKnight.Services;
 
+public enum DesktopUiTextOutcome
+{
+    Set,
+    UnsupportedPattern,
+    Rejected,
+    Indeterminate
+}
+
 public sealed record DesktopUiTextResult(
-    bool Success,
-    string Message);
+    DesktopUiTextOutcome Outcome,
+    string Message)
+{
+    public bool Success =>
+        Outcome ==
+        DesktopUiTextOutcome.Set;
+
+    public bool CanKeyboardFallback =>
+        Outcome ==
+        DesktopUiTextOutcome.UnsupportedPattern;
+
+    public static DesktopUiTextResult Set(
+        string message) =>
+        new(
+            DesktopUiTextOutcome.Set,
+            message);
+
+    public static DesktopUiTextResult Unsupported(
+        string message) =>
+        new(
+            DesktopUiTextOutcome.UnsupportedPattern,
+            message);
+
+    public static DesktopUiTextResult Rejected(
+        string message) =>
+        new(
+            DesktopUiTextOutcome.Rejected,
+            message);
+
+    public static DesktopUiTextResult Indeterminate(
+        string message) =>
+        new(
+            DesktopUiTextOutcome.Indeterminate,
+            message);
+}
 
 public interface IDesktopUiTextActionExecutor
 {
@@ -54,9 +95,7 @@ public sealed class
                     value,
                     out string valueReason))
         {
-            return new(
-                false,
-                valueReason);
+            return DesktopUiTextResult.Rejected(valueReason);
         }
 
         bool entered =
@@ -66,9 +105,7 @@ public sealed class
 
         if (!entered)
         {
-            return new(
-                false,
-                "UI text automation sedang sibuk.");
+            return DesktopUiTextResult.Rejected("UI text automation sedang sibuk.");
         }
 
         long deadline =
@@ -114,9 +151,7 @@ public sealed class
         }
         catch (TimeoutException)
         {
-            return new(
-                false,
-                "UI text automation melewati batas waktu. Status input tidak diketahui; jangan retry otomatis.");
+            return DesktopUiTextResult.Indeterminate("UI text automation melewati batas waktu. Status input tidak diketahui; keyboard fallback dibatalkan.");
         }
     }
 
@@ -136,17 +171,13 @@ public sealed class
 
             if (Expired(deadline))
             {
-                return new(
-                    false,
-                    "UI text automation melewati batas waktu.");
+                return DesktopUiTextResult.Indeterminate("UI text automation melewati batas waktu.");
             }
 
             if (!ValidateWindow(
                     window))
             {
-                return new(
-                    false,
-                    "Window target berubah atau sudah tidak tersedia.");
+                return DesktopUiTextResult.Rejected("Window target berubah atau sudah tidak tersedia.");
             }
 
             AutomationElement root =
@@ -156,9 +187,7 @@ public sealed class
             if (root.Current.ProcessId !=
                 window.ProcessId)
             {
-                return new(
-                    false,
-                    "Window target berubah.");
+                return DesktopUiTextResult.Rejected("Window target berubah.");
             }
 
             AutomationElement? element =
@@ -169,9 +198,7 @@ public sealed class
 
             if (element is null)
             {
-                return new(
-                    false,
-                    "Text field sudah tidak tersedia.");
+                return DesktopUiTextResult.Rejected("Text field sudah tidak tersedia.");
             }
 
             DesktopUiNodeSnapshot snapshot =
@@ -185,9 +212,7 @@ public sealed class
                     expectedFingerprint,
                     StringComparison.Ordinal))
             {
-                return new(
-                    false,
-                    "Text field berubah sejak konfirmasi.");
+                return DesktopUiTextResult.Rejected("Text field berubah sejak konfirmasi.");
             }
 
             if (!DesktopUiTextInputPolicy
@@ -195,9 +220,7 @@ public sealed class
                         snapshot,
                         out string policyReason))
             {
-                return new(
-                    false,
-                    policyReason);
+                return DesktopUiTextResult.Rejected(policyReason);
             }
 
             cancellationToken
@@ -205,9 +228,7 @@ public sealed class
 
             if (Expired(deadline))
             {
-                return new(
-                    false,
-                    "UI text automation melewati batas waktu sebelum input.");
+                return DesktopUiTextResult.Indeterminate("UI text automation melewati batas waktu sebelum input.");
             }
 
             bool hasPattern =
@@ -220,25 +241,19 @@ public sealed class
 
             if (Expired(deadline))
             {
-                return new(
-                    false,
-                    "UI text automation melewati batas waktu saat membaca ValuePattern.");
+                return DesktopUiTextResult.Indeterminate("UI text automation melewati batas waktu saat membaca ValuePattern.");
             }
 
             if (!hasPattern ||
                 rawPattern is not
                     ValuePattern pattern)
             {
-                return new(
-                    false,
-                    "Text field tidak menyediakan UI Automation ValuePattern.");
+                return DesktopUiTextResult.Unsupported("Text field tidak menyediakan UI Automation ValuePattern.");
             }
 
             if (pattern.Current.IsReadOnly)
             {
-                return new(
-                    false,
-                    "Text field bersifat read-only.");
+                return DesktopUiTextResult.Rejected("Text field bersifat read-only.");
             }
 
             // Re-read immediately before mutation.
@@ -253,9 +268,7 @@ public sealed class
                     expectedFingerprint,
                     StringComparison.Ordinal))
             {
-                return new(
-                    false,
-                    "Text field berubah tepat sebelum input.");
+                return DesktopUiTextResult.Rejected("Text field berubah tepat sebelum input.");
             }
 
             if (!DesktopUiTextInputPolicy
@@ -263,20 +276,18 @@ public sealed class
                         final,
                         out policyReason))
             {
-                return new(
-                    false,
-                    policyReason);
+                return DesktopUiTextResult.Rejected(policyReason);
             }
 
             cancellationToken
                 .ThrowIfCancellationRequested();
 
-            if (Expired(deadline) ||
-                !ValidateWindow(window))
+            if (Expired(deadline))
+                return DesktopUiTextResult.Indeterminate("UI text automation melewati batas waktu sebelum SetValue; keyboard fallback dibatalkan.");
+
+            if (!ValidateWindow(window))
             {
-                return new(
-                    false,
-                    "Target berubah sebelum text input.");
+                return DesktopUiTextResult.Rejected("Target berubah sebelum text input.");
             }
 
             try
@@ -284,54 +295,38 @@ public sealed class
                 pattern.SetValue(
                     value);
 
-                return new(
-                    true,
-                    $"Teks berhasil dimasukkan ke {final.DisplayName} melalui UI Automation.");
+                return DesktopUiTextResult.Set($"Teks berhasil dimasukkan ke {final.DisplayName} melalui UI Automation.");
             }
             catch (ElementNotEnabledException)
             {
-                return new(
-                    false,
-                    "Text field sudah tidak aktif.");
+                return DesktopUiTextResult.Rejected("Text field sudah tidak aktif.");
             }
             catch (InvalidOperationException)
             {
                 // SetValue sudah dicoba / provider mungkin
                 // berubah menjadi readonly.
-                return new(
-                    false,
-                    "Text field menolak perubahan nilai.");
+                return DesktopUiTextResult.Rejected("Text field menolak perubahan nilai.");
             }
             catch (ElementNotAvailableException)
             {
-                return new(
-                    false,
-                    "Text field sudah tidak tersedia.");
+                return DesktopUiTextResult.Rejected("Text field sudah tidak tersedia.");
             }
             catch (COMException)
             {
-                return new(
-                    false,
-                    "UI Automation gagal ketika mengisi text field. Status input tidak diketahui; jangan retry otomatis.");
+                return DesktopUiTextResult.Indeterminate("UI Automation gagal ketika mengisi text field. Status input tidak diketahui; keyboard fallback dibatalkan.");
             }
         }
         catch (ElementNotAvailableException)
         {
-            return new(
-                false,
-                "Text field sudah tidak tersedia.");
+            return DesktopUiTextResult.Rejected("Text field sudah tidak tersedia.");
         }
         catch (COMException)
         {
-            return new(
-                false,
-                "UI Automation gagal memvalidasi text field.");
+            return DesktopUiTextResult.Rejected("UI Automation gagal memvalidasi text field.");
         }
         catch (InvalidOperationException)
         {
-            return new(
-                false,
-                "Text field tidak lagi valid.");
+            return DesktopUiTextResult.Rejected("Text field tidak lagi valid.");
         }
     }
 
