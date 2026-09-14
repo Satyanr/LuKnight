@@ -199,5 +199,40 @@ internal static partial class Program
             "Invalid capture dimensions accepted.");
         Require(ScreenCaptureService.CaptureRegion(new Drawing.Rectangle(0, 0, 10, 10), maxEncodedBytes: 100) is null,
             "Invalid encoded-byte limit accepted.");
+        Require(
+            DesktopMouseGeometry.TryGetCenter(
+                safe.Bounds,
+                out Point safeCenter) &&
+            window.Contains(
+                new Drawing.Point(
+                    (int)safeCenter.X,
+                    (int)safeCenter.Y)),
+            "UI target center is not inside its window.");
+
+        var mostlyOutside =
+            new Rect(
+                530,
+                580,
+                100,
+                100);
+
+        Require(
+            DesktopUiScreenAssistGeometry
+                .TryGetCaptureBounds(
+                    mostlyOutside,
+                    window,
+                    virtualScreen,
+                    out _),
+            "Expected geometric intersection was not found.");
+
+        Require(
+            DesktopMouseGeometry.TryGetCenter(
+                mostlyOutside,
+                out Point outsideCenter) &&
+            !window.Contains(
+                new Drawing.Point(
+                    (int)outsideCenter.X,
+                    (int)outsideCenter.Y)),
+            "Mostly-outside target unexpectedly has a valid window center.");
     }
 }
