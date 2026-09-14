@@ -65,7 +65,8 @@ public sealed class AssistantController
                 () => _chat.Options.UseDesktopActions,
                 IntentRouter.DesktopWindows,
                 new WindowsDesktopUiAutomationReader(),
-                new WindowsDesktopUiActionExecutor()),
+                new WindowsDesktopUiActionExecutor(),
+                new WindowsDesktopMouseActionExecutor()),
             new OpenExplorerFolderAction(() => _chat.Options.UseDesktopActions, new WindowsExplorerActionExecutor()),
             new SearchExplorerAction(() => _chat.Options.UseDesktopActions, new WindowsExplorerActionExecutor())
         });

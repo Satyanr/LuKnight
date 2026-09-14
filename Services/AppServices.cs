@@ -86,7 +86,8 @@ public sealed class AppServices
                 () => Chat.Options.UseDesktopActions,
                 DesktopWindows,
                 UiAutomation,
-                UiActions),
+                UiActions,
+                MouseActions),
             new OpenExplorerFolderAction(() => Chat.Options.UseDesktopActions, ExplorerActions),
             new SearchExplorerAction(() => Chat.Options.UseDesktopActions, ExplorerActions)
         });

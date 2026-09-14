@@ -9,18 +9,22 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
     private readonly IDesktopUiAutomationReader _ui;
     private readonly IDesktopUiActionExecutor _executor;
 
+    private readonly IDesktopMouseActionExecutor? _mouseFallback;
+
     public string Name => BuiltInActionNames.DesktopInvokeUiControl;
 
     public InvokeDesktopUiControlAction(
         Func<bool> enabled,
         IDesktopWindowTargetCatalog windows,
         IDesktopUiAutomationReader ui,
-        IDesktopUiActionExecutor executor)
+        IDesktopUiActionExecutor executor,
+        IDesktopMouseActionExecutor? mouseFallback = null)
     {
         _enabled = enabled ?? throw new ArgumentNullException(nameof(enabled));
         _windows = windows ?? throw new ArgumentNullException(nameof(windows));
         _ui = ui ?? throw new ArgumentNullException(nameof(ui));
         _executor = executor ?? throw new ArgumentNullException(nameof(executor));
+        _mouseFallback = mouseFallback;
     }
 
     public ActionPreparationResult Prepare(ActionInvocation invocation) =>
@@ -73,7 +77,9 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
                 ["controlFingerprint"] = DesktopUiNodeIdentity.Fingerprint(button)
             },
             $"Tekan tombol {button.DisplayName}",
-            $"Izinkan Lu-Knight menekan tombol {button.DisplayName} pada window {window.DisplayLabel}?",
+            $"Izinkan Lu-Knight menekan tombol {button.DisplayName} pada window {window.DisplayLabel}? " +
+            "UI Automation akan diprioritaskan; jika tombol tidak menyediakan InvokePattern, " +
+            "Lu-Knight boleh menggunakan klik mouse tervalidasi pada tombol yang sama.",
             IncludeInContext: false);
         return new(true, $"Siap menekan tombol {button.DisplayName}.", prepared);
     }
@@ -117,12 +123,28 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
         if (DesktopUiActionPolicy.IsTemporarilyBlocked(current, out string policyReason))
             return new(false, policyReason);
 
-        DesktopActionResult result = await _executor.InvokeAsync(
+        DesktopUiInvokeResult invoke = await _executor.InvokeAsync(
             window,
             path,
             fingerprint,
             cancellationToken);
-        return new(result.Success, result.Message);
+        if (invoke.Success)
+            return new(true, invoke.Message);
+        if (!invoke.CanMouseFallback)
+            return new(false, invoke.Message);
+        if (_mouseFallback is null)
+            return new(false, "Tombol tidak mendukung UI Automation Invoke dan mouse fallback tidak tersedia.");
+
+        cancellationToken.ThrowIfCancellationRequested();
+        DesktopActionResult mouse = await _mouseFallback.ClickAsync(
+            window,
+            path,
+            fingerprint,
+            cancellationToken);
+        if (!mouse.Success)
+            return new(false, $"UI Automation Invoke tidak tersedia. Mouse fallback juga dibatalkan: {mouse.Message}");
+
+        return new(true, $"{mouse.Message} UI Automation Invoke tidak tersedia, jadi digunakan mouse fallback tervalidasi.");
     }
 
     private static bool TryArg(ActionInvocation invocation, string key, out string value)

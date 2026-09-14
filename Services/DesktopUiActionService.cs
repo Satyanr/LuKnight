@@ -3,9 +3,32 @@ using System.Windows.Automation;
 
 namespace LuKnight.Services;
 
+public enum DesktopUiInvokeOutcome
+{
+    Invoked,
+    UnsupportedPattern,
+    Rejected,
+    Indeterminate
+}
+
+public sealed record DesktopUiInvokeResult(DesktopUiInvokeOutcome Outcome, string Message)
+{
+    public bool Success => Outcome == DesktopUiInvokeOutcome.Invoked;
+    public bool CanMouseFallback => Outcome == DesktopUiInvokeOutcome.UnsupportedPattern;
+
+    public static DesktopUiInvokeResult Invoked(string message) =>
+        new(DesktopUiInvokeOutcome.Invoked, message);
+    public static DesktopUiInvokeResult Unsupported(string message) =>
+        new(DesktopUiInvokeOutcome.UnsupportedPattern, message);
+    public static DesktopUiInvokeResult Rejected(string message) =>
+        new(DesktopUiInvokeOutcome.Rejected, message);
+    public static DesktopUiInvokeResult Indeterminate(string message) =>
+        new(DesktopUiInvokeOutcome.Indeterminate, message);
+}
+
 public interface IDesktopUiActionExecutor
 {
-    Task<DesktopActionResult> InvokeAsync(
+    Task<DesktopUiInvokeResult> InvokeAsync(
         DesktopWindowTarget window,
         string controlPath,
         string expectedFingerprint,
@@ -23,7 +46,7 @@ public sealed class WindowsDesktopUiActionExecutor : IDesktopUiActionExecutor
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(nint hwnd, out uint processId);
 
-    public async Task<DesktopActionResult> InvokeAsync(
+    public async Task<DesktopUiInvokeResult> InvokeAsync(
         DesktopWindowTarget window,
         string controlPath,
         string expectedFingerprint,
@@ -32,10 +55,10 @@ public sealed class WindowsDesktopUiActionExecutor : IDesktopUiActionExecutor
         cancellationToken.ThrowIfCancellationRequested();
         bool entered = await _gate.WaitAsync(0, cancellationToken);
         if (!entered)
-            return new(false, "UI Automation sedang sibuk.");
+            return DesktopUiInvokeResult.Rejected("UI Automation sedang sibuk.");
 
         long deadline = Environment.TickCount64 + (long)InvokeTimeout.TotalMilliseconds;
-        Task<DesktopActionResult> worker;
+        Task<DesktopUiInvokeResult> worker;
         try
         {
             worker = Task.Run(
@@ -69,9 +92,8 @@ public sealed class WindowsDesktopUiActionExecutor : IDesktopUiActionExecutor
         }
         catch (TimeoutException)
         {
-            return new(
-                false,
-                "UI Automation melewati batas waktu. Status aksi tidak diketahui; jangan ulangi tombol secara otomatis.");
+            return DesktopUiInvokeResult.Indeterminate(
+                "UI Automation melewati batas waktu. Status aksi tidak diketahui; mouse fallback dibatalkan.");
         }
         catch (OperationCanceledException)
         {
@@ -79,7 +101,7 @@ public sealed class WindowsDesktopUiActionExecutor : IDesktopUiActionExecutor
         }
     }
 
-    private static DesktopActionResult InvokeCore(
+    private static DesktopUiInvokeResult InvokeCore(
         DesktopWindowTarget window,
         string path,
         string expectedFingerprint,
@@ -90,21 +112,21 @@ public sealed class WindowsDesktopUiActionExecutor : IDesktopUiActionExecutor
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (Expired(deadline))
-                return new(false, "UI Automation melewati batas waktu sebelum eksekusi.");
+                return DesktopUiInvokeResult.Indeterminate("UI Automation melewati batas waktu sebelum eksekusi.");
             if (window.Handle == nint.Zero || !IsWindow(window.Handle))
-                return new(false, "Window target sudah tidak tersedia.");
+                return DesktopUiInvokeResult.Rejected("Window target sudah tidak tersedia.");
 
             uint threadId = GetWindowThreadProcessId(window.Handle, out uint currentPid);
             if (threadId == 0 || currentPid != (uint)window.ProcessId)
-                return new(false, "Window target berubah sebelum eksekusi.");
+                return DesktopUiInvokeResult.Rejected("Window target berubah sebelum eksekusi.");
 
             AutomationElement root = AutomationElement.FromHandle(window.Handle);
             if (root.Current.ProcessId != window.ProcessId)
-                return new(false, "Window target berubah sebelum eksekusi.");
+                return DesktopUiInvokeResult.Rejected("Window target berubah sebelum eksekusi.");
 
             AutomationElement? element = DesktopUiAutomationLocator.ResolvePath(root, path);
             if (element is null)
-                return new(false, "Control target sudah tidak tersedia.");
+                return DesktopUiInvokeResult.Rejected("Control target sudah tidak tersedia.");
 
             AutomationElement.AutomationElementInformation info = element.Current;
             string type = NormalizeControlType(info.ControlType);
@@ -121,44 +143,67 @@ public sealed class WindowsDesktopUiActionExecutor : IDesktopUiActionExecutor
                 info.HasKeyboardFocus,
                 info.IsPassword);
             if (DesktopUiActionPolicy.IsTemporarilyBlocked(snapshot, out string policyReason))
-                return new(false, policyReason);
+                return DesktopUiInvokeResult.Rejected(policyReason);
 
             if (!string.Equals(
                     DesktopUiNodeIdentity.Fingerprint(snapshot),
                     expectedFingerprint,
                     StringComparison.Ordinal))
             {
-                return new(false, "Control berubah sejak konfirmasi. Ulangi perintah.");
+                return DesktopUiInvokeResult.Rejected("Control berubah sejak konfirmasi. Ulangi perintah.");
             }
 
             cancellationToken.ThrowIfCancellationRequested();
             if (Expired(deadline))
-                return new(false, "UI Automation melewati batas waktu sebelum tombol diaktifkan.");
+                return DesktopUiInvokeResult.Indeterminate("UI Automation melewati batas waktu sebelum tombol diaktifkan.");
 
-            if (!element.TryGetCurrentPattern(InvokePattern.Pattern, out object? pattern) ||
-                pattern is not InvokePattern invoke)
+            bool hasInvokePattern = element.TryGetCurrentPattern(InvokePattern.Pattern, out object? pattern);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Expired(deadline))
+                return DesktopUiInvokeResult.Indeterminate("UI Automation melewati batas waktu saat membaca InvokePattern; mouse fallback dibatalkan.");
+
+            if (!hasInvokePattern || pattern is not InvokePattern invoke)
             {
-                return new(false, "Tombol ini tidak mendukung UI Automation Invoke.");
+                return DesktopUiInvokeResult.Unsupported(
+                    "Tombol tidak menyediakan UI Automation InvokePattern.");
             }
 
             cancellationToken.ThrowIfCancellationRequested();
             if (Expired(deadline))
-                return new(false, "UI Automation melewati batas waktu sebelum tombol diaktifkan.");
+                return DesktopUiInvokeResult.Indeterminate("UI Automation melewati batas waktu sebelum tombol diaktifkan.");
 
-            invoke.Invoke();
-            return new(true, $"Tombol {snapshot.DisplayName} diaktifkan.");
+            try
+            {
+                invoke.Invoke();
+                return DesktopUiInvokeResult.Invoked(
+                    $"Tombol {snapshot.DisplayName} diaktifkan melalui UI Automation.");
+            }
+            catch (ElementNotEnabledException)
+            {
+                return DesktopUiInvokeResult.Rejected("Tombol sudah tidak aktif.");
+            }
+            catch (ElementNotAvailableException)
+            {
+                return DesktopUiInvokeResult.Rejected("Control target sudah tidak tersedia.");
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or COMException)
+            {
+                // Invoke was attempted; the provider may already have performed the action.
+                return DesktopUiInvokeResult.Indeterminate(
+                    "UI Automation gagal saat Invoke. Status aksi tidak diketahui; mouse fallback dibatalkan.");
+            }
         }
         catch (ElementNotEnabledException)
         {
-            return new(false, "Tombol sudah tidak aktif.");
+            return DesktopUiInvokeResult.Rejected("Tombol sudah tidak aktif.");
         }
         catch (ElementNotAvailableException)
         {
-            return new(false, "Control target sudah tidak tersedia.");
+            return DesktopUiInvokeResult.Rejected("Control target sudah tidak tersedia.");
         }
         catch (Exception ex) when (ex is InvalidOperationException or COMException)
         {
-            return new(false, "UI Automation gagal mengaktifkan tombol.");
+            return DesktopUiInvokeResult.Rejected("UI Automation gagal mengaktifkan tombol.");
         }
     }
 

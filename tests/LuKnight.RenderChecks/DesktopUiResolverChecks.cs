@@ -10,7 +10,9 @@ internal static partial class Program
     {
         public int Calls;
 
-        public Task<DesktopActionResult> InvokeAsync(
+        public DesktopUiInvokeResult Result = DesktopUiInvokeResult.Invoked("Button invoked.");
+
+        public Task<DesktopUiInvokeResult> InvokeAsync(
             DesktopWindowTarget window,
             string controlPath,
             string expectedFingerprint,
@@ -18,7 +20,26 @@ internal static partial class Program
         {
             cancellationToken.ThrowIfCancellationRequested();
             Calls++;
-            return Task.FromResult(new DesktopActionResult(true, "Button invoked."));
+            return Task.FromResult(Result);
+        }
+    }
+
+    private sealed class FakeMouseActionExecutor : IDesktopMouseActionExecutor
+    {
+        public int Calls;
+        public DesktopActionResult Result = new(true, "Mouse clicked.");
+        public (DesktopWindowTarget Window, string Path, string Fingerprint)? Target;
+
+        public Task<DesktopActionResult> ClickAsync(
+            DesktopWindowTarget window,
+            string controlPath,
+            string expectedFingerprint,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Calls++;
+            Target = (window, controlPath, expectedFingerprint);
+            return Task.FromResult(Result);
         }
     }
 
@@ -237,11 +258,13 @@ internal static partial class Program
             "Non-button/protected UI command became executable.");
 
         var executor = new FakeUiActionExecutor();
+        var mouse = new FakeMouseActionExecutor();
         var action = new InvokeDesktopUiControlAction(
             () => true,
             catalog,
             fakeUi,
-            executor);
+            executor,
+            mouse);
         fakeUi.Snapshot = snapshot;
         ActionPreparationResult prepared = await action.PrepareAsync(click.Action!);
         Require(
@@ -249,7 +272,7 @@ internal static partial class Program
             "UI button action was not prepared safely.");
         ActionExecutionResult executed = await action.ExecuteAsync(prepared.Action!);
         Require(
-            executed.Success && executor.Calls == 1,
+            executed.Success && executor.Calls == 1 && mouse.Calls == 0,
             "Confirmed UI button action did not execute.");
 
         fakeUi.Snapshot = snapshot;
@@ -261,7 +284,7 @@ internal static partial class Program
         };
         ActionExecutionResult stale = await action.ExecuteAsync(stalePrepared.Action!);
         Require(
-            !stale.Success && executor.Calls == 1,
+            !stale.Success && executor.Calls == 1 && mouse.Calls == 0,
             "Changed UI control executed after confirmation.");
 
         fakeUi.Snapshot = snapshot;
@@ -294,16 +317,68 @@ internal static partial class Program
             actionAssistant.Conversation.GetRecentContext().Count == 0,
             "Confirmed UI button result leaked into Gemini short-term context.");
 
+        int invokeBeforeSave = executor.Calls;
+        int mouseBeforeSave = mouse.Calls;
         AssistantReply blockedSave = await actionAssistant.SendAsync(
             new AssistantRequest("klik tombol Save di window Notepad"));
         Require(
             blockedSave.Backend == AssistantBackend.Local &&
             blockedSave.ActionProposal is null &&
             handler.Calls == 0 &&
-            executor.Calls == 2,
+            executor.Calls == invokeBeforeSave && mouse.Calls == mouseBeforeSave,
             "Sensitive Save action escaped local policy.");
         Require(
             actionAssistant.Conversation.GetRecentContext().Count == 0,
             "Blocked UI action leaked into Gemini context.");
+
+        executor.Result = DesktopUiInvokeResult.Unsupported("InvokePattern unavailable.");
+        int uiBefore = executor.Calls;
+        int mouseBefore = mouse.Calls;
+        ActionPreparationResult fallbackPrepared = await action.PrepareAsync(click.Action!);
+        Require(
+            fallbackPrepared.Success && fallbackPrepared.Action is not null &&
+            fallbackPrepared.Action.ConfirmationText.Contains("mouse", StringComparison.OrdinalIgnoreCase),
+            "Mouse fallback was not disclosed in confirmation.");
+        ActionExecutionResult fallback = await action.ExecuteAsync(fallbackPrepared.Action!);
+        Require(
+            fallback.Success && executor.Calls == uiBefore + 1 && mouse.Calls == mouseBefore + 1,
+            "Unsupported InvokePattern did not use exactly one mouse fallback after UIA.");
+        Require(
+            mouse.Target == (window, refresh.Path, DesktopUiNodeIdentity.Fingerprint(refresh)),
+            "Mouse fallback did not receive the confirmed UIA target identity.");
+
+        foreach (DesktopUiInvokeResult noFallback in new[]
+        {
+            DesktopUiInvokeResult.Rejected("Target changed."),
+            DesktopUiInvokeResult.Rejected("Button disabled."),
+            DesktopUiInvokeResult.Rejected("Policy blocked."),
+            DesktopUiInvokeResult.Rejected("UI Automation busy."),
+            DesktopUiInvokeResult.Rejected("InvokePattern unavailable."),
+            DesktopUiInvokeResult.Indeterminate("Invoke timed out."),
+            DesktopUiInvokeResult.Indeterminate("Provider failed during Invoke."),
+            new DesktopUiInvokeResult((DesktopUiInvokeOutcome)999, "Unknown status.")
+        })
+        {
+            executor.Result = noFallback;
+            mouseBefore = mouse.Calls;
+            uiBefore = executor.Calls;
+            ActionPreparationResult failurePrepared = await action.PrepareAsync(click.Action!);
+            ActionExecutionResult failure = await action.ExecuteAsync(failurePrepared.Action!);
+            Require(
+                !failure.Success && executor.Calls == uiBefore + 1 && mouse.Calls == mouseBefore,
+                $"Mouse fallback escaped safe failure boundary: {noFallback.Outcome}");
+        }
+
+        executor.Result = DesktopUiInvokeResult.Unsupported("InvokePattern unavailable.");
+        var noMouseAction = new InvokeDesktopUiControlAction(() => true, catalog, fakeUi, executor);
+        ActionExecutionResult unavailable = await noMouseAction.ExecuteAsync(fallbackPrepared.Action!);
+        Require(!unavailable.Success && mouse.Calls == mouseBefore,
+            "Missing mouse executor did not fail safely.");
+
+        mouse.Result = new(false, "Hit-test rejected.");
+        ActionExecutionResult mouseRejected = await action.ExecuteAsync(fallbackPrepared.Action!);
+        Require(!mouseRejected.Success && mouse.Calls == mouseBefore + 1 &&
+            mouseRejected.Message.Contains("Hit-test rejected.", StringComparison.Ordinal),
+            "Mouse validation failure was not preserved.");
     }
 }
