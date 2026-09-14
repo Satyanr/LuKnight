@@ -185,6 +185,9 @@ public sealed class WindowsDesktopUiScreenEvidenceService
             long deadline,
             CancellationToken cancellationToken)
     {
+        ScreenRegionCaptureSnapshot? captured = null;
+        bool transferCapturedBytes = false;
+
         try
         {
             cancellationToken
@@ -322,11 +325,7 @@ public sealed class WindowsDesktopUiScreenEvidenceService
                 return DesktopUiScreenEvidenceResult.Indeterminate("Screen evidence melewati batas waktu sebelum capture.");
             }
 
-            ScreenRegionCaptureSnapshot?
-                captured =
-                    ScreenCaptureService
-                        .CaptureRegion(
-                            captureBounds);
+            captured = ScreenCaptureService.CaptureRegion(captureBounds);
 
             if (captured is null)
             {
@@ -425,17 +424,20 @@ public sealed class WindowsDesktopUiScreenEvidenceService
             if (Expired(deadline) || !ValidateWindow(window))
                 return DesktopUiScreenEvidenceResult.Indeterminate("Screen mapping melewati batas waktu atau window berubah setelah revalidation.");
 
+            var evidence = new DesktopUiScreenEvidence(
+                path,
+                expectedFingerprint,
+                fresh.Bounds,
+                captureBounds,
+                captured.MimeType,
+                captured.EncodedBytes,
+                captured.Width,
+                captured.Height);
+
+            transferCapturedBytes = true;
             return DesktopUiScreenEvidenceResult.Captured(
                 "Bounded screen evidence berhasil dikaitkan ke UIA target yang sama.",
-                new DesktopUiScreenEvidence(
-                    path,
-                    expectedFingerprint,
-                    fresh.Bounds,
-                    captureBounds,
-                    captured.MimeType,
-                    captured.EncodedBytes,
-                    captured.Width,
-                    captured.Height));
+                evidence);
         }
         catch (ElementNotAvailableException)
         {
@@ -456,6 +458,11 @@ public sealed class WindowsDesktopUiScreenEvidenceService
         {
             return DesktopUiScreenEvidenceResult.Rejected(
                 "Koordinat screen evidence tidak valid.");
+        }
+        finally
+        {
+            if (!transferCapturedBytes && captured?.EncodedBytes is { Length: > 0 } bytes)
+                Array.Clear(bytes, 0, bytes.Length);
         }
     }
 
