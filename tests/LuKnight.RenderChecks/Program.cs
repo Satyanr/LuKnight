@@ -161,6 +161,17 @@ internal static partial class Program
             return;
         }
 
+        if (args.Contains(
+                "--planner"))
+        {
+            CheckPlannerParser();
+
+            Console.WriteLine(
+                $"PASS: {_checks} multi-step planner parser checks.");
+
+            return;
+        }
+
         if (args.Contains("--permissions"))
         {
             Task.Run(CheckPermissionLevelsAsync).GetAwaiter().GetResult();
