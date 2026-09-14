@@ -123,6 +123,12 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} live UI text input checks.");
             return;
         }
+        if (args.Contains("--keyboard-fallback-live"))
+        {
+            Task.Run(CheckKeyboardFallbackLiveAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} live keyboard fallback checks.");
+            return;
+        }
         if (args.Contains("--uia-text"))
         {
             Task.Run(CheckDesktopUiTextAsync).GetAwaiter().GetResult();

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Windows.Automation.Peers;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -56,6 +57,273 @@ internal static partial class Program
 
             LastResult =
                 await _inner.SetTextAsync(
+                    window,
+                    controlPath,
+                    expectedFingerprint,
+                    value,
+                    cancellationToken);
+
+            return LastResult;
+        }
+    }
+
+    private const string UiKeyboardExpectedValue =
+        "Hello Keyboard Ω 456";
+
+    private sealed class KeyboardOnlyEdit
+        : Border
+    {
+        private readonly TextBlock _display;
+        private readonly StringBuilder _text =
+            new();
+
+        private bool _replaceOnNextText;
+
+        public event Action<string>? TextChanged;
+
+        public KeyboardOnlyEdit()
+        {
+            Background =
+                Brushes.White;
+
+            BorderBrush =
+                Brushes.Gray;
+
+            BorderThickness =
+                new Thickness(1);
+
+            Padding =
+                new Thickness(
+                    8,
+                    5,
+                    8,
+                    5);
+
+            Focusable =
+                true;
+
+            _text.Append("Existing fixture text");
+
+            _display =
+                new TextBlock
+                {
+                    Text =
+                        _text.ToString()
+                };
+
+            Child =
+                _display;
+
+            AutomationProperties.SetName(
+                this,
+                "Keyboard Only");
+
+            AutomationProperties.SetAutomationId(
+                this,
+                "KeyboardOnlyEdit");
+        }
+
+        public string Text =>
+            _text.ToString();
+
+        protected override AutomationPeer
+            OnCreateAutomationPeer() =>
+            new KeyboardOnlyEditAutomationPeer(
+                this);
+
+        protected override void OnPreviewKeyDown(
+            KeyEventArgs e)
+        {
+            base.OnPreviewKeyDown(e);
+
+            if ((Keyboard.Modifiers &
+                 ModifierKeys.Control) != 0 &&
+                e.Key == Key.A)
+            {
+                _replaceOnNextText =
+                    true;
+
+                e.Handled =
+                    true;
+            }
+        }
+
+        protected override void OnPreviewTextInput(
+            TextCompositionEventArgs e)
+        {
+            base.OnPreviewTextInput(e);
+
+            if (string.IsNullOrEmpty(
+                    e.Text))
+            {
+                return;
+            }
+
+            if (_replaceOnNextText)
+            {
+                _text.Clear();
+
+                _replaceOnNextText =
+                    false;
+            }
+
+            _text.Append(
+                e.Text);
+
+            _display.Text =
+                _text.ToString();
+
+            TextChanged?.Invoke(
+                _text.ToString());
+
+            e.Handled =
+                true;
+        }
+    }
+
+    private sealed class
+        KeyboardOnlyEditAutomationPeer
+            : FrameworkElementAutomationPeer
+    {
+        public KeyboardOnlyEditAutomationPeer(
+            KeyboardOnlyEdit owner)
+            : base(owner)
+        {
+        }
+
+        protected override
+            AutomationControlType
+            GetAutomationControlTypeCore() =>
+            AutomationControlType.Edit;
+
+        protected override string
+            GetClassNameCore() =>
+            "KeyboardOnlyEdit";
+
+        protected override string
+            GetNameCore() =>
+            AutomationProperties.GetName(
+                Owner);
+
+        protected override bool
+            IsControlElementCore() =>
+            true;
+
+        protected override bool
+            IsContentElementCore() =>
+            true;
+
+        protected override bool
+            IsKeyboardFocusableCore() =>
+            true;
+
+        // Intentionally no ValuePattern.
+        public override object GetPattern(
+            PatternInterface patternInterface) =>
+            null!;
+    }
+
+    private sealed class
+        RecordingUiTextExecutor
+            : IDesktopUiTextActionExecutor
+    {
+        private readonly
+            IDesktopUiTextActionExecutor
+            _inner;
+
+        private readonly
+            IList<string>
+            _sequence;
+
+        public int Calls;
+
+        public DesktopUiTextResult?
+            LastResult;
+
+        public RecordingUiTextExecutor(
+            IDesktopUiTextActionExecutor inner,
+            IList<string> sequence)
+        {
+            _inner =
+                inner;
+
+            _sequence =
+                sequence;
+        }
+
+        public async Task<DesktopUiTextResult>
+            SetTextAsync(
+                DesktopWindowTarget window,
+                string controlPath,
+                string expectedFingerprint,
+                string value,
+                CancellationToken cancellationToken = default)
+        {
+            Calls++;
+
+            _sequence.Add(
+                "uia");
+
+            LastResult =
+                await _inner.SetTextAsync(
+                    window,
+                    controlPath,
+                    expectedFingerprint,
+                    value,
+                    cancellationToken);
+
+            return LastResult;
+        }
+    }
+
+    private sealed class
+        RecordingKeyboardTextExecutor
+            : IDesktopKeyboardTextActionExecutor
+    {
+        private readonly
+            IDesktopKeyboardTextActionExecutor
+            _inner;
+
+        private readonly
+            IList<string>
+            _sequence;
+
+        public int Calls;
+
+        public DesktopActionResult?
+            LastResult;
+
+        public string? LastValue;
+
+        public RecordingKeyboardTextExecutor(
+            IDesktopKeyboardTextActionExecutor inner,
+            IList<string> sequence)
+        {
+            _inner =
+                inner;
+
+            _sequence =
+                sequence;
+        }
+
+        public async Task<DesktopActionResult>
+            ReplaceTextAsync(
+                DesktopWindowTarget window,
+                string controlPath,
+                string expectedFingerprint,
+                string value,
+                CancellationToken cancellationToken = default)
+        {
+            Calls++;
+
+            LastValue =
+                value;
+
+            _sequence.Add(
+                "keyboard");
+
+            LastResult =
+                await _inner.ReplaceTextAsync(
                     window,
                     controlPath,
                     expectedFingerprint,
@@ -277,7 +545,7 @@ internal static partial class Program
         {
             Title = initialTitle,
             Width = 420,
-            Height = 540,
+            Height = 600,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             ShowInTaskbar = true,
             Topmost = true
@@ -399,6 +667,34 @@ internal static partial class Program
             passwordBox,
             "PasswordBox");
 
+        var keyboardOnly =
+            new KeyboardOnlyEdit
+            {
+                Width =
+                    220,
+
+                Height =
+                    32,
+
+                Margin =
+                    new Thickness(
+                        0,
+                        12,
+                        0,
+                        0)
+            };
+
+        keyboardOnly.TextChanged +=
+            text =>
+            {
+                if (text ==
+                    UiKeyboardExpectedValue)
+                {
+                    window.Title =
+                        $"{initialTitle} — KEYBOARD FALLBACK SET";
+                }
+            };
+
         searchBox.TextChanged +=
             (_, _) =>
             {
@@ -426,8 +722,10 @@ internal static partial class Program
 
         panel.Children.Add(
             passwordBox);
+        panel.Children.Add(keyboardOnly);
 
         window.Content = panel;
+        window.Loaded += (_, _) => window.Activate();
 
         var application = new Application
         {
@@ -1248,6 +1546,318 @@ internal static partial class Program
             Console.WriteLine();
             Console.WriteLine(
                 "PASS: native Assistant UIA ValuePattern text acceptance.");
+        }
+        finally
+        {
+            await StopUiFixtureAsync(
+                fixture);
+        }
+    }
+
+    private static async Task
+        CheckKeyboardFallbackLiveAsync()
+    {
+        string token =
+            Guid.NewGuid()
+                .ToString("N")[..8];
+
+        string initialTitle =
+            $"{UiFixturePrefix} {token}";
+
+        string changedTitle =
+            $"{initialTitle} — KEYBOARD FALLBACK SET";
+
+        using Process fixture =
+            StartUiFixtureProcess(
+                token);
+
+        try
+        {
+            var windows =
+                new DesktopWindowTargetService();
+
+            DesktopWindowTarget window =
+                await WaitForFixtureWindowAsync(
+                    windows,
+                    fixture,
+                    initialTitle);
+
+            var ui =
+                new WindowsDesktopUiAutomationReader();
+
+            DesktopUiSnapshot snapshot =
+                await ui.CaptureAsync(
+                    window);
+
+            Require(
+                snapshot.Success,
+                snapshot.Error ??
+                "Keyboard fallback fixture capture failed.");
+
+            DesktopUiControlResolution resolved =
+                DesktopUiControlResolver.Resolve(
+                    snapshot,
+                    "Keyboard Only",
+                    "Edit");
+
+            Require(
+                resolved.Match is not null,
+                "Keyboard Only control was not exposed as Edit.");
+
+            DesktopUiNodeSnapshot field =
+                resolved.Match!;
+
+            Require(
+                DesktopUiTextInputPolicy
+                    .ValidateTarget(
+                        field,
+                        out _),
+                "Keyboard Only field was rejected by policy.");
+
+            AutomationElement root =
+                AutomationElement.FromHandle(
+                    window.Handle);
+
+            AutomationElement? nativeField =
+                DesktopUiAutomationLocator
+                    .ResolvePath(
+                        root,
+                        field.Path);
+
+            Require(
+                nativeField is not null,
+                "Native Keyboard Only field was not resolved.");
+
+            Require(
+                nativeField!
+                    .Current
+                    .IsKeyboardFocusable,
+                "Keyboard Only field is not keyboard focusable.");
+
+            bool hasValuePattern =
+                nativeField.TryGetCurrentPattern(
+                    ValuePattern.Pattern,
+                    out object? pattern) &&
+                pattern is ValuePattern;
+
+            Require(
+                !hasValuePattern,
+                "Keyboard Only fixture unexpectedly exposes ValuePattern.");
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "Keyboard Only is Edit + focusable + no ValuePattern.");
+
+            using var handler =
+                new FakeHttp(
+                    (_, _) =>
+                        throw new InvalidOperationException(
+                            "Keyboard fallback live test attempted Gemini."));
+
+            using var client =
+                new HttpClient(
+                    handler);
+
+            var chat =
+                new ChatCoordinator(
+                    new FakeCredentials
+                    {
+                        Key =
+                            "unused-keyboard-live-key"
+                    },
+                    new ChatSettings
+                    {
+                        Provider =
+                            ChatProvider.Gemini,
+
+                        UseDesktopActions =
+                            true
+                    },
+                    () => null,
+                    client);
+
+            var desktopRouter =
+                new LocalDesktopCommandRouter(
+                    new DesktopAppCatalogService(
+                        () =>
+                            Array.Empty<
+                                DesktopAppTarget>()),
+                    windows);
+
+            var router =
+                new AssistantIntentRouter(
+                    desktopRouter);
+
+            var sequence =
+                new List<string>();
+
+            var uiTextExecutor =
+                new RecordingUiTextExecutor(
+                    new WindowsDesktopUiTextActionExecutor(),
+                    sequence);
+
+            var keyboardExecutor =
+                new RecordingKeyboardTextExecutor(
+                    new WindowsDesktopKeyboardTextActionExecutor(),
+                    sequence);
+
+            var action =
+                new SetDesktopUiTextAction(
+                    () => true,
+                    windows,
+                    ui,
+                    uiTextExecutor,
+                    keyboardExecutor);
+
+            var assistant =
+                new AssistantController(
+                    chat,
+                    intentRouter:
+                        router,
+                    actions:
+                        new AssistantActionRouter(
+                            new IAssistantAction[]
+                            {
+                                action
+                            }));
+
+            string command =
+                $"isi textbox Keyboard Only dengan {UiKeyboardExpectedValue} di window {initialTitle}";
+
+            AssistantReply proposal =
+                await assistant.SendAsync(
+                    new AssistantRequest(
+                        command));
+
+            Require(
+                proposal.Backend ==
+                    AssistantBackend.Local,
+                "Keyboard fallback preparation was not local.");
+
+            Require(
+                proposal.ActionProposal
+                    is not null,
+                "Keyboard fallback did not request confirmation.");
+
+            Require(
+                uiTextExecutor.Calls == 0 &&
+                keyboardExecutor.Calls == 0 &&
+                sequence.Count == 0,
+                "Text execution occurred before confirmation.");
+
+            Require(
+                handler.Calls == 0,
+                "Keyboard fallback preparation called Gemini.");
+
+            Require(
+                proposal.ActionProposal!
+                    .ConfirmationText
+                    .Contains(
+                        "keyboard",
+                        StringComparison.OrdinalIgnoreCase),
+                "Keyboard fallback was not disclosed.");
+
+            Require(
+                !proposal.ActionProposal
+                    .ConfirmationText
+                    .Contains(
+                        UiKeyboardExpectedValue,
+                        StringComparison.Ordinal),
+                "Confirmation exposed text content.");
+
+            Require(
+                windows.Capture()
+                    .Any(
+                        x =>
+                            x.ProcessId ==
+                                fixture.Id &&
+                            x.Title ==
+                                initialTitle),
+                "Keyboard fallback executed before confirmation.");
+
+            Require(
+                assistant.Conversation
+                    .GetRecentContext()
+                    .Count == 0,
+                "Keyboard fallback preparation leaked into context.");
+
+            AssistantReply confirmed =
+                await assistant
+                    .ConfirmActionAsync(
+                        proposal.ActionProposal.Id);
+
+            Require(
+                confirmed.Backend ==
+                    AssistantBackend.Local,
+                "Keyboard fallback execution was not local.");
+
+            Require(
+                handler.Calls == 0,
+                "Keyboard fallback called Gemini.");
+
+            Require(
+                uiTextExecutor.Calls == 1,
+                "ValuePattern executor was not attempted exactly once.");
+
+            Require(
+                uiTextExecutor.LastResult?
+                    .Outcome ==
+                    DesktopUiTextOutcome.UnsupportedPattern,
+                "ValuePattern executor did not report UnsupportedPattern.");
+
+            Require(
+                keyboardExecutor.Calls == 1,
+                "Keyboard fallback was not executed exactly once.");
+
+            Require(
+                keyboardExecutor.LastValue ==
+                    UiKeyboardExpectedValue,
+                "Keyboard fallback changed exact input value.");
+
+            Require(
+                sequence.Count == 2 &&
+                sequence[0] ==
+                    "uia" &&
+                sequence[1] ==
+                    "keyboard",
+                "Keyboard fallback did not occur strictly after UIA.");
+
+            Require(
+                keyboardExecutor.LastResult?
+                    .Success == true,
+                keyboardExecutor.LastResult?
+                    .Message ??
+                "Keyboard executor returned no result.");
+
+            await WaitForFixtureWindowAsync(
+                windows,
+                fixture,
+                changedTitle);
+
+            Require(
+                confirmed.Text.Contains(
+                    "keyboard",
+                    StringComparison.OrdinalIgnoreCase),
+                "Assistant result did not disclose keyboard fallback.");
+
+            Require(
+                assistant.Conversation
+                    .GetRecentContext()
+                    .Count == 0,
+                "Keyboard fallback result leaked into context.");
+
+            Console.WriteLine(
+                "Execution order: ValuePattern → keyboard.");
+
+            Console.WriteLine(
+                "Native Ctrl+A + Unicode input reached exact Edit.");
+
+            Console.WriteLine(
+                "Exact text reached Keyboard Only.");
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "PASS: Assistant keyboard fallback acceptance.");
         }
         finally
         {
