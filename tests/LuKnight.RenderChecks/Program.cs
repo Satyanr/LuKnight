@@ -117,6 +117,12 @@ internal static partial class Program
 
             return;
         }
+        if (args.Contains("--uia-text-live"))
+        {
+            Task.Run(CheckUiTextLiveAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} live UI text input checks.");
+            return;
+        }
         if (args.Contains("--uia-text"))
         {
             Task.Run(CheckDesktopUiTextAsync).GetAwaiter().GetResult();

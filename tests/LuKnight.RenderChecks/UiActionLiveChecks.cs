@@ -16,6 +16,56 @@ internal static partial class Program
 {
     private const string UiFixturePrefix = "LuKnight UIA Fixture";
 
+    private const string UiTextExpectedValue =
+        "Hello Lu-Knight Ω 123";
+
+    private sealed class
+        RecordingUiTextActionExecutor
+            : IDesktopUiTextActionExecutor
+    {
+        private readonly
+            IDesktopUiTextActionExecutor
+            _inner;
+
+        public int Calls;
+
+        public string? LastValue;
+
+        public DesktopUiTextResult?
+            LastResult;
+
+        public RecordingUiTextActionExecutor(
+            IDesktopUiTextActionExecutor inner)
+        {
+            _inner =
+                inner;
+        }
+
+        public async Task<DesktopUiTextResult>
+            SetTextAsync(
+                DesktopWindowTarget window,
+                string controlPath,
+                string expectedFingerprint,
+                string value,
+                CancellationToken cancellationToken = default)
+        {
+            Calls++;
+
+            LastValue =
+                value;
+
+            LastResult =
+                await _inner.SetTextAsync(
+                    window,
+                    controlPath,
+                    expectedFingerprint,
+                    value,
+                    cancellationToken);
+
+            return LastResult;
+        }
+    }
+
     private sealed class MouseOnlyButton
         : Border
     {
@@ -227,7 +277,7 @@ internal static partial class Program
         {
             Title = initialTitle,
             Width = 420,
-            Height = 370,
+            Height = 540,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             ShowInTaskbar = true,
             Topmost = true
@@ -284,6 +334,82 @@ internal static partial class Program
                     $"{initialTitle} — MOUSE FALLBACK CLICKED";
             };
 
+        var searchBox =
+            new TextBox
+            {
+                Width = 220,
+                Height = 32,
+                Margin =
+                    new Thickness(
+                        0,
+                        12,
+                        0,
+                        0)
+            };
+
+        AutomationProperties.SetName(
+            searchBox,
+            "Search");
+
+        AutomationProperties.SetAutomationId(
+            searchBox,
+            "SearchBox");
+
+
+        var apiKeyBox =
+            new TextBox
+            {
+                Width = 220,
+                Height = 32,
+                Margin =
+                    new Thickness(
+                        0,
+                        12,
+                        0,
+                        0)
+            };
+
+        AutomationProperties.SetName(
+            apiKeyBox,
+            "API Key");
+
+        AutomationProperties.SetAutomationId(
+            apiKeyBox,
+            "ApiKeyInput");
+
+
+        var passwordBox =
+            new PasswordBox
+            {
+                Width = 220,
+                Height = 32,
+                Margin =
+                    new Thickness(
+                        0,
+                        12,
+                        0,
+                        0)
+            };
+
+        AutomationProperties.SetName(
+            passwordBox,
+            "Password");
+
+        AutomationProperties.SetAutomationId(
+            passwordBox,
+            "PasswordBox");
+
+        searchBox.TextChanged +=
+            (_, _) =>
+            {
+                if (searchBox.Text ==
+                    UiTextExpectedValue)
+                {
+                    window.Title =
+                        $"{initialTitle} — TEXT SET";
+                }
+            };
+
         refresh.Click += (_, _) => window.Title = $"{initialTitle} — REFRESH INVOKED";
         save.Click += (_, _) => window.Title = $"{initialTitle} — SAVE INVOKED";
         mouseTarget.Click += (_, _) => window.Title = $"{initialTitle} — MOUSE CLICKED";
@@ -292,6 +418,15 @@ internal static partial class Program
         panel.Children.Add(save);
         panel.Children.Add(mouseTarget);
         panel.Children.Add(mouseOnly);
+        panel.Children.Add(
+            searchBox);
+
+        panel.Children.Add(
+            apiKeyBox);
+
+        panel.Children.Add(
+            passwordBox);
+
         window.Content = panel;
 
         var application = new Application
@@ -776,6 +911,343 @@ internal static partial class Program
             Console.WriteLine();
             Console.WriteLine(
                 "PASS: Assistant UIA-first mouse fallback acceptance.");
+        }
+        finally
+        {
+            await StopUiFixtureAsync(
+                fixture);
+        }
+    }
+
+    private static async Task
+        CheckUiTextLiveAsync()
+    {
+        string token =
+            Guid.NewGuid()
+                .ToString("N")[..8];
+
+        string initialTitle =
+            $"{UiFixturePrefix} {token}";
+
+        string changedTitle =
+            $"{initialTitle} — TEXT SET";
+
+        using Process fixture =
+            StartUiFixtureProcess(
+                token);
+
+        try
+        {
+            var windows =
+                new DesktopWindowTargetService();
+
+            DesktopWindowTarget window =
+                await WaitForFixtureWindowAsync(
+                    windows,
+                    fixture,
+                    initialTitle);
+
+            var ui =
+                new WindowsDesktopUiAutomationReader();
+
+            DesktopUiSnapshot snapshot =
+                await ui.CaptureAsync(
+                    window);
+
+            Require(
+                snapshot.Success,
+                snapshot.Error ??
+                "UI text fixture capture failed.");
+
+            DesktopUiControlResolution search =
+                DesktopUiControlResolver.Resolve(
+                    snapshot,
+                    "Search",
+                    "Edit");
+
+            Require(
+                search.Match is not null,
+                "Search TextBox was not visible through UIA.");
+
+            DesktopUiNodeSnapshot field =
+                search.Match!;
+
+            Require(
+                DesktopUiTextInputPolicy
+                    .ValidateTarget(
+                        field,
+                        out _),
+                "Search TextBox was rejected by policy.");
+
+            DesktopUiControlResolution apiKey = DesktopUiControlResolver.Resolve(snapshot, "API Key", "Edit");
+            Require(apiKey.Match is not null &&
+                !DesktopUiTextInputPolicy.ValidateTarget(apiKey.Match, out _),
+                "API Key fixture field was missing or not blocked by policy.");
+            Require(snapshot.Nodes.Any(node => node.IsPassword && node.IsProtected),
+                "Password fixture field was not exposed as protected through UIA.");
+
+            AutomationElement root =
+                AutomationElement.FromHandle(
+                    window.Handle);
+
+            AutomationElement? nativeField =
+                DesktopUiAutomationLocator
+                    .ResolvePath(
+                        root,
+                        field.Path);
+
+            Require(
+                nativeField is not null,
+                "Native Search TextBox was not resolved.");
+
+            bool supportsValue =
+                nativeField!
+                    .TryGetCurrentPattern(
+                        ValuePattern.Pattern,
+                        out object? rawPattern) &&
+                rawPattern is
+                    ValuePattern;
+
+            Require(
+                supportsValue,
+                "Search TextBox does not expose ValuePattern.");
+
+            var valuePattern =
+                (ValuePattern)rawPattern!;
+
+            Require(
+                !valuePattern.Current.IsReadOnly,
+                "Search TextBox unexpectedly became read-only.");
+
+            using var handler =
+                new FakeHttp(
+                    (_, _) =>
+                        throw new InvalidOperationException(
+                            "UI text live test attempted Gemini."));
+
+            using var client =
+                new HttpClient(
+                    handler);
+
+            var chat =
+                new ChatCoordinator(
+                    new FakeCredentials
+                    {
+                        Key =
+                            "unused-ui-text-live-key"
+                    },
+                    new ChatSettings
+                    {
+                        Provider =
+                            ChatProvider.Gemini,
+
+                        UseDesktopActions =
+                            true
+                    },
+                    () => null,
+                    client);
+
+            var desktopRouter =
+                new LocalDesktopCommandRouter(
+                    new DesktopAppCatalogService(
+                        () =>
+                            Array.Empty<
+                                DesktopAppTarget>()),
+                    windows);
+
+            var router =
+                new AssistantIntentRouter(
+                    desktopRouter);
+
+            var textExecutor =
+                new RecordingUiTextActionExecutor(
+                    new WindowsDesktopUiTextActionExecutor());
+
+            var textAction =
+                new SetDesktopUiTextAction(
+                    () => true,
+                    windows,
+                    ui,
+                    textExecutor);
+
+            var assistant =
+                new AssistantController(
+                    chat,
+                    intentRouter:
+                        router,
+                    actions:
+                        new AssistantActionRouter(
+                            new IAssistantAction[]
+                            {
+                                textAction
+                            }));
+
+            string command =
+                $"isi textbox Search dengan {UiTextExpectedValue} di window {initialTitle}";
+
+            AssistantReply proposal =
+                await assistant.SendAsync(
+                    new AssistantRequest(
+                        command));
+
+            Require(
+                proposal.Backend ==
+                    AssistantBackend.Local,
+                "UI text preparation was not local.");
+
+            Require(
+                proposal.ActionProposal
+                    is not null,
+                "UI text input did not request confirmation.");
+
+            Require(
+                textExecutor.Calls == 0,
+                "Text changed before confirmation.");
+
+            Require(
+                handler.Calls == 0,
+                "UI text preparation called Gemini.");
+
+            Require(
+                !proposal.ActionProposal!
+                    .ConfirmationText
+                    .Contains(
+                        UiTextExpectedValue,
+                        StringComparison.Ordinal),
+                "Confirmation exposed text content.");
+
+            Require(
+                proposal.ActionProposal
+                    .ConfirmationText
+                    .Contains(
+                        $"{UiTextExpectedValue.Length} karakter",
+                        StringComparison.Ordinal),
+                "Confirmation did not disclose text length.");
+
+            Require(
+                windows.Capture()
+                    .Any(
+                        x =>
+                            x.ProcessId ==
+                                fixture.Id &&
+                            x.Title ==
+                                initialTitle),
+                "TextBox changed before confirmation.");
+
+            Require(
+                assistant.Conversation
+                    .GetRecentContext()
+                    .Count == 0,
+                "UI text preparation leaked into Gemini context.");
+
+            AssistantReply confirmed =
+                await assistant
+                    .ConfirmActionAsync(
+                        proposal.ActionProposal.Id);
+
+            Require(
+                confirmed.Backend ==
+                    AssistantBackend.Local,
+                "UI text execution was not local.");
+
+            Require(
+                textExecutor.Calls == 1,
+                "UI text executor was not called exactly once.");
+
+            Require(
+                textExecutor.LastValue ==
+                    UiTextExpectedValue,
+                "Exact text changed before SetValue.");
+
+            Require(
+                textExecutor.LastResult?
+                    .Success == true,
+                textExecutor.LastResult?
+                    .Message ??
+                "UI text executor returned no result.");
+
+            Require(
+                handler.Calls == 0,
+                "UI text execution called Gemini.");
+
+            await WaitForFixtureWindowAsync(
+                windows,
+                fixture,
+                changedTitle);
+
+            Require(
+                assistant.Conversation
+                    .GetRecentContext()
+                    .Count == 0,
+                "UI text result leaked into Gemini context.");
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "Native ValuePattern.SetValue activated Search.");
+
+            Console.WriteLine(
+                "Exact Unicode text reached the TextBox.");
+
+            Console.WriteLine(
+                "No Gemini/context leak occurred.");
+
+            int callsBeforeSensitive =
+                textExecutor.Calls;
+
+            AssistantReply blockedApi =
+                await assistant.SendAsync(
+                    new AssistantRequest(
+                        $"isi textbox API Key dengan harmless-test-value di window {changedTitle}"));
+
+            Require(
+                blockedApi.Backend ==
+                    AssistantBackend.Local &&
+                blockedApi.ActionProposal
+                    is null,
+                "API Key field produced an executable proposal.");
+
+            Require(
+                textExecutor.Calls ==
+                    callsBeforeSensitive,
+                "API Key field reached text executor.");
+
+            Require(
+                handler.Calls == 0,
+                "API Key rejection reached Gemini.");
+
+            AssistantReply blockedPassword =
+                await assistant.SendAsync(
+                    new AssistantRequest(
+                        $"isi textbox Password dengan harmless-test-value di window {changedTitle}"));
+
+            Require(
+                blockedPassword.Backend ==
+                    AssistantBackend.Local &&
+                blockedPassword.ActionProposal
+                    is null,
+                "Password field produced an executable proposal.");
+
+            Require(
+                textExecutor.Calls ==
+                    callsBeforeSensitive,
+                "Password field reached text executor.");
+
+            Require(
+                handler.Calls == 0,
+                "Password rejection reached Gemini.");
+
+            Require(
+                assistant.Conversation
+                    .GetRecentContext()
+                    .Count == 0,
+                "Sensitive text request leaked into context.");
+
+            Console.WriteLine(
+                "API Key and Password fields were blocked.");
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "PASS: native Assistant UIA ValuePattern text acceptance.");
         }
         finally
         {
