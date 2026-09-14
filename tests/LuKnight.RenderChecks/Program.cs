@@ -129,6 +129,12 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} live keyboard fallback checks.");
             return;
         }
+        if (args.Contains("--screen-assist"))
+        {
+            CheckDesktopScreenAssist();
+            Console.WriteLine($"PASS: {_checks} screen-assist foundation checks.");
+            return;
+        }
         if (args.Contains("--uia-text"))
         {
             Task.Run(CheckDesktopUiTextAsync).GetAwaiter().GetResult();
