@@ -15,6 +15,291 @@ using LuKnight.Services;
 
 internal static partial class Program
 {
+    private static async Task
+        CheckSensitivePermissionLiveAsync()
+    {
+    string token =
+        Guid.NewGuid()
+            .ToString("N")[..8];
+
+    string initialTitle =
+        $"{UiFixturePrefix} {token}";
+
+    string invokedTitle =
+        $"{initialTitle} — SAVE INVOKED";
+
+    using Process fixture =
+        StartUiFixtureProcess(
+            token);
+
+    try
+    {
+        var windows =
+            new DesktopWindowTargetService();
+
+        DesktopWindowTarget target =
+            await WaitForFixtureWindowAsync(
+                windows,
+                fixture,
+                initialTitle);
+
+        var ui =
+            new WindowsDesktopUiAutomationReader();
+
+        var sequence =
+            new List<string>();
+
+        var invoke =
+            new RecordingUiActionExecutor(
+                new WindowsDesktopUiActionExecutor(),
+                sequence);
+
+        var mouse =
+            new RecordingMouseActionExecutor(
+                new WindowsDesktopMouseActionExecutor(),
+                sequence);
+
+        using var handler =
+            new FakeHttp(
+                (_, _) =>
+                    throw new InvalidOperationException(
+                        "Sensitive permission live test attempted Gemini."));
+
+        using var client =
+            new HttpClient(
+                handler);
+
+        var chat =
+            new ChatCoordinator(
+                new FakeCredentials
+                {
+                    Key =
+                        "unused-sensitive-live-key"
+                },
+                new ChatSettings
+                {
+                    Provider =
+                        ChatProvider.Gemini,
+
+                    UseDesktopActions =
+                        true,
+
+                    DesktopPermission =
+                        DesktopPermissionLevel
+                            .Interaction
+                },
+                () => null,
+                client);
+
+        var desktopRouter =
+            new LocalDesktopCommandRouter(
+                new DesktopAppCatalogService(
+                    () =>
+                        Array.Empty<
+                            DesktopAppTarget>()),
+                windows);
+
+        var intentRouter =
+            new AssistantIntentRouter(
+                desktopRouter);
+
+        var action =
+            new InvokeDesktopUiControlAction(
+                () =>
+                    chat.Options
+                        .UseDesktopActions,
+                windows,
+                ui,
+                invoke,
+                mouse);
+
+        var actions =
+            new AssistantActionRouter(
+                new[]
+                {
+                    action
+                },
+                () =>
+                    chat.Options
+                        .DesktopPermission);
+
+        var assistant =
+            new AssistantController(
+                chat,
+                intentRouter:
+                    intentRouter,
+                actions:
+                    actions);
+
+        string command =
+            $"klik tombol Save di window {initialTitle}";
+
+        AssistantReply blocked =
+            await assistant.SendAsync(
+                new AssistantRequest(
+                    command));
+
+        Require(
+            blocked.ActionProposal is null,
+            "Sensitive Save was allowed at Interaction permission.");
+
+        Require(
+            invoke.Calls == 0 &&
+            mouse.Calls == 0,
+            "Sensitive Save reached executor at Interaction permission.");
+
+        Require(
+            windows.Capture()
+                .Any(
+                    item =>
+                        item.ProcessId ==
+                            fixture.Id &&
+                        string.Equals(
+                            item.Title,
+                            initialTitle,
+                            StringComparison.Ordinal)),
+            "Save changed fixture before Sensitive permission.");
+
+        chat.Configure(
+            chat.Options with
+            {
+                DesktopPermission =
+                    DesktopPermissionLevel
+                        .Sensitive
+            });
+
+        AssistantReply review =
+            await assistant.SendAsync(
+                new AssistantRequest(
+                    command));
+
+        Require(
+            review.ActionProposal is
+            {
+                Risk:
+                    AssistantActionRisk.Sensitive,
+
+                ConfirmationStage:
+                    AssistantConfirmationStage
+                        .SensitiveReview
+            },
+            "Save did not enter SensitiveReview.");
+
+        Require(
+            invoke.Calls == 0 &&
+            mouse.Calls == 0 &&
+            sequence.Count == 0,
+            "Sensitive Save executed before review confirmation.");
+
+        Require(
+            handler.Calls == 0,
+            "Sensitive review called Gemini.");
+
+        Guid reviewId =
+            review.ActionProposal!.Id;
+
+        AssistantReply final =
+            await assistant
+                .ConfirmActionAsync(
+                    reviewId);
+
+        Require(
+            final.ActionProposal is
+            {
+                Risk:
+                    AssistantActionRisk.Sensitive,
+
+                ConfirmationStage:
+                    AssistantConfirmationStage
+                        .SensitiveFinal
+            },
+            "First confirmation did not produce SensitiveFinal.");
+
+        Require(
+            final.ActionProposal!.Id !=
+                reviewId,
+            "Sensitive final reused review proposal id.");
+
+        Require(
+            invoke.Calls == 0 &&
+            mouse.Calls == 0 &&
+            sequence.Count == 0,
+            "First Sensitive confirmation reached native executor.");
+
+        Require(
+            windows.Capture().Any(item => item.ProcessId == fixture.Id &&
+                string.Equals(item.Title, initialTitle, StringComparison.Ordinal)),
+            "First Sensitive confirmation changed the fixture title.");
+
+        AssistantReply executed =
+            await assistant
+                .ConfirmActionAsync(
+                    final.ActionProposal.Id);
+
+        Require(
+            executed.ActionProposal is null,
+            "Sensitive execution returned another proposal.");
+
+        Require(
+            invoke.Calls == 1,
+            "Save was not invoked exactly once.");
+
+        Require(
+            mouse.Calls == 0,
+            "Mouse fallback unexpectedly ran for WPF Save button.");
+
+        Require(
+            sequence.Count == 1 &&
+            sequence[0] ==
+                "uia",
+            "Unexpected sensitive execution sequence.");
+
+        await WaitForFixtureWindowAsync(
+            windows,
+            fixture,
+            invokedTitle);
+
+        Require(
+            !assistant.HasPendingAction,
+            "Sensitive action remained pending after execution.");
+
+        Require(
+            handler.Calls == 0,
+            "Sensitive execution called Gemini.");
+
+        Require(
+            assistant.Conversation
+                .GetRecentContext()
+                .Count == 0,
+            "Sensitive desktop action leaked into Gemini context.");
+
+        Console.WriteLine();
+        Console.WriteLine(
+            "Interaction permission: Save blocked.");
+
+        Console.WriteLine(
+            "Sensitive permission: review created.");
+
+        Console.WriteLine(
+            "First Yes: no native execution.");
+
+        Console.WriteLine(
+            "Second Yes: exact Save UIA Invoke.");
+
+        Console.WriteLine(
+            "Gemini calls: 0.");
+
+        Console.WriteLine();
+        Console.WriteLine(
+            "PASS: native sensitive-permission acceptance.");
+    }
+    finally
+    {
+        await StopUiFixtureAsync(
+            fixture);
+    }
+    }
+
     private const string UiFixturePrefix = "LuKnight UIA Fixture";
 
     private const string UiTextExpectedValue =

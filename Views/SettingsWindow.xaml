@@ -297,9 +297,39 @@
                         </Border>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
-                                <TextBlock Text="Desktop actions" Style="{StaticResource CardTitle}"/>
-                                <CheckBox Content="Allow Lu-Knight to perform approved desktop actions" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseDesktopActions, Mode=TwoWay}"/>
-                                <TextBlock Text="Buka atau fokus aplikasi Windows yang terdaftar, buka folder umum, dan cari file melalui Explorer. Contoh: ‘tolong bukain chrome dong’, ‘buka downloads’, atau ‘cari laporan di documents’. Semua perintah ini diproses lokal tanpa Gemini dan tetap meminta konfirmasi. Shell, script, executable path bebas, dan perubahan file tidak diizinkan." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                                <TextBlock
+                                    Text="Desktop actions"
+                                    Style="{StaticResource CardTitle}"/>
+
+                                <CheckBox
+                                    Content="Allow Lu-Knight to perform approved desktop actions"
+                                    IsEnabled="{Binding Product.CanEditChat}"
+                                    IsChecked="{Binding Product.UseDesktopActions, Mode=TwoWay}"/>
+
+                                <TextBlock
+                                    Text="Permission level"
+                                    Margin="0,14,0,6"/>
+
+                                <ComboBox
+                                    ItemsSource="{Binding Product.DesktopPermissionChoices}"
+                                    DisplayMemberPath="Label"
+                                    SelectedValuePath="Value"
+                                    SelectedValue="{Binding Product.DesktopPermission, Mode=TwoWay}"
+                                    IsEnabled="{Binding Product.DesktopPermissionEnabled}"/>
+
+                                <TextBlock
+                                    Text="{Binding Product.DesktopPermissionDescription}"
+                                    Style="{StaticResource Muted}"
+                                    FontSize="12"
+                                    Margin="0,8,0,0"
+                                    TextWrapping="Wrap"/>
+
+                                <TextBlock
+                                    Text="Protected/password fields, generic confirmation buttons seperti OK/Yes, arbitrary shell/script, dan target yang gagal divalidasi tetap tidak dapat dijalankan pada level apa pun."
+                                    Style="{StaticResource Muted}"
+                                    FontSize="12"
+                                    Margin="0,8,0,0"
+                                    TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>

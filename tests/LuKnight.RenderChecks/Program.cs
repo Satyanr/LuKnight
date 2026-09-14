@@ -147,6 +147,20 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} strong-confirmation checks.");
             return;
         }
+        if (args.Contains(
+                "--permissions-live"))
+        {
+            Task.Run(
+                CheckSensitivePermissionLiveAsync)
+                .GetAwaiter()
+                .GetResult();
+
+            Console.WriteLine(
+                $"PASS: {_checks} native permission checks.");
+
+            return;
+        }
+
         if (args.Contains("--permissions"))
         {
             Task.Run(CheckPermissionLevelsAsync).GetAwaiter().GetResult();

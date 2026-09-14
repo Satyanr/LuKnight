@@ -7,6 +7,10 @@ using System.Diagnostics;
 
 namespace LuKnight.ViewModels;
 
+public sealed record DesktopPermissionChoice(
+    DesktopPermissionLevel Value,
+    string Label);
+
 public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly AppServices _services;
@@ -60,6 +64,74 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
             return voices;
         }
     }
+    public DesktopPermissionChoice[]
+        DesktopPermissionChoices { get; } =
+    [
+        new(
+            DesktopPermissionLevel.ObserveOnly,
+            "Observe only"),
+
+        new(
+            DesktopPermissionLevel.Navigation,
+            "Navigation"),
+
+        new(
+            DesktopPermissionLevel.Interaction,
+            "Interaction"),
+
+        new(
+            DesktopPermissionLevel.Sensitive,
+            "Sensitive")
+    ];
+
+    public DesktopPermissionLevel
+        DesktopPermission
+    {
+        get =>
+            _services.Chat.Options
+                .DesktopPermission;
+
+        set
+        {
+            if (value ==
+                _services.Chat.Options
+                    .DesktopPermission)
+            {
+                return;
+            }
+
+            Change(
+                _services.Chat.Options with
+                {
+                    DesktopPermission =
+                        value
+                });
+        }
+    }
+
+    public bool DesktopPermissionEnabled =>
+        CanEditChat &&
+        UseDesktopActions;
+
+    public string DesktopPermissionDescription =>
+        DesktopPermission switch
+        {
+            DesktopPermissionLevel.ObserveOnly =>
+                "Lu-Knight hanya boleh membaca konteks desktop yang sudah diizinkan. Semua aksi desktop diblokir.",
+
+            DesktopPermissionLevel.Navigation =>
+                "Boleh membuka dan memfokuskan aplikasi/window serta membuka atau mencari melalui Explorer. Tetap meminta konfirmasi.",
+
+            DesktopPermissionLevel.Interaction =>
+                "Navigation + klik control dan mengisi text field aman. Tindakan sensitif tetap diblokir.",
+
+            DesktopPermissionLevel.Sensitive =>
+                "Interaction + tindakan sensitif seperti Save, Send, Delete, Upload, Pay, atau Shutdown. Sensitive selalu memerlukan konfirmasi dua tahap.",
+
+            _ =>
+                "Permission desktop tidak valid."
+        };
+
     public bool CanEditChat => !_services.Assistant.IsBusy;
     public string CredentialStatus => _services.Chat.CredentialStatus;
     public string ChatStatus => _message ?? _services.Chat.Status;
