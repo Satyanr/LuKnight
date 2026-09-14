@@ -38,15 +38,6 @@ public static class DesktopUiActionPolicy
             return true;
         }
 
-        if (assessment.Risk ==
-            Assistant.AssistantActionRisk.Sensitive)
-        {
-            reason =
-                "Tindakan ini sudah diklasifikasikan Sensitive, tetapi masih diblokir sampai stronger confirmation tersedia.";
-
-            return true;
-        }
-
         reason =
             string.Empty;
 

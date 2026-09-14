@@ -97,7 +97,7 @@ internal static partial class Program
             "Safe Refresh button was blocked.");
         DesktopUiNodeSnapshot saveButton = snapshot.Nodes.First(x => x.Name == "Save");
         Require(
-            DesktopUiActionPolicy.IsTemporarilyBlocked(saveButton, out _),
+            DesktopUiActionRiskClassifier.ClassifyButton(saveButton).Risk == AssistantActionRisk.Sensitive,
             "Save button bypassed temporary mutation policy.");
         foreach (string dangerous in new[]
         {
@@ -106,9 +106,7 @@ internal static partial class Program
         })
         {
             Require(
-                DesktopUiActionPolicy.IsTemporarilyBlocked(
-                    refresh with { Name = dangerous },
-                    out _),
+                DesktopUiActionRiskClassifier.ClassifyButton(refresh with { Name = dangerous }).Risk is AssistantActionRisk.Sensitive or AssistantActionRisk.Prohibited,
                 $"Sensitive button escaped policy: {dangerous}");
         }
         foreach (string disguised in new[]
@@ -118,9 +116,7 @@ internal static partial class Program
         })
         {
             Require(
-                DesktopUiActionPolicy.IsTemporarilyBlocked(
-                    refresh with { Name = disguised },
-                    out _),
+                DesktopUiActionRiskClassifier.ClassifyButton(refresh with { Name = disguised }).Risk is AssistantActionRisk.Sensitive or AssistantActionRisk.Prohibited,
                 $"Decorated sensitive button escaped policy: {disguised}");
         }
         foreach (string dangerous in new[]
@@ -131,9 +127,7 @@ internal static partial class Program
         })
         {
             Require(
-                DesktopUiActionPolicy.IsTemporarilyBlocked(
-                    refresh with { Name = dangerous },
-                    out _),
+                DesktopUiActionRiskClassifier.ClassifyButton(refresh with { Name = dangerous }).Risk is AssistantActionRisk.Sensitive or AssistantActionRisk.Prohibited,
                 $"Sensitive button escaped policy: {dangerous}");
         }
         foreach (string safe in new[] { "Refresh", "Reload", "Back", "Previous" })

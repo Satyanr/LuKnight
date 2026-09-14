@@ -96,3 +96,80 @@ public static class AssistantActionPermissionPolicy
             false,
             message);
 }
+
+public sealed record AssistantActionConfirmationDecision(
+    bool Allowed,
+    string Message);
+
+public static class AssistantActionConfirmationPolicy
+{
+    public static AssistantActionConfirmationDecision
+        Evaluate(
+            PreparedAssistantAction action)
+    {
+        ArgumentNullException.ThrowIfNull(
+            action);
+
+        if (!Enum.IsDefined(
+                action.Confirmation))
+        {
+            return Block(
+                "Status konfirmasi tindakan tidak valid.");
+        }
+
+        if (!Enum.IsDefined(
+                action.Risk))
+        {
+            return Block(
+                "Klasifikasi risiko tindakan tidak valid.");
+        }
+
+        bool allowed =
+            action.Risk switch
+            {
+                AssistantActionRisk.Navigation =>
+                    action.Confirmation is
+                        AssistantActionConfirmation.Standard
+                        or AssistantActionConfirmation.Strong,
+
+                AssistantActionRisk.Interaction =>
+                    action.Confirmation is
+                        AssistantActionConfirmation.Standard
+                        or AssistantActionConfirmation.Strong,
+
+                AssistantActionRisk.Sensitive =>
+                    action.Confirmation ==
+                    AssistantActionConfirmation.Strong,
+
+                AssistantActionRisk.Prohibited =>
+                    false,
+
+                _ =>
+                    false
+            };
+
+        if (allowed)
+        {
+            return new(
+                true,
+                string.Empty);
+        }
+
+        string message =
+            action.Risk ==
+                AssistantActionRisk.Sensitive
+                ? "Tindakan sensitif memerlukan konfirmasi kuat dua tahap."
+                : "Tindakan belum dikonfirmasi.";
+
+        return Block(
+            message);
+    }
+
+    private static
+        AssistantActionConfirmationDecision
+        Block(
+            string message) =>
+        new(
+            false,
+            message);
+}

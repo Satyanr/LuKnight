@@ -883,7 +883,7 @@ internal static partial class Program
                 !DesktopUiActionPolicy.IsTemporarilyBlocked(refresh.Match!, out _),
                 "Safe Refresh fixture button was blocked.");
             Require(
-                DesktopUiActionPolicy.IsTemporarilyBlocked(save.Match!, out _),
+                DesktopUiActionRiskClassifier.ClassifyButton(save.Match!).Risk == AssistantActionRisk.Sensitive,
                 "Sensitive Save fixture button escaped policy.");
 
             using var handler = new FakeHttp((_, _) =>

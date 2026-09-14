@@ -8,7 +8,11 @@ public sealed class AssistantController
     private readonly SemaphoreSlim _requestGate = new(1, 1);
     private PendingAssistantAction? _pendingAction;
 
-    private sealed record PendingAssistantAction(Guid Id, PreparedAssistantAction Action, DateTimeOffset ExpiresAt);
+    private sealed record PendingAssistantAction(
+        Guid Id,
+        PreparedAssistantAction Action,
+        DateTimeOffset ExpiresAt,
+        AssistantConfirmationStage Stage);
 
     public ConversationManager Conversation { get; } = new();
     public PersonalityEngine Personality { get; }
@@ -171,12 +175,76 @@ public sealed class AssistantController
 
         Guid id = Guid.NewGuid();
         DateTimeOffset expiresAt = DateTimeOffset.UtcNow.AddMinutes(1);
-        _pendingAction = new PendingAssistantAction(id, prepared.Action, expiresAt);
+        AssistantConfirmationStage stage =
+            prepared.Action.Risk ==
+                AssistantActionRisk.Sensitive
+                ? AssistantConfirmationStage
+                    .SensitiveReview
+                : AssistantConfirmationStage
+                    .Standard;
+
+        _pendingAction =
+            new PendingAssistantAction(
+                id,
+                prepared.Action,
+                expiresAt,
+                stage);
 
         string message = $"Tindakan desktop memerlukan konfirmasi: {prepared.Action.Title}.";
         Conversation.AddAssistant(message, prepared.Action.IncludeInContext);
         return new AssistantReply(message, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Determined,
-            new AssistantActionProposal(id, prepared.Action.Title, prepared.Action.ConfirmationText, expiresAt, prepared.Action.Risk));
+            BuildActionProposal(_pendingAction));
+    }
+
+    private static AssistantActionProposal
+        BuildActionProposal(
+            PendingAssistantAction pending)
+    {
+        PreparedAssistantAction action =
+            pending.Action;
+
+        string title =
+            pending.Stage switch
+            {
+                AssistantConfirmationStage
+                    .SensitiveReview =>
+                    $"Tinjau tindakan sensitif — {action.Title}",
+
+                AssistantConfirmationStage
+                    .SensitiveFinal =>
+                    $"Konfirmasi akhir — {action.Title}",
+
+                _ =>
+                    action.Title
+            };
+
+        string confirmation =
+            pending.Stage switch
+            {
+                AssistantConfirmationStage
+                    .SensitiveReview =>
+                    "PERINGATAN: Lu-Knight mengklasifikasikan tindakan ini sebagai sensitif.\n\n" +
+                    action.ConfirmationText +
+                    "\n\nMemilih Yes pada tahap ini BELUM menjalankan tindakan. " +
+                    "Lu-Knight akan meminta satu konfirmasi akhir.",
+
+                AssistantConfirmationStage
+                    .SensitiveFinal =>
+                    "KONFIRMASI AKHIR.\n\n" +
+                    action.ConfirmationText +
+                    "\n\nJika memilih Yes sekarang, tindakan akan dijalankan.",
+
+                _ =>
+                    action.ConfirmationText
+            };
+
+        return new AssistantActionProposal(
+            pending.Id,
+            title,
+            confirmation,
+            pending.ExpiresAt,
+            action.Risk,
+            pending.Stage);
     }
 
     public async Task<AssistantReply> ConfirmActionAsync(Guid proposalId, CancellationToken cancellationToken = default)
@@ -191,17 +259,109 @@ public sealed class AssistantController
             if (pending is null || pending.Id != proposalId)
                 throw new InvalidOperationException("Konfirmasi tindakan tidak lagi valid.");
 
-            _pendingAction = null;
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _pendingAction = null;
+                cancellationToken.ThrowIfCancellationRequested();
+            }
 
             if (DateTimeOffset.UtcNow > pending.ExpiresAt)
             {
+                _pendingAction = null;
                 const string expired = "Konfirmasi tindakan sudah kedaluwarsa.";
                 Conversation.AddAssistant(expired, pending.Action.IncludeInContext);
                 return new AssistantReply(expired, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Confused);
             }
 
-            ActionExecutionResult result = await Actions.ExecuteAsync(pending.Action, cancellationToken);
+            if (pending.Stage ==
+                    AssistantConfirmationStage
+                        .SensitiveReview)
+            {
+                AssistantActionPermissionDecision permission =
+                    Actions.CheckPermission(
+                        pending.Action);
+
+                if (!permission.Allowed)
+                {
+                    _pendingAction =
+                        null;
+
+                    Conversation.AddAssistant(
+                        permission.Message,
+                        pending.Action.IncludeInContext);
+
+                    return new AssistantReply(
+                        permission.Message,
+                        AssistantBackend.Local,
+                        DateTimeOffset.UtcNow,
+                        AssistantEmotion.Confused);
+                }
+
+                Guid finalId =
+                    Guid.NewGuid();
+
+                DateTimeOffset finalExpiry =
+                    DateTimeOffset.UtcNow
+                        .AddSeconds(30);
+
+                PendingAssistantAction finalPending =
+                    pending with
+                    {
+                        Id =
+                            finalId,
+
+                        ExpiresAt =
+                            finalExpiry,
+
+                        Stage =
+                            AssistantConfirmationStage
+                                .SensitiveFinal
+                    };
+
+                _pendingAction =
+                    finalPending;
+
+                const string message =
+                    "Tindakan sensitif belum dijalankan. Konfirmasi akhir diperlukan.";
+
+                Conversation.AddAssistant(
+                    message,
+                    pending.Action
+                        .IncludeInContext);
+
+                return new AssistantReply(
+                    message,
+                    AssistantBackend.Local,
+                    DateTimeOffset.UtcNow,
+                    AssistantEmotion.Determined,
+                    BuildActionProposal(
+                        finalPending));
+            }
+
+            _pendingAction =
+                null;
+
+            AssistantActionConfirmation authorization =
+                pending.Stage ==
+                    AssistantConfirmationStage
+                        .SensitiveFinal
+                    ? AssistantActionConfirmation
+                        .Strong
+                    : AssistantActionConfirmation
+                        .Standard;
+
+            PreparedAssistantAction authorized =
+                pending.Action with
+                {
+                    Confirmation =
+                        authorization
+                };
+
+            ActionExecutionResult result =
+                await Actions.ExecuteAsync(
+                    authorized,
+                    cancellationToken);
+
             Conversation.AddAssistant(result.Message, pending.Action.IncludeInContext);
             return new AssistantReply(result.Message, AssistantBackend.Local, DateTimeOffset.UtcNow,
                 result.Success ? AssistantEmotion.Happy : AssistantEmotion.Confused);

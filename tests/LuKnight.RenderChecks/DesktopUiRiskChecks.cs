@@ -61,9 +61,11 @@ internal static partial class Program
         {
             ui.Snapshot = new DesktopUiSnapshot(window, new[] { button with { Name = label } }, false);
             var reply = await assistant.SendAsync(new AssistantRequest($"klik tombol {label} di window Editor"));
-            Require(reply.ActionProposal is null && executor.Calls == 0 && mouse.Calls == 0 && handler.Calls == 0 &&
+            Require((label == "OK" ? reply.ActionProposal is null : reply.ActionProposal is
+                { Risk: AssistantActionRisk.Sensitive, ConfirmationStage: AssistantConfirmationStage.SensitiveReview }) && executor.Calls == 0 && mouse.Calls == 0 && handler.Calls == 0 &&
                 assistant.Conversation.GetRecentContext().Count == 0,
-                "Sensitive UI action became executable before stronger confirmation or leaked context.");
+                "Sensitive UI action skipped strong review or leaked context.");
+            if (reply.ActionProposal is not null) assistant.CancelAction(reply.ActionProposal.Id);
         }
         ui.Snapshot = new DesktopUiSnapshot(window, new[] { button }, false);
         var invocation = intentRouter.Route("klik tombol Refresh di window Editor").Action!;

@@ -24,13 +24,22 @@ public sealed record AssistantRequest(
     string Text,
     AssistantInputSource Source = AssistantInputSource.Chat);
 
+public enum AssistantConfirmationStage
+{
+    Standard,
+    SensitiveReview,
+    SensitiveFinal
+}
+
 public sealed record AssistantActionProposal(
     Guid Id,
     string Title,
     string ConfirmationText,
     DateTimeOffset ExpiresAt,
     AssistantActionRisk Risk =
-        AssistantActionRisk.Interaction);
+        AssistantActionRisk.Interaction,
+    AssistantConfirmationStage ConfirmationStage =
+        AssistantConfirmationStage.Standard);
 
 public sealed record AssistantReply(
     string Text,

@@ -8,6 +8,13 @@ public enum AssistantActionRisk
     Prohibited
 }
 
+public enum AssistantActionConfirmation
+{
+    None,
+    Standard,
+    Strong
+}
+
 public sealed record PreparedAssistantAction(
     string Name,
     IReadOnlyDictionary<string, string> Arguments,
@@ -15,7 +22,9 @@ public sealed record PreparedAssistantAction(
     string ConfirmationText,
     bool IncludeInContext = true,
     AssistantActionRisk Risk =
-        AssistantActionRisk.Interaction);
+        AssistantActionRisk.Interaction,
+    AssistantActionConfirmation Confirmation =
+        AssistantActionConfirmation.None);
 
 public sealed record ActionPreparationResult(
     bool Success,

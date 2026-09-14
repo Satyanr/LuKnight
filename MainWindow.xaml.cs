@@ -700,33 +700,11 @@ public partial class MainWindow : Window
             ReactToAssistantEmotion(reply.Emotion);
             ChatPanelControl.AddAssistantMessage(reply.Text);
 
-            if (reply.ActionProposal is { } proposal)
+            if (reply.ActionProposal is not null)
             {
-                ChatPanelControl.SetStatus("Menunggu konfirmasi tindakan...", ChatStatus.Ready);
-
-                MessageBoxResult confirmation = MessageBox.Show(
-                    this,
-                    proposal.ConfirmationText,
-                    proposal.Title,
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question,
-                    MessageBoxResult.No);
-
-                AssistantReply actionReply = confirmation == MessageBoxResult.Yes
-                    ? await Services.Assistant.ConfirmActionAsync(proposal.Id, requestCts.Token)
-                    : Services.Assistant.CancelAction(proposal.Id);
-
-                ReactToAssistantEmotion(actionReply.Emotion);
-                ChatPanelControl.AddAssistantMessage(actionReply.Text);
-                await SpeakAssistantReplyAsync(
-                    source,
-                    actionReply.Text,
-                    requestCts.Token);
-                ChatPanelControl.SetStatus(
-                    actionReply.Text,
-                    actionReply.Emotion == AssistantEmotion.Confused
-                        ? ChatStatus.Error
-                        : ChatStatus.Local);
+                AssistantReply actionReply = await ResolveActionProposalChainAsync(reply, source, requestCts.Token);
+                ChatPanelControl.SetStatus(actionReply.Text,
+                    actionReply.Emotion == AssistantEmotion.Confused ? ChatStatus.Error : ChatStatus.Local);
             }
             else
             {
@@ -776,6 +754,76 @@ public partial class MainWindow : Window
             if (resumeListening && Services.Chat.Options.UseVoiceInput)
                 TryStartVoiceRecording();
         }
+    }
+
+    private async Task<AssistantReply>
+        ResolveActionProposalChainAsync(
+            AssistantReply initial,
+            AssistantInputSource source,
+            CancellationToken cancellationToken)
+    {
+        AssistantReply current =
+            initial;
+
+        while (current.ActionProposal is
+               { } proposal)
+        {
+            ChatPanelControl.SetStatus(
+                proposal.Risk ==
+                    AssistantActionRisk.Sensitive
+                    ? proposal.ConfirmationStage ==
+                        AssistantConfirmationStage
+                            .SensitiveFinal
+                        ? "Menunggu konfirmasi akhir tindakan sensitif..."
+                        : "Menunggu review tindakan sensitif..."
+                    : "Menunggu konfirmasi tindakan...",
+                ChatStatus.Ready);
+
+            MessageBoxImage icon =
+                proposal.Risk ==
+                    AssistantActionRisk.Sensitive
+                    ? MessageBoxImage.Warning
+                    : MessageBoxImage.Question;
+
+            MessageBoxResult confirmation =
+                MessageBox.Show(
+                    this,
+                    proposal.ConfirmationText,
+                    proposal.Title,
+                    MessageBoxButton.YesNo,
+                    icon,
+                    MessageBoxResult.No);
+
+            current =
+                confirmation ==
+                    MessageBoxResult.Yes
+                    ? await Services.Assistant
+                        .ConfirmActionAsync(
+                            proposal.Id,
+                            cancellationToken)
+                    : Services.Assistant
+                        .CancelAction(
+                            proposal.Id);
+
+            ReactToAssistantEmotion(
+                current.Emotion);
+
+            ChatPanelControl
+                .AddAssistantMessage(
+                    current.Text);
+
+            // Jangan TTS message review pertama
+            // jika proposal final langsung menyusul.
+            if (current.ActionProposal is null)
+            {
+                await SpeakAssistantReplyAsync(
+                    source,
+                    current.Text,
+                    cancellationToken);
+            }
+        }
+
+        return current;
     }
 
     private async Task SpeakAssistantReplyAsync(

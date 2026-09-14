@@ -50,6 +50,8 @@ public sealed class AssistantActionRouter
             return prepared;
         }
 
+        prepared = prepared with { Action = prepared.Action with { Confirmation = AssistantActionConfirmation.None } };
+
         AssistantActionPermissionDecision decision =
             AssistantActionPermissionPolicy
                 .Evaluate(
@@ -116,6 +118,19 @@ public sealed class AssistantActionRouter
             prepared);
     }
 
+    public AssistantActionPermissionDecision
+        CheckPermission(
+            PreparedAssistantAction action)
+    {
+        ArgumentNullException.ThrowIfNull(
+            action);
+
+        return AssistantActionPermissionPolicy
+            .Evaluate(
+                action,
+                _permissionLevel());
+    }
+
     public Task<ActionExecutionResult>
         ExecuteAsync(
             PreparedAssistantAction action,
@@ -127,10 +142,8 @@ public sealed class AssistantActionRouter
         cancellationToken.ThrowIfCancellationRequested();
 
         AssistantActionPermissionDecision permission =
-            AssistantActionPermissionPolicy
-                .Evaluate(
-                    action,
-                    _permissionLevel());
+            CheckPermission(
+                action);
 
         if (!permission.Allowed)
         {
@@ -138,6 +151,19 @@ public sealed class AssistantActionRouter
                 new ActionExecutionResult(
                     false,
                     permission.Message));
+        }
+
+        AssistantActionConfirmationDecision confirmation =
+            AssistantActionConfirmationPolicy
+                .Evaluate(
+                    action);
+
+        if (!confirmation.Allowed)
+        {
+            return Task.FromResult(
+                new ActionExecutionResult(
+                    false,
+                    confirmation.Message));
         }
 
         if (!_actions.TryGetValue(

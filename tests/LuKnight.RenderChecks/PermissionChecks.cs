@@ -73,7 +73,16 @@ internal static partial class Program
                 "Permission gate lost private metadata.");
             Require(!prepared.Message.Contains("private sentinel", StringComparison.Ordinal), "Permission policy leaked arguments.");
             int before = action.Executions;
-            var result = await router.ExecuteAsync(prepared.Action!);
+            if (prepared.Success)
+            {
+                var unconfirmed = await router.ExecuteAsync(prepared.Action!);
+                Require(!unconfirmed.Success && action.Executions == before, "Unconfirmed action reached executor.");
+            }
+            var result = await router.ExecuteAsync(prepared.Action! with
+            {
+                Confirmation = risk == AssistantActionRisk.Sensitive
+                    ? AssistantActionConfirmation.Strong : AssistantActionConfirmation.Standard
+            });
             Require(result.Success == expected && action.Executions == before + (expected ? 1 : 0),
                 "Execution permission gate failed.");
         }

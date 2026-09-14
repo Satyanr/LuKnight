@@ -141,6 +141,12 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} UI risk-classification checks.");
             return;
         }
+        if (args.Contains("--strong-confirm"))
+        {
+            Task.Run(CheckStrongConfirmationAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} strong-confirmation checks.");
+            return;
+        }
         if (args.Contains("--permissions"))
         {
             Task.Run(CheckPermissionLevelsAsync).GetAwaiter().GetResult();
