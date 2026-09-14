@@ -116,7 +116,7 @@ public sealed class AppServices
                 UiAssistedResolver),
             new OpenExplorerFolderAction(() => Chat.Options.UseDesktopActions, ExplorerActions),
             new SearchExplorerAction(() => Chat.Options.UseDesktopActions, ExplorerActions)
-        });
+        }, () => Chat.Options.DesktopPermission);
         Assistant = new AssistantController(
             Chat,
             memory: Memory,

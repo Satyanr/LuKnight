@@ -28,7 +28,9 @@ public sealed record AssistantActionProposal(
     Guid Id,
     string Title,
     string ConfirmationText,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    AssistantActionRisk Risk =
+        AssistantActionRisk.Interaction);
 
 public sealed record AssistantReply(
     string Text,

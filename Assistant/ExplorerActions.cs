@@ -12,7 +12,7 @@ public sealed class OpenExplorerFolderAction(Func<bool> enabled, IExplorerAction
         if (!TryLocation(invocation.Arguments, out var location)) return new(false, "Lokasi Explorer tidak valid.");
         return new(true, $"Siap membuka {location.DisplayName}.", new(Name,
             new Dictionary<string, string> { ["locationId"] = location.Id, ["path"] = location.Path },
-            $"Buka {location.DisplayName}", $"Izinkan Lu-Knight membuka File Explorer di {location.DisplayName}?"));
+            $"Buka {location.DisplayName}", $"Izinkan Lu-Knight membuka File Explorer di {location.DisplayName}?", Risk: AssistantActionRisk.Navigation));
     }
 
     public Task<ActionExecutionResult> ExecuteAsync(PreparedAssistantAction action, CancellationToken cancellationToken = default)
@@ -44,7 +44,7 @@ public sealed class SearchExplorerAction(Func<bool> enabled, IExplorerActionExec
         if (location is not null) { args["locationId"] = location.Id; args["path"] = location.Path; }
         string scope = location?.DisplayName ?? "Windows Search";
         return new(true, "Siap membuka pencarian Explorer.", new(Name, args, "Cari di Explorer",
-            $"Izinkan Lu-Knight mencari \"{query}\" di {scope}?"));
+            $"Izinkan Lu-Knight mencari \"{query}\" di {scope}?", Risk: AssistantActionRisk.Navigation));
     }
 
     public Task<ActionExecutionResult> ExecuteAsync(PreparedAssistantAction action, CancellationToken cancellationToken = default)

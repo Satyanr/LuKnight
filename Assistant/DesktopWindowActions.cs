@@ -40,7 +40,8 @@ public sealed class FocusDesktopWindowAction : IAssistantAction
             },
             $"Fokus {target.DisplayLabel}",
             $"Izinkan Lu-Knight memfokuskan window {target.DisplayLabel}?",
-            IncludeInContext: false);
+            IncludeInContext: false,
+            Risk: AssistantActionRisk.Navigation);
 
         return new(true, $"Siap memfokuskan {target.DisplayLabel}.", prepared);
     }

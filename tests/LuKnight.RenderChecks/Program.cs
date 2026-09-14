@@ -135,6 +135,12 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} native screen-assisted UIA checks.");
             return;
         }
+        if (args.Contains("--permissions"))
+        {
+            Task.Run(CheckPermissionLevelsAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} permission-level checks.");
+            return;
+        }
         if (args.Contains("--screen-assist"))
         {
             CheckDesktopScreenAssist();

@@ -188,7 +188,8 @@ public sealed class SetDesktopUiTextAction
                 $"Izinkan Lu-Knight mengganti isi text field {field.DisplayName} pada window {window.DisplayLabel}? " +
                 $"Teks sepanjang {value.Length} karakter akan dimasukkan. UI Automation ValuePattern diprioritaskan; " +
                 "jika field tidak menyediakan ValuePattern, Lu-Knight boleh menggunakan keyboard fallback tervalidasi pada field yang sama.",
-                IncludeInContext: false);
+                IncludeInContext: false,
+            Risk: AssistantActionRisk.Interaction);
 
         return new(
             true,

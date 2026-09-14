@@ -77,7 +77,7 @@ public sealed class AssistantController
                 new DesktopUiAssistedResolver(new WindowsDesktopUiScreenEvidenceService())),
             new OpenExplorerFolderAction(() => _chat.Options.UseDesktopActions, new WindowsExplorerActionExecutor()),
             new SearchExplorerAction(() => _chat.Options.UseDesktopActions, new WindowsExplorerActionExecutor())
-        });
+        }, () => _chat.Options.DesktopPermission);
         Emotions = emotions ?? new AssistantEmotionEngine();
     }
 
@@ -176,7 +176,7 @@ public sealed class AssistantController
         string message = $"Tindakan desktop memerlukan konfirmasi: {prepared.Action.Title}.";
         Conversation.AddAssistant(message, prepared.Action.IncludeInContext);
         return new AssistantReply(message, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Determined,
-            new AssistantActionProposal(id, prepared.Action.Title, prepared.Action.ConfirmationText, expiresAt));
+            new AssistantActionProposal(id, prepared.Action.Title, prepared.Action.ConfirmationText, expiresAt, prepared.Action.Risk));
     }
 
     public async Task<AssistantReply> ConfirmActionAsync(Guid proposalId, CancellationToken cancellationToken = default)

@@ -2,6 +2,14 @@ using LuKnight.Behaviors;
 
 namespace LuKnight.Models;
 
+public enum DesktopPermissionLevel
+{
+    ObserveOnly,
+    Navigation,
+    Interaction,
+    Sensitive
+}
+
 public enum ChatProvider { Gemini, Local }
 public enum ChatLanguage { Automatic, Indonesia, English }
 public enum ResponseLength { Short, Normal, Detailed }
@@ -31,6 +39,7 @@ public sealed record ChatSettings
     public SpeechModel VoiceModel { get; init; } = SpeechModel.Base;
     public VoiceSubmissionMode VoiceSubmissionMode { get; init; } = VoiceSubmissionMode.SendImmediately;
     public bool UseDesktopActions { get; init; } = false;
+    public DesktopPermissionLevel DesktopPermission { get; init; } = DesktopPermissionLevel.Interaction;
     public TextToSpeechMode TextToSpeechMode { get; init; } = TextToSpeechMode.VoiceRequestsOnly;
     public string TextToSpeechVoice { get; init; } = string.Empty;
     public int TextToSpeechRate { get; init; } = 0;

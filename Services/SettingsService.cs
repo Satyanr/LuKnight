@@ -57,7 +57,7 @@ public sealed class SettingsService
         if (value.General is null || value.Behavior is null || value.Chat is null) throw new ArgumentException("Missing settings section.");
         var b = value.Behavior; var c = value.Chat;
         if (!Enum.IsDefined(b.Activity) || !Enum.IsDefined(b.Speed) || !Enum.IsDefined(b.SleepAfter) || !Enum.IsDefined(b.Nap) ||
-            !Enum.IsDefined(c.Provider) || !Enum.IsDefined(c.Language) || !Enum.IsDefined(c.ResponseLength) || !Enum.IsDefined(c.Style) ||
+            !Enum.IsDefined(c.DesktopPermission) || !Enum.IsDefined(c.Provider) || !Enum.IsDefined(c.Language) || !Enum.IsDefined(c.ResponseLength) || !Enum.IsDefined(c.Style) ||
             !Enum.IsDefined(c.VoiceLanguage) || !Enum.IsDefined(c.VoiceModel) || !Enum.IsDefined(c.VoiceSubmissionMode) || !Enum.IsDefined(c.TextToSpeechMode) ||
             c.TextToSpeechVoice is null || c.TextToSpeechVoice.Length > 200 ||
             c.TextToSpeechRate is < -10 or > 10 || c.TextToSpeechVolume is < 0 or > 100 ||

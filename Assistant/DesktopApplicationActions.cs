@@ -29,7 +29,8 @@ public sealed class OpenDesktopApplicationAction : IAssistantAction
             Name,
             new Dictionary<string, string> { ["appId"] = app.Id, ["fingerprint"] = app.Fingerprint },
             $"Buka {app.DisplayName}",
-            $"Izinkan Lu-Knight membuka {app.DisplayName}?");
+            $"Izinkan Lu-Knight membuka {app.DisplayName}?",
+            Risk: AssistantActionRisk.Navigation);
 
         return new ActionPreparationResult(true, $"Siap membuka {app.DisplayName}.", prepared);
     }
@@ -98,7 +99,8 @@ public sealed class FocusDesktopApplicationAction : IAssistantAction
             Name,
             new Dictionary<string, string> { ["appId"] = app.Id, ["fingerprint"] = app.Fingerprint },
             $"Fokus {app.DisplayName}",
-            $"Izinkan Lu-Knight memfokuskan window {app.DisplayName}?");
+            $"Izinkan Lu-Knight memfokuskan window {app.DisplayName}?",
+            Risk: AssistantActionRisk.Navigation);
 
         return new ActionPreparationResult(true, $"Siap memfokuskan {app.DisplayName}.", prepared);
     }

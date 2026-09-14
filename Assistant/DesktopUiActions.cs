@@ -111,7 +111,8 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
             $"Izinkan Lu-Knight menekan tombol {button.DisplayName} pada window {window.DisplayLabel}? " +
             "UI Automation akan diprioritaskan; jika tombol tidak menyediakan InvokePattern, " +
             "Lu-Knight boleh menggunakan klik mouse tervalidasi pada tombol yang sama." + screenNotice,
-            IncludeInContext: false);
+            IncludeInContext: false,
+            Risk: AssistantActionRisk.Interaction);
         return new(true, $"Siap menekan tombol {button.DisplayName}.", prepared);
     }
 

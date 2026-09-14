@@ -1,11 +1,21 @@
 namespace LuKnight.Assistant;
 
+public enum AssistantActionRisk
+{
+    Navigation,
+    Interaction,
+    Sensitive,
+    Prohibited
+}
+
 public sealed record PreparedAssistantAction(
     string Name,
     IReadOnlyDictionary<string, string> Arguments,
     string Title,
     string ConfirmationText,
-    bool IncludeInContext = true);
+    bool IncludeInContext = true,
+    AssistantActionRisk Risk =
+        AssistantActionRisk.Interaction);
 
 public sealed record ActionPreparationResult(
     bool Success,
