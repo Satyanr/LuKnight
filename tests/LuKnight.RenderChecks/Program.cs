@@ -135,6 +135,12 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} native screen-assisted UIA checks.");
             return;
         }
+        if (args.Contains("--ui-risk"))
+        {
+            Task.Run(CheckDesktopUiRiskAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} UI risk-classification checks.");
+            return;
+        }
         if (args.Contains("--permissions"))
         {
             Task.Run(CheckPermissionLevelsAsync).GetAwaiter().GetResult();

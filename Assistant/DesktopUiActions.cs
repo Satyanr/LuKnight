@@ -90,8 +90,29 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
             return new(false, $"Tombol \"{query}\" tidak ditemukan.");
 
         DesktopUiNodeSnapshot button = control.Match;
-        if (DesktopUiActionPolicy.IsTemporarilyBlocked(button, out string policyReason))
-            return new(false, policyReason);
+        DesktopUiActionRiskAssessment risk =
+            DesktopUiActionRiskClassifier
+                .ClassifyButton(
+                    button,
+                    window);
+
+        if (!risk.Valid)
+        {
+            return new(
+                false,
+                risk.Message);
+        }
+
+        if (DesktopUiActionPolicy
+                .IsTemporarilyBlocked(
+                    window,
+                    button,
+                    out string policyReason))
+        {
+            return new(
+                false,
+                policyReason);
+        }
 
         string screenNotice =
             screenAssisted
@@ -112,7 +133,7 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
             "UI Automation akan diprioritaskan; jika tombol tidak menyediakan InvokePattern, " +
             "Lu-Knight boleh menggunakan klik mouse tervalidasi pada tombol yang sama." + screenNotice,
             IncludeInContext: false,
-            Risk: AssistantActionRisk.Interaction);
+            Risk: risk.Risk);
         return new(true, $"Siap menekan tombol {button.DisplayName}.", prepared);
     }
 
@@ -152,8 +173,37 @@ public sealed class InvokeDesktopUiControlAction : IAssistantAction
             return new(false, "Tombol berubah sejak konfirmasi. Ulangi perintah.");
         }
 
-        if (DesktopUiActionPolicy.IsTemporarilyBlocked(current, out string policyReason))
-            return new(false, policyReason);
+        DesktopUiActionRiskAssessment currentRisk =
+            DesktopUiActionRiskClassifier
+                .ClassifyButton(
+                    current,
+                    window);
+
+        if (!currentRisk.Valid)
+        {
+            return new(
+                false,
+                currentRisk.Message);
+        }
+
+        if (currentRisk.Risk !=
+            action.Risk)
+        {
+            return new(
+                false,
+                "Klasifikasi risiko tombol berubah sejak konfirmasi. Ulangi perintah.");
+        }
+
+        if (DesktopUiActionPolicy
+                .IsTemporarilyBlocked(
+                    window,
+                    current,
+                    out string policyReason))
+        {
+            return new(
+                false,
+                policyReason);
+        }
 
         DesktopUiInvokeResult invoke = await _executor.InvokeAsync(
             window,

@@ -142,7 +142,7 @@ public sealed class WindowsDesktopUiActionExecutor : IDesktopUiActionExecutor
                 info.IsOffscreen,
                 info.HasKeyboardFocus,
                 info.IsPassword);
-            if (DesktopUiActionPolicy.IsTemporarilyBlocked(snapshot, out string policyReason))
+            if (DesktopUiActionPolicy.IsTemporarilyBlocked(window, snapshot, out string policyReason))
                 return DesktopUiInvokeResult.Rejected(policyReason);
 
             if (!string.Equals(

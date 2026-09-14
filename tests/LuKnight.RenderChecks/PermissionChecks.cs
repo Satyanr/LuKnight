@@ -26,6 +26,35 @@ internal static partial class Program
 
     private static async Task CheckPermissionLevelsAsync()
     {
+        static bool Expected(
+            DesktopPermissionLevel level,
+            AssistantActionRisk risk) =>
+            risk !=
+                AssistantActionRisk.Prohibited &&
+            level switch
+            {
+                DesktopPermissionLevel.ObserveOnly =>
+                    false,
+
+                DesktopPermissionLevel.Navigation =>
+                    risk ==
+                    AssistantActionRisk.Navigation,
+
+                DesktopPermissionLevel.Interaction =>
+                    risk is
+                        AssistantActionRisk.Navigation
+                        or AssistantActionRisk.Interaction,
+
+                DesktopPermissionLevel.Sensitive =>
+                    risk is
+                        AssistantActionRisk.Navigation
+                        or AssistantActionRisk.Interaction
+                        or AssistantActionRisk.Sensitive,
+
+                _ =>
+                    false
+            };
+
         DesktopPermissionLevel current = DesktopPermissionLevel.Interaction;
         var action = new PermissionAction();
         var router = new AssistantActionRouter(new[] { action }, () => current);
@@ -35,7 +64,7 @@ internal static partial class Program
         {
             current = level;
             action.Risk = risk;
-            bool expected = risk != AssistantActionRisk.Prohibited && (int)level > (int)risk;
+            bool expected = Expected(level, risk);
             var sync = router.Prepare(invocation);
             var prepared = await router.PrepareAsync(invocation);
             Require(sync.Success == expected && prepared.Success == expected,

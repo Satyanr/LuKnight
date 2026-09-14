@@ -158,7 +158,7 @@ public sealed class WindowsDesktopMouseActionExecutor : IDesktopMouseActionExecu
             {
                 return new(false, "Control berubah sejak konfirmasi.");
             }
-            if (DesktopUiActionPolicy.IsTemporarilyBlocked(snapshot, out string policyReason))
+            if (DesktopUiActionPolicy.IsTemporarilyBlocked(window, snapshot, out string policyReason))
                 return new(false, policyReason);
             if (!DesktopMouseGeometry.TryGetCenter(snapshot.Bounds, out System.Windows.Point center))
                 return new(false, "Control tidak memiliki area klik yang aman.");
@@ -215,6 +215,7 @@ public sealed class WindowsDesktopMouseActionExecutor : IDesktopMouseActionExecu
                 return new(false, "Control berubah tepat sebelum klik.");
             }
             if (DesktopUiActionPolicy.IsTemporarilyBlocked(
+                    window,
                     finalSnapshot,
                     out string finalPolicyReason))
             {
