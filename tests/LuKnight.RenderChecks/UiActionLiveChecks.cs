@@ -538,6 +538,54 @@ internal static partial class Program
         }
     }
 
+    private sealed class
+        RecordingScreenEvidenceService
+            : IDesktopUiScreenEvidenceService
+    {
+        private readonly
+            IDesktopUiScreenEvidenceService
+            _inner;
+
+        public int Calls;
+
+        public Dictionary<
+            string,
+            DesktopUiScreenEvidenceResult>
+            Results { get; } =
+            new(
+                StringComparer.Ordinal);
+
+        public RecordingScreenEvidenceService(
+            IDesktopUiScreenEvidenceService inner)
+        {
+            _inner =
+                inner;
+        }
+
+        public async Task<
+            DesktopUiScreenEvidenceResult>
+            CaptureAsync(
+                DesktopWindowTarget window,
+                string controlPath,
+                string expectedFingerprint,
+                CancellationToken cancellationToken = default)
+        {
+            Calls++;
+
+            DesktopUiScreenEvidenceResult result =
+                await _inner.CaptureAsync(
+                    window,
+                    controlPath,
+                    expectedFingerprint,
+                    cancellationToken);
+
+            Results[controlPath] =
+                result;
+
+            return result;
+        }
+    }
+
     private static void RunUiActionFixtureHost(string token)
     {
         string initialTitle = $"{UiFixturePrefix} {token}";
@@ -545,7 +593,7 @@ internal static partial class Program
         {
             Title = initialTitle,
             Width = 420,
-            Height = 600,
+            Height = 680,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             ShowInTaskbar = true,
             Topmost = true
@@ -601,6 +649,74 @@ internal static partial class Program
                 window.Title =
                     $"{initialTitle} — MOUSE FALLBACK CLICKED";
             };
+
+        var assistGrid =
+            new Grid
+            {
+                Width =
+                    140,
+
+                Height =
+                    40,
+
+                Margin =
+                    new Thickness(
+                        0,
+                        12,
+                        0,
+                        0)
+            };
+
+        var assistBottom =
+            new Button
+            {
+                Content =
+                    "Assist Duplicate"
+            };
+
+        AutomationProperties.SetName(
+            assistBottom,
+            "Assist Duplicate");
+
+        AutomationProperties.SetAutomationId(
+            assistBottom,
+            "AssistBottom");
+
+
+        var assistTop =
+            new Button
+            {
+                Content =
+                    "Assist Duplicate"
+            };
+
+        AutomationProperties.SetName(
+            assistTop,
+            "Assist Duplicate");
+
+        AutomationProperties.SetAutomationId(
+            assistTop,
+            "AssistTop");
+
+        assistBottom.Click +=
+            (_, _) =>
+            {
+                window.Title =
+                    $"{initialTitle} — ASSIST BOTTOM INVOKED";
+            };
+
+        assistTop.Click +=
+            (_, _) =>
+            {
+                window.Title =
+                    $"{initialTitle} — ASSIST TOP INVOKED";
+            };
+
+        assistGrid.Children.Add(
+            assistBottom);
+
+        assistGrid.Children.Add(
+            assistTop);
 
         var searchBox =
             new TextBox
@@ -714,6 +830,7 @@ internal static partial class Program
         panel.Children.Add(save);
         panel.Children.Add(mouseTarget);
         panel.Children.Add(mouseOnly);
+        panel.Children.Add(assistGrid);
         panel.Children.Add(
             searchBox);
 
@@ -1858,6 +1975,351 @@ internal static partial class Program
             Console.WriteLine();
             Console.WriteLine(
                 "PASS: Assistant keyboard fallback acceptance.");
+        }
+        finally
+        {
+            await StopUiFixtureAsync(
+                fixture);
+        }
+    }
+
+    private static async Task
+        CheckScreenAssistedResolverLiveAsync()
+    {
+        string token =
+            Guid.NewGuid()
+                .ToString("N")[..8];
+
+        string initialTitle =
+            $"{UiFixturePrefix} {token}";
+
+        string topInvokedTitle =
+            $"{initialTitle} — ASSIST TOP INVOKED";
+
+        string bottomInvokedTitle =
+            $"{initialTitle} — ASSIST BOTTOM INVOKED";
+
+        using Process fixture =
+            StartUiFixtureProcess(
+                token);
+
+        try
+        {
+            var windows =
+                new DesktopWindowTargetService();
+
+            DesktopWindowTarget target =
+                await WaitForFixtureWindowAsync(
+                    windows,
+                    fixture,
+                    initialTitle);
+
+            var ui =
+                new WindowsDesktopUiAutomationReader();
+
+            DesktopUiSnapshot snapshot =
+                await ui.CaptureAsync(
+                    target);
+
+            Require(
+                snapshot.Success,
+                snapshot.Error ??
+                "Screen-assisted fixture UIA capture failed.");
+
+            DesktopUiControlResolution initial =
+                DesktopUiControlResolver.Resolve(
+                    snapshot,
+                    "Assist Duplicate",
+                    "Button");
+
+            Require(
+                initial.Ambiguous,
+                "Duplicate fixture buttons were not ambiguous.");
+
+            Require(
+                initial.Alternatives.Count ==
+                    2,
+                $"Expected exactly two duplicate buttons, found {initial.Alternatives.Count}.");
+
+            DesktopUiNodeSnapshot? top =
+                initial.Alternatives
+                    .FirstOrDefault(
+                        x =>
+                            string.Equals(
+                                x.AutomationId,
+                                "AssistTop",
+                                StringComparison.Ordinal));
+
+            DesktopUiNodeSnapshot? bottom =
+                initial.Alternatives
+                    .FirstOrDefault(
+                        x =>
+                            string.Equals(
+                                x.AutomationId,
+                                "AssistBottom",
+                                StringComparison.Ordinal));
+
+            Require(
+                top is not null &&
+                bottom is not null,
+                "Duplicate fixture button identities were not captured.");
+
+            Require(
+                string.Equals(
+                    top!.Name,
+                    bottom!.Name,
+                    StringComparison.Ordinal),
+                "Duplicate fixture names unexpectedly differ.");
+
+            var screen =
+                new RecordingScreenEvidenceService(
+                    new WindowsDesktopUiScreenEvidenceService());
+
+            var assisted =
+                new DesktopUiAssistedResolver(
+                    screen);
+
+            var sequence =
+                new List<string>();
+
+            var invoke =
+                new RecordingUiActionExecutor(
+                    new WindowsDesktopUiActionExecutor(),
+                    sequence);
+
+            var mouse =
+                new RecordingMouseActionExecutor(
+                    new WindowsDesktopMouseActionExecutor(),
+                    sequence);
+
+            using var handler =
+                new FakeHttp(
+                    (_, _) =>
+                        throw new InvalidOperationException(
+                            "Screen-assisted live test attempted Gemini."));
+
+            using var client =
+                new HttpClient(
+                    handler);
+
+            var chat =
+                new ChatCoordinator(
+                    new FakeCredentials
+                    {
+                        Key =
+                            "unused-screen-assist-live-key"
+                    },
+                    new ChatSettings
+                    {
+                        Provider =
+                            ChatProvider.Gemini,
+
+                        UseDesktopActions =
+                            true
+                    },
+                    () => null,
+                    client);
+
+            var desktopRouter =
+                new LocalDesktopCommandRouter(
+                    new DesktopAppCatalogService(
+                        () =>
+                            Array.Empty<
+                                DesktopAppTarget>()),
+                    windows);
+
+            var router =
+                new AssistantIntentRouter(
+                    desktopRouter);
+
+            var action =
+                new InvokeDesktopUiControlAction(
+                    () => true,
+                    windows,
+                    ui,
+                    invoke,
+                    mouse,
+                    assisted);
+
+            var assistant =
+                new AssistantController(
+                    chat,
+                    intentRouter:
+                        router,
+                    actions:
+                        new AssistantActionRouter(
+                            new IAssistantAction[]
+                            {
+                                action
+                            }));
+
+            string command =
+                $"klik tombol Assist Duplicate di window {initialTitle}";
+
+            AssistantReply proposal =
+                await assistant.SendAsync(
+                    new AssistantRequest(
+                        command));
+
+            Require(
+                proposal.Backend ==
+                    AssistantBackend.Local,
+                "Screen-assisted preparation was not local.");
+
+            Require(
+                proposal.ActionProposal
+                    is not null,
+                "Screen-assisted resolution did not produce confirmation.");
+
+            Require(
+                screen.Calls == 2,
+                $"Expected two native screen evidence probes, got {screen.Calls}.");
+
+            Require(
+                screen.Results.TryGetValue(
+                    top.Path,
+                    out DesktopUiScreenEvidenceResult?
+                        topResult),
+                "Top duplicate button was not screen-mapped.");
+
+            Require(
+                screen.Results.TryGetValue(
+                    bottom.Path,
+                    out DesktopUiScreenEvidenceResult?
+                        bottomResult),
+                "Bottom duplicate button was not screen-mapped.");
+
+            Require(
+                topResult!.Outcome ==
+                    DesktopUiScreenEvidenceOutcome.Captured,
+                $"Top button outcome was {topResult.Outcome}, expected Captured.");
+
+            Require(
+                bottomResult!.Outcome ==
+                    DesktopUiScreenEvidenceOutcome.NotMapped,
+                $"Bottom button outcome was {bottomResult.Outcome}, expected NotMapped.");
+
+            Require(
+                topResult.Evidence is not null,
+                "Captured top button did not return evidence.");
+
+            Require(
+                topResult.Evidence!
+                    .EncodedBytes
+                    .All(
+                        value =>
+                            value == 0),
+                "Captured screen evidence remained in RAM after resolver.");
+
+            Require(
+                invoke.Calls == 0 &&
+                mouse.Calls == 0 &&
+                sequence.Count == 0,
+                "Desktop mutation happened before confirmation.");
+
+            Require(
+                handler.Calls == 0,
+                "Screen-assisted resolution called Gemini.");
+
+            Require(
+                assistant.Conversation
+                    .GetRecentContext()
+                    .Count == 0,
+                "Screen-assisted preparation leaked into Gemini context.");
+
+            Require(
+                proposal.ActionProposal!
+                    .ConfirmationText
+                    .Contains(
+                        "validasi layar lokal",
+                        StringComparison.OrdinalIgnoreCase),
+                "Confirmation did not disclose local screen assistance.");
+
+            Require(
+                proposal.ActionProposal
+                    .ConfirmationText
+                    .Contains(
+                        "tidak dikirim ke AI",
+                        StringComparison.OrdinalIgnoreCase),
+                "Confirmation did not disclose screen privacy.");
+
+            AssistantReply confirmed =
+                await assistant
+                    .ConfirmActionAsync(
+                        proposal.ActionProposal.Id);
+
+            Require(
+                confirmed.Backend ==
+                    AssistantBackend.Local,
+                "Screen-assisted execution was not local.");
+
+            Require(
+                invoke.Calls == 1,
+                "Resolved button was not invoked exactly once.");
+
+            Require(
+                mouse.Calls == 0,
+                "Mouse fallback ran even though WPF Button exposes InvokePattern.");
+
+            Require(
+                sequence.Count == 1 &&
+                sequence[0] ==
+                    "uia",
+                "Unexpected execution sequence.");
+
+            Require(
+                screen.Calls == 2,
+                "Screen evidence was unexpectedly recaptured during execution.");
+
+            await WaitForFixtureWindowAsync(
+                windows,
+                fixture,
+                topInvokedTitle);
+
+            Require(
+                !windows.Capture()
+                    .Any(
+                        item =>
+                            item.ProcessId ==
+                                fixture.Id &&
+                            string.Equals(
+                                item.Title,
+                                bottomInvokedTitle,
+                                StringComparison.Ordinal)),
+                "Covered bottom duplicate button was invoked.");
+
+            Require(
+                handler.Calls == 0,
+                "Screen-assisted execution called Gemini.");
+
+            Require(
+                assistant.Conversation
+                    .GetRecentContext()
+                    .Count == 0,
+                "Screen-assisted result leaked into Gemini context.");
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "UIA resolver: ambiguous duplicate buttons.");
+
+            Console.WriteLine(
+                "AssistTop: Captured.");
+
+            Console.WriteLine(
+                "AssistBottom: NotMapped.");
+
+            Console.WriteLine(
+                "Screen evidence bytes cleared.");
+
+            Console.WriteLine(
+                "Execution: exact AssistTop via UIA Invoke.");
+
+            Console.WriteLine(
+                "Gemini calls: 0.");
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "PASS: native screen-assisted UIA resolver acceptance.");
         }
         finally
         {
