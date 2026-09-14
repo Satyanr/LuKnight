@@ -39,7 +39,14 @@ public sealed record AssistantActionProposal(
     AssistantActionRisk Risk =
         AssistantActionRisk.Interaction,
     AssistantConfirmationStage ConfirmationStage =
-        AssistantConfirmationStage.Standard);
+        AssistantConfirmationStage.Standard,
+    int? PlanStepNumber = null,
+    int? PlanStepCount = null)
+{
+    public bool IsPlanStep =>
+        PlanStepNumber is not null &&
+        PlanStepCount is not null;
+}
 
 public sealed record AssistantReply(
     string Text,

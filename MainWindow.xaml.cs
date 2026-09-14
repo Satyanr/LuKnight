@@ -768,15 +768,21 @@ public partial class MainWindow : Window
         while (current.ActionProposal is
                { } proposal)
         {
+            string planStatus =
+                proposal.IsPlanStep
+                    ? $"Rencana {proposal.PlanStepNumber}/{proposal.PlanStepCount} • "
+                    : string.Empty;
             ChatPanelControl.SetStatus(
-                proposal.Risk ==
-                    AssistantActionRisk.Sensitive
-                    ? proposal.ConfirmationStage ==
-                        AssistantConfirmationStage
-                            .SensitiveFinal
-                        ? "Menunggu konfirmasi akhir tindakan sensitif..."
-                        : "Menunggu review tindakan sensitif..."
-                    : "Menunggu konfirmasi tindakan...",
+                planStatus +
+                (
+                    proposal.Risk ==
+                        AssistantActionRisk.Sensitive
+                        ? proposal.ConfirmationStage ==
+                            AssistantConfirmationStage.SensitiveFinal
+                            ? "Menunggu konfirmasi akhir tindakan sensitif..."
+                            : "Menunggu review tindakan sensitif..."
+                        : "Menunggu konfirmasi tindakan..."
+                ),
                 ChatStatus.Ready);
 
             MessageBoxImage icon =

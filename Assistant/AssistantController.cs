@@ -22,7 +22,8 @@ public sealed class AssistantController
         DateTimeOffset ExpiresAt,
         AssistantConfirmationStage Stage,
         Guid? PlanId = null,
-        int? PlanStepIndex = null);
+        int? PlanStepIndex = null,
+        int? PlanStepCount = null);
 
     public ConversationManager Conversation { get; } = new();
     public PersonalityEngine Personality { get; }
@@ -148,10 +149,27 @@ public sealed class AssistantController
                         AssistantEmotion.Confused);
                 }
 
-                return await StartPlanAsync(
-                    request,
-                    plan.Plan,
-                    cancellationToken);
+                AssistantIntent firstIntent =
+                    IntentRouter.Route(
+                        plan.Plan.Steps[0].Command);
+
+                // Contoh:
+                // "ceritakan tentang kopi lalu teh"
+                //
+                // Step pertama bukan local command.
+                // Jangan planner mengambil alih percakapan biasa.
+                if (firstIntent.Kind !=
+                    AssistantIntentKind.Conversation)
+                {
+                    return await StartPlanAsync(
+                        request,
+                        plan.Plan,
+                        firstIntent,
+                        cancellationToken);
+                }
+
+                // Fall through.
+                // Seluruh request diproses sebagai conversation biasa.
             }
 
             AssistantIntent intent = IntentRouter.Route(request.Text);
@@ -210,6 +228,7 @@ public sealed class AssistantController
         StartPlanAsync(
             AssistantRequest request,
             AssistantPlan plan,
+            AssistantIntent firstIntent,
             CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(
@@ -229,7 +248,7 @@ public sealed class AssistantController
         try
         {
             return await ContinuePlanAsync(
-                cancellationToken);
+                cancellationToken, firstIntent);
         }
         catch
         {
@@ -244,7 +263,8 @@ public sealed class AssistantController
     }
     private async Task<AssistantReply>
         ContinuePlanAsync(
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            AssistantIntent? preRoutedIntent = null)
     {
         cancellationToken
             .ThrowIfCancellationRequested();
@@ -282,7 +302,7 @@ public sealed class AssistantController
         // IMPORTANT:
         // route dilakukan baru sekarang.
         AssistantIntent intent =
-            IntentRouter.Route(
+            preRoutedIntent ?? IntentRouter.Route(
                 step.Command);
         if (intent.Kind !=
             AssistantIntentKind.Action ||
@@ -366,7 +386,8 @@ public sealed class AssistantController
                 PlanId:
                     plan.Id,
                 PlanStepIndex:
-                    step.Index);
+                    step.Index,
+                PlanStepCount: plan.Plan.Count);
         string proposalMessage =
             $"Rencana langkah {step.Index + 1}/{plan.Plan.Count} memerlukan konfirmasi.";
 
@@ -539,20 +560,38 @@ public sealed class AssistantController
         PreparedAssistantAction action =
             pending.Action;
 
+        int? planStepNumber =
+            pending.PlanStepIndex is int stepIndex
+                ? stepIndex + 1
+                : null;
+
+        int? planStepCount =
+            pending.PlanStepCount;
+
+        bool isPlanStep =
+            planStepNumber is not null &&
+            planStepCount is not null;
+        string planPrefix =
+            isPlanStep
+                ? $"Rencana {planStepNumber}/{planStepCount} — "
+                : string.Empty;
         string title =
             pending.Stage switch
             {
-                AssistantConfirmationStage
-                    .SensitiveReview =>
-                    $"Tinjau tindakan sensitif — {action.Title}",
+                AssistantConfirmationStage.SensitiveReview =>
+                    $"{planPrefix}Tinjau tindakan sensitif — {action.Title}",
 
-                AssistantConfirmationStage
-                    .SensitiveFinal =>
-                    $"Konfirmasi akhir — {action.Title}",
+                AssistantConfirmationStage.SensitiveFinal =>
+                    $"{planPrefix}Konfirmasi akhir — {action.Title}",
 
                 _ =>
-                    action.Title
+                    $"{planPrefix}{action.Title}"
             };
+        string planNotice =
+            isPlanStep
+                ? $"\n\nIni hanya mengizinkan langkah {planStepNumber} dari {planStepCount}. " +
+                  "Langkah berikutnya tetap memerlukan konfirmasi tersendiri."
+                : string.Empty;
 
         string confirmation =
             pending.Stage switch
@@ -574,13 +613,18 @@ public sealed class AssistantController
                     action.ConfirmationText
             };
 
+        confirmation +=
+            planNotice;
         return new AssistantActionProposal(
             pending.Id,
             title,
             confirmation,
             pending.ExpiresAt,
             action.Risk,
-            pending.Stage);
+            pending.Stage,
+            planStepNumber,
+            planStepCount);
+
     }
 
     public async Task<AssistantReply> ConfirmActionAsync(Guid proposalId, CancellationToken cancellationToken = default)

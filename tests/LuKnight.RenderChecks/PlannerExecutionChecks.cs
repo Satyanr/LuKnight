@@ -8,6 +8,7 @@ internal static partial class Program
     private sealed class MutablePlanAppCatalog
         : IDesktopAppCatalog
     {
+        public int ResolveCalls;
         public List<DesktopAppTarget> Items { get; } =
             new();
 
@@ -23,6 +24,7 @@ internal static partial class Program
         public DesktopAppResolution Resolve(
             string query)
         {
+            ResolveCalls++;
             DesktopAppTarget[] matches =
                 Items.Where(
                         app =>
@@ -106,6 +108,7 @@ internal static partial class Program
 
     private static async Task CheckPlannerExecutionAsync()
     {
+        await CheckPlanAdmissionAndProgressAsync();
         static DesktopAppTarget App(string id, string name) => new(id, name, id, new[] { id }, new[] { name.ToLowerInvariant() }, DesktopAppSource.BuiltIn);
         foreach (string scenario in new[] { "success", "restricted", "conversation", "cancel", "failure", "exception", "prepare-failure", "downgrade", "sensitive", "sensitive-downgrade", "cancel-token", "prepare-exception" })
         {
@@ -170,6 +173,77 @@ internal static partial class Program
                 Require(open.Executions == 0 && focus.Executions == 0, "Blocked plan executed an action.");
             Require(!assistant.HasPendingPlan && !assistant.HasPendingAction && !assistant.IsBusy, "Plan state not cleared: " + scenario);
             Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0, "Plan leaked Gemini/context.");
+        }
+    }
+
+    private static async Task CheckPlanAdmissionAndProgressAsync()
+    {
+        foreach (string input in new[] { "aku suka kopi lalu teh", "ceritakan lelucon lalu cerita lain", "jalankan powershell lalu buka chrome" })
+        {
+            string? body = null;
+            using var handler = new FakeHttp(async (request, token) =>
+            {
+                body = await request.Content!.ReadAsStringAsync(token);
+                return JsonResponse(new { candidates = new[] { new { content = new { parts = new[] { new { text = "Conversation reply" } } } } } });
+            });
+            using var client = new HttpClient(handler);
+            var chat = new ChatCoordinator(new FakeCredentials { Key = "unused-plan-key" },
+                new ChatSettings { Provider = ChatProvider.Gemini, UseDesktopActions = true }, () => null, client);
+            var assistant = new AssistantController(chat);
+            var reply = await assistant.SendAsync(new AssistantRequest(input));
+            Require(!assistant.HasPendingPlan && reply.ActionProposal is null, "Admission created unexpected plan.");
+            if (input.StartsWith("jalankan", StringComparison.Ordinal))
+                Require(reply.Backend == AssistantBackend.Local && handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0, "Restricted first step escaped locally.");
+            else
+                Require(reply.Backend == AssistantBackend.Gemini && handler.Calls == 1 && body!.Contains(input, StringComparison.Ordinal), "Ordinary conversation was not sent whole.");
+        }
+
+        foreach (bool sensitive in new[] { false, true })
+        {
+            var catalog = new MutablePlanAppCatalog();
+            catalog.Add(new("launcher", "Launcher", "launcher", new[] { "launcher" }, new[] { "launcher" }, DesktopAppSource.BuiltIn));
+            var open = new PlanTestAction(BuiltInActionNames.DesktopOpenApplication);
+            var focus = new PlanTestAction(BuiltInActionNames.DesktopFocusApplication) { Risk = sensitive ? AssistantActionRisk.Sensitive : AssistantActionRisk.Navigation };
+            using var handler = new FakeHttp((_, _) => throw new InvalidOperationException("Plan UX called Gemini."));
+            using var client = new HttpClient(handler);
+            var chat = new ChatCoordinator(new FakeCredentials { Key = "unused-plan-key" },
+                new ChatSettings { Provider = ChatProvider.Gemini, UseDesktopActions = true }, () => null, client);
+            var assistant = new AssistantController(chat,
+                intentRouter: new AssistantIntentRouter(new LocalDesktopCommandRouter(catalog)),
+                actions: new AssistantActionRouter(new IAssistantAction[] { open, focus }, () => DesktopPermissionLevel.Sensitive));
+            void CheckProposal(AssistantActionProposal? proposal, int step)
+            {
+                Require(proposal is { IsPlanStep: true, PlanStepCount: 3 } && proposal.PlanStepNumber == step, "Plan metadata incorrect.");
+                Require(proposal!.Title.StartsWith($"Rencana {step}/3", StringComparison.Ordinal) &&
+                    proposal.ConfirmationText.Contains($"Ini hanya mengizinkan langkah {step} dari 3", StringComparison.Ordinal), "Per-step authorization notice missing.");
+            }
+            var first = await assistant.SendAsync(new AssistantRequest("buka launcher lalu fokus launcher lalu buka launcher"));
+            CheckProposal(first.ActionProposal, 1);
+            Require(catalog.ResolveCalls == 1, "First step routed more than once during admission.");
+            var second = await assistant.ConfirmActionAsync(first.ActionProposal!.Id);
+            CheckProposal(second.ActionProposal, 2);
+            Require(open.Executions == 1 && focus.Executions == 0 && first.ActionProposal.Id != second.ActionProposal!.Id, "First Yes advanced too far.");
+            if (!sensitive)
+            {
+                assistant.CancelAction(second.ActionProposal!.Id);
+                Require(open.Executions == 1 && focus.Executions == 0, "Cancel executed remaining actions.");
+            }
+            else
+            {
+                Require(second.ActionProposal!.ConfirmationStage == AssistantConfirmationStage.SensitiveReview, "Sensitive review missing.");
+                var final = await assistant.ConfirmActionAsync(second.ActionProposal.Id);
+                CheckProposal(final.ActionProposal, 2);
+                Require(final.ActionProposal!.ConfirmationStage == AssistantConfirmationStage.SensitiveFinal && final.ActionProposal.Id != second.ActionProposal.Id && focus.Executions == 0 && open.Executions == 1, "Sensitive review advanced workflow.");
+                var third = await assistant.ConfirmActionAsync(final.ActionProposal.Id);
+                CheckProposal(third.ActionProposal, 3);
+                Require(focus.Executions == 1 && open.Executions == 1, "Sensitive final executed wrong count.");
+                await assistant.ConfirmActionAsync(third.ActionProposal!.Id);
+                Require(open.Executions == 2, "Third action did not execute.");
+            }
+            Require(!assistant.HasPendingPlan && !assistant.HasPendingAction && handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0, "Plan UX state/privacy failure.");
+            var standalone = await assistant.SendAsync(new AssistantRequest("buka launcher"));
+            Require(standalone.ActionProposal is { IsPlanStep: false, PlanStepNumber: null, PlanStepCount: null }, "Standalone action received plan metadata.");
+            assistant.CancelAction(standalone.ActionProposal!.Id);
         }
     }
 }
