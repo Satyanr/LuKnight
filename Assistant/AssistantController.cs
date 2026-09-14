@@ -6,13 +6,23 @@ public sealed class AssistantController
 {
     private readonly ChatCoordinator _chat;
     private readonly SemaphoreSlim _requestGate = new(1, 1);
+    private PendingAssistantPlan?
+        _pendingPlan;
+    private sealed record
+        PendingAssistantPlan(
+            Guid Id,
+            AssistantPlan Plan,
+            int CurrentStepIndex);
+
     private PendingAssistantAction? _pendingAction;
 
     private sealed record PendingAssistantAction(
         Guid Id,
         PreparedAssistantAction Action,
         DateTimeOffset ExpiresAt,
-        AssistantConfirmationStage Stage);
+        AssistantConfirmationStage Stage,
+        Guid? PlanId = null,
+        int? PlanStepIndex = null);
 
     public ConversationManager Conversation { get; } = new();
     public PersonalityEngine Personality { get; }
@@ -23,7 +33,9 @@ public sealed class AssistantController
     public AssistantContextSourceRouter ContextSources { get; }
     public AssistantActionRouter Actions { get; }
     public AssistantEmotionEngine Emotions { get; }
-    public bool IsBusy => _pendingAction is not null || _requestGate.CurrentCount == 0 || _chat.IsBusy;
+    public bool IsBusy => _pendingPlan is not null || _pendingAction is not null || _requestGate.CurrentCount == 0 || _chat.IsBusy;
+    public bool HasPendingPlan =>
+        _pendingPlan is not null;
     public bool HasPendingAction => _pendingAction is not null;
     public string DisplayName => _chat.DisplayName;
 
@@ -103,8 +115,44 @@ public sealed class AssistantController
             if (_chat.IsBusy)
                 throw new InvalidOperationException("Tunggu permintaan chat selesai.");
 
-            if (_pendingAction is not null)
-                throw new InvalidOperationException("Selesaikan konfirmasi tindakan desktop terlebih dahulu.");
+            if (_pendingAction is not null || _pendingPlan is not null)
+                throw new InvalidOperationException("Selesaikan atau batalkan tindakan atau rencana desktop terlebih dahulu.");
+
+            AssistantPlanParseResult plan =
+                LocalMultiStepPlanParser.Parse(
+                    request.Text);
+
+            if (plan.Recognized)
+            {
+                if (!plan.Success ||
+                    plan.Plan is null)
+                {
+                    string error =
+                        plan.Error ??
+                        "Rencana multi-step tidak valid.";
+
+                    Conversation.AddUser(
+                        request,
+                        includeInContext:
+                            false);
+
+                    Conversation.AddAssistant(
+                        error,
+                        includeInContext:
+                            false);
+
+                    return new AssistantReply(
+                        error,
+                        AssistantBackend.Local,
+                        DateTimeOffset.UtcNow,
+                        AssistantEmotion.Confused);
+                }
+
+                return await StartPlanAsync(
+                    request,
+                    plan.Plan,
+                    cancellationToken);
+            }
 
             AssistantIntent intent = IntentRouter.Route(request.Text);
             if (intent.Kind == AssistantIntentKind.LocalResponse)
@@ -156,6 +204,294 @@ public sealed class AssistantController
         {
             _requestGate.Release();
         }
+    }
+
+    private async Task<AssistantReply>
+        StartPlanAsync(
+            AssistantRequest request,
+            AssistantPlan plan,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(
+            plan);
+
+        Conversation.AddUser(
+            request,
+            includeInContext:
+                false);
+
+        _pendingPlan =
+            new PendingAssistantPlan(
+                Guid.NewGuid(),
+                plan,
+                0);
+
+        try
+        {
+            return await ContinuePlanAsync(
+                cancellationToken);
+        }
+        catch
+        {
+            _pendingAction =
+                null;
+
+            _pendingPlan =
+                null;
+
+            throw;
+        }
+    }
+    private async Task<AssistantReply>
+        ContinuePlanAsync(
+            CancellationToken cancellationToken)
+    {
+        cancellationToken
+            .ThrowIfCancellationRequested();
+
+        PendingAssistantPlan plan =
+            _pendingPlan ??
+            throw new InvalidOperationException(
+                "Rencana desktop tidak lagi tersedia.");
+
+        if (plan.CurrentStepIndex >=
+            plan.Plan.Count)
+        {
+            _pendingPlan =
+                null;
+
+            const string completed =
+                "Semua langkah rencana selesai.";
+
+            Conversation.AddAssistant(
+                completed,
+                includeInContext:
+                    false);
+
+            return new AssistantReply(
+                completed,
+                AssistantBackend.Local,
+                DateTimeOffset.UtcNow,
+                AssistantEmotion.Happy);
+        }
+
+        AssistantPlanStep step =
+            plan.Plan.Steps[
+                plan.CurrentStepIndex];
+
+        // IMPORTANT:
+        // route dilakukan baru sekarang.
+        AssistantIntent intent =
+            IntentRouter.Route(
+                step.Command);
+        if (intent.Kind !=
+            AssistantIntentKind.Action ||
+            intent.Action is null)
+        {
+            _pendingPlan =
+                null;
+
+            string reason =
+                intent.Kind ==
+                    AssistantIntentKind.LocalResponse
+                    ? intent.LocalText ??
+                        "Langkah ditolak oleh router lokal."
+                    : "Jenis langkah ini belum didukung di rencana multi-step lokal.";
+
+            string message =
+                $"Rencana dihentikan pada langkah {step.Index + 1}: {reason}";
+
+            Conversation.AddAssistant(
+                message,
+                includeInContext:
+                    false);
+
+            return new AssistantReply(
+                message,
+                AssistantBackend.Local,
+                DateTimeOffset.UtcNow,
+                AssistantEmotion.Confused);
+        }
+        ActionPreparationResult prepared =
+            await Actions.PrepareAsync(
+                intent.Action,
+                cancellationToken);
+
+        if (!prepared.Success ||
+            prepared.Action is null)
+        {
+            _pendingPlan =
+                null;
+
+            string message =
+                $"Rencana dihentikan pada langkah {step.Index + 1}: {prepared.Message}";
+
+            Conversation.AddAssistant(
+                message,
+                includeInContext:
+                    false);
+
+            return new AssistantReply(
+                message,
+                AssistantBackend.Local,
+                DateTimeOffset.UtcNow,
+                AssistantEmotion.Confused);
+        }
+        PreparedAssistantAction action =
+            prepared.Action with
+            {
+                IncludeInContext =
+                    false
+            };
+        AssistantConfirmationStage stage =
+            action.Risk ==
+                AssistantActionRisk.Sensitive
+                ? AssistantConfirmationStage
+                    .SensitiveReview
+                : AssistantConfirmationStage
+                    .Standard;
+        Guid proposalId =
+            Guid.NewGuid();
+
+        DateTimeOffset expiresAt =
+            DateTimeOffset.UtcNow
+                .AddMinutes(1);
+
+        _pendingAction =
+            new PendingAssistantAction(
+                proposalId,
+                action,
+                expiresAt,
+                stage,
+                PlanId:
+                    plan.Id,
+                PlanStepIndex:
+                    step.Index);
+        string proposalMessage =
+            $"Rencana langkah {step.Index + 1}/{plan.Plan.Count} memerlukan konfirmasi.";
+
+        Conversation.AddAssistant(
+            proposalMessage,
+            includeInContext:
+                false);
+
+        return new AssistantReply(
+            proposalMessage,
+            AssistantBackend.Local,
+            DateTimeOffset.UtcNow,
+            AssistantEmotion.Determined,
+            BuildActionProposal(
+                _pendingAction));
+    }
+    private void AbortPlanFor(
+        PendingAssistantAction pending)
+    {
+        if (pending.PlanId is not
+            Guid planId)
+        {
+            return;
+        }
+
+        if (_pendingPlan?.Id ==
+            planId)
+        {
+            _pendingPlan =
+                null;
+        }
+    }
+    private async Task<AssistantReply>
+        CompletePlanStepAsync(
+            PendingAssistantAction pending,
+            Guid planId,
+            ActionExecutionResult result,
+            CancellationToken cancellationToken)
+    {
+        Conversation.AddAssistant(
+            result.Message,
+            includeInContext:
+                false);
+
+        PendingAssistantPlan? plan =
+            _pendingPlan;
+
+        if (plan is null ||
+            plan.Id != planId ||
+            pending.PlanStepIndex is not
+                int stepIndex ||
+            plan.CurrentStepIndex !=
+                stepIndex)
+        {
+            _pendingPlan =
+                null;
+
+            const string stateChanged =
+                "Langkah desktop selesai, tetapi state rencana berubah. Sisa rencana dihentikan.";
+
+            Conversation.AddAssistant(
+                stateChanged,
+                includeInContext:
+                    false);
+
+            return new AssistantReply(
+                stateChanged,
+                AssistantBackend.Local,
+                DateTimeOffset.UtcNow,
+                AssistantEmotion.Confused);
+        }
+
+        if (!result.Success)
+        {
+            _pendingPlan =
+                null;
+
+            string failed =
+                $"Rencana dihentikan pada langkah {stepIndex + 1}: {result.Message}";
+
+            Conversation.AddAssistant(
+                failed,
+                includeInContext:
+                    false);
+
+            return new AssistantReply(
+                failed,
+                AssistantBackend.Local,
+                DateTimeOffset.UtcNow,
+                AssistantEmotion.Confused);
+        }
+
+        int nextIndex =
+            stepIndex + 1;
+
+        if (nextIndex >=
+            plan.Plan.Count)
+        {
+            _pendingPlan =
+                null;
+
+            string completed =
+                $"Langkah {stepIndex + 1}/{plan.Plan.Count} selesai. Semua langkah rencana selesai.";
+
+            Conversation.AddAssistant(
+                completed,
+                includeInContext:
+                    false);
+
+            return new AssistantReply(
+                completed,
+                AssistantBackend.Local,
+                DateTimeOffset.UtcNow,
+                AssistantEmotion.Happy);
+        }
+
+        _pendingPlan =
+            plan with
+            {
+                CurrentStepIndex =
+                    nextIndex
+            };
+
+        return await ContinuePlanAsync(
+            cancellationToken);
     }
 
     private async Task<AssistantReply> PrepareActionAsync(
@@ -253,21 +589,23 @@ public sealed class AssistantController
         if (!entered)
             throw new InvalidOperationException("Tunggu permintaan sebelumnya selesai.");
 
+        PendingAssistantAction? pending = _pendingAction;
         try
         {
-            PendingAssistantAction? pending = _pendingAction;
             if (pending is null || pending.Id != proposalId)
                 throw new InvalidOperationException("Konfirmasi tindakan tidak lagi valid.");
 
             if (cancellationToken.IsCancellationRequested)
             {
                 _pendingAction = null;
+                AbortPlanFor(pending);
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
             if (DateTimeOffset.UtcNow > pending.ExpiresAt)
             {
                 _pendingAction = null;
+                AbortPlanFor(pending);
                 const string expired = "Konfirmasi tindakan sudah kedaluwarsa.";
                 Conversation.AddAssistant(expired, pending.Action.IncludeInContext);
                 return new AssistantReply(expired, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Confused);
@@ -286,6 +624,7 @@ public sealed class AssistantController
                     _pendingAction =
                         null;
 
+                    AbortPlanFor(pending);
                     Conversation.AddAssistant(
                         permission.Message,
                         pending.Action.IncludeInContext);
@@ -362,9 +701,28 @@ public sealed class AssistantController
                     authorized,
                     cancellationToken);
 
+            if (pending.PlanId is
+                    Guid planId)
+            {
+                return await CompletePlanStepAsync(
+                    pending,
+                    planId,
+                    result,
+                    cancellationToken);
+            }
+
             Conversation.AddAssistant(result.Message, pending.Action.IncludeInContext);
             return new AssistantReply(result.Message, AssistantBackend.Local, DateTimeOffset.UtcNow,
                 result.Success ? AssistantEmotion.Happy : AssistantEmotion.Confused);
+        }
+        catch
+        {
+            if (pending is not null && pending.Id == proposalId)
+            {
+                _pendingAction = null;
+                AbortPlanFor(pending);
+            }
+            throw;
         }
         finally
         {
@@ -384,7 +742,12 @@ public sealed class AssistantController
                 throw new InvalidOperationException("Konfirmasi tindakan tidak lagi valid.");
 
             _pendingAction = null;
-            const string message = "Tindakan desktop dibatalkan.";
+            AbortPlanFor(pending);
+            string message =
+                pending.PlanId is not null
+                    ? "Rencana desktop dibatalkan. Sisa langkah tidak dijalankan."
+                    : "Tindakan desktop dibatalkan.";
+
             Conversation.AddAssistant(message, pending.Action.IncludeInContext);
             return new AssistantReply(message, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Neutral);
         }
@@ -487,9 +850,9 @@ public sealed class AssistantController
 
         try
         {
-            if (_pendingAction is not null)
+            if (_pendingAction is not null || _pendingPlan is not null)
             {
-                throw new InvalidOperationException("Selesaikan atau batalkan tindakan desktop terlebih dahulu.");
+                throw new InvalidOperationException("Selesaikan atau batalkan tindakan atau rencana desktop terlebih dahulu.");
             }
 
             _chat.ClearConversation();

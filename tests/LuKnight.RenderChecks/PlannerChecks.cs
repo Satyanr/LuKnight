@@ -173,5 +173,34 @@ internal static partial class Program
         var quotedEscaped = LocalMultiStepPlanParser.Parse(escaped);
         Require(quotedEscaped.Success && quotedEscaped.Plan!.Count == 2 && quotedEscaped.Plan.Steps[0].Command == escaped[..escaped.LastIndexOf(" then ", StringComparison.Ordinal)], "Escaped quote content changed.");
         Require(LocalMultiStepPlanParser.Parse("write 'then lalu' then next").Plan?.Count == 2, "Single quotes split incorrectly.");
+        string ordinaryLongChat =
+            new(
+                'x',
+                LocalMultiStepPlanParser
+                    .MaxInputLength +
+                500);
+
+        AssistantPlanParseResult ordinaryLong =
+            LocalMultiStepPlanParser.Parse(
+                ordinaryLongChat);
+
+        Require(
+            !ordinaryLong.Recognized,
+            "Long ordinary chat was hijacked by planner.");
+        string oversizedPlan =
+            new string(
+                'x',
+                LocalMultiStepPlanParser
+                    .MaxInputLength) +
+            " lalu buka chrome";
+
+        AssistantPlanParseResult oversized =
+            LocalMultiStepPlanParser.Parse(
+                oversizedPlan);
+
+        Require(
+            oversized.Recognized &&
+            !oversized.Success,
+            "Oversized real plan was not rejected.");
     }
 }

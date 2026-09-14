@@ -21,6 +21,83 @@ public static class LocalMultiStepPlanParser
         " then "
     ];
 
+    public static bool
+        LooksLikePlan(
+            string? input)
+    {
+        if (string.IsNullOrWhiteSpace(
+                input))
+        {
+            return false;
+        }
+
+        string text =
+            " " +
+            input.Trim() +
+            " ";
+
+        char quote =
+            '\0';
+
+        bool escaped =
+            false;
+
+        for (int position = 0;
+             position < text.Length;
+             position++)
+        {
+            char current =
+                text[position];
+
+            if (escaped)
+            {
+                escaped =
+                    false;
+
+                continue;
+            }
+
+            if (current == '\\' &&
+                quote != '\0')
+            {
+                escaped =
+                    true;
+
+                continue;
+            }
+
+            if (quote != '\0')
+            {
+                if (current ==
+                    quote)
+                {
+                    quote =
+                        '\0';
+                }
+
+                continue;
+            }
+
+            if (current is
+                '"' or '\'')
+            {
+                quote =
+                    current;
+
+                continue;
+            }
+
+            if (MatchSeparator(
+                    text,
+                    position) is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static AssistantPlanParseResult
         Parse(
             string? input)
@@ -31,6 +108,9 @@ public static class LocalMultiStepPlanParser
             return AssistantPlanParseResult
                 .NotRecognized();
         }
+
+        if (!LooksLikePlan(input))
+            return AssistantPlanParseResult.NotRecognized();
 
         string text =
             input.Trim();
