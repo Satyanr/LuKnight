@@ -104,6 +104,19 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} live safe mouse checks.");
             return;
         }
+        if (args.Contains(
+                "--mouse-fallback-live"))
+        {
+            Task.Run(
+                CheckAssistantMouseFallbackLiveAsync)
+                .GetAwaiter()
+                .GetResult();
+
+            Console.WriteLine(
+                $"PASS: {_checks} live Assistant mouse fallback checks.");
+
+            return;
+        }
         if (args.Contains("--uia"))
         {
             Task.Run(CheckUiAutomationAsync).GetAwaiter().GetResult();

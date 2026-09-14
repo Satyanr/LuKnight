@@ -1,3 +1,6 @@
+using System.Windows.Automation.Peers;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -13,6 +16,210 @@ internal static partial class Program
 {
     private const string UiFixturePrefix = "LuKnight UIA Fixture";
 
+    private sealed class MouseOnlyButton
+        : Border
+    {
+        public MouseOnlyButton()
+        {
+            Background =
+                Brushes.Gainsboro;
+
+            BorderBrush =
+                Brushes.Gray;
+
+            BorderThickness =
+                new Thickness(1);
+
+            CornerRadius =
+                new CornerRadius(3);
+
+            Padding =
+                new Thickness(
+                    12,
+                    6,
+                    12,
+                    6);
+
+            Focusable =
+                true;
+
+            Cursor =
+                Cursors.Hand;
+
+            Child =
+                new TextBlock
+                {
+                    Text =
+                        "Mouse Only",
+
+                    HorizontalAlignment =
+                        HorizontalAlignment.Center,
+
+                    VerticalAlignment =
+                        VerticalAlignment.Center
+                };
+
+            AutomationProperties.SetName(
+                this,
+                "Mouse Only");
+        }
+
+        protected override AutomationPeer
+            OnCreateAutomationPeer() =>
+            new MouseOnlyButtonAutomationPeer(
+                this);
+    }
+
+    private sealed class
+        MouseOnlyButtonAutomationPeer
+            : FrameworkElementAutomationPeer
+    {
+        public MouseOnlyButtonAutomationPeer(
+            MouseOnlyButton owner)
+            : base(owner)
+        {
+        }
+
+        protected override
+            AutomationControlType
+            GetAutomationControlTypeCore() =>
+            AutomationControlType.Button;
+
+        protected override string
+            GetClassNameCore() =>
+            "MouseOnlyButton";
+
+        protected override string
+            GetNameCore()
+        {
+            string name =
+                AutomationProperties.GetName(
+                    Owner);
+
+            return string.IsNullOrWhiteSpace(
+                    name)
+                ? "Mouse Only"
+                : name;
+        }
+
+        protected override bool
+            IsControlElementCore() =>
+            true;
+
+        protected override bool
+            IsContentElementCore() =>
+            true;
+
+        // Intentionally expose NO UI Automation
+        // action patterns.
+        public override object GetPattern(
+            PatternInterface patternInterface) =>
+            null!;
+    }
+
+    private sealed class
+        RecordingUiActionExecutor
+            : IDesktopUiActionExecutor
+    {
+        private readonly
+            IDesktopUiActionExecutor
+            _inner;
+
+        private readonly
+            IList<string>
+            _sequence;
+
+        public int Calls;
+
+        public DesktopUiInvokeResult?
+            LastResult;
+
+        public RecordingUiActionExecutor(
+            IDesktopUiActionExecutor inner,
+            IList<string> sequence)
+        {
+            _inner =
+                inner;
+
+            _sequence =
+                sequence;
+        }
+
+        public async Task<DesktopUiInvokeResult>
+            InvokeAsync(
+                DesktopWindowTarget window,
+                string controlPath,
+                string expectedFingerprint,
+                CancellationToken cancellationToken = default)
+        {
+            Calls++;
+
+            _sequence.Add(
+                "uia");
+
+            DesktopUiInvokeResult result =
+                await _inner.InvokeAsync(
+                    window,
+                    controlPath,
+                    expectedFingerprint,
+                    cancellationToken);
+
+            LastResult =
+                result;
+
+            return result;
+        }
+    }
+
+    private sealed class
+        RecordingMouseActionExecutor
+            : IDesktopMouseActionExecutor
+    {
+        private readonly
+            IDesktopMouseActionExecutor
+            _inner;
+
+        private readonly
+            IList<string>
+            _sequence;
+
+        public int Calls;
+
+        public DesktopActionResult? LastResult;
+
+        public RecordingMouseActionExecutor(
+            IDesktopMouseActionExecutor inner,
+            IList<string> sequence)
+        {
+            _inner =
+                inner;
+
+            _sequence =
+                sequence;
+        }
+
+        public async Task<DesktopActionResult>
+            ClickAsync(
+                DesktopWindowTarget window,
+                string controlPath,
+                string expectedFingerprint,
+                CancellationToken cancellationToken = default)
+        {
+            Calls++;
+
+            _sequence.Add(
+                "mouse");
+
+            LastResult = await _inner.ClickAsync(
+                window,
+                controlPath,
+                expectedFingerprint,
+                cancellationToken);
+
+            return LastResult;
+        }
+    }
+
     private static void RunUiActionFixtureHost(string token)
     {
         string initialTitle = $"{UiFixturePrefix} {token}";
@@ -20,7 +227,7 @@ internal static partial class Program
         {
             Title = initialTitle,
             Width = 420,
-            Height = 300,
+            Height = 370,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             ShowInTaskbar = true,
             Topmost = true
@@ -50,6 +257,33 @@ internal static partial class Program
         };
         AutomationProperties.SetName(mouseTarget, "Mouse Target");
 
+        var mouseOnly =
+            new MouseOnlyButton
+            {
+                Width =
+                    140,
+
+                Height =
+                    40,
+
+                Margin =
+                    new Thickness(
+                        0,
+                        12,
+                        0,
+                        0)
+            };
+
+        mouseOnly.MouseLeftButtonUp +=
+            (_, e) =>
+            {
+                e.Handled =
+                    true;
+
+                window.Title =
+                    $"{initialTitle} — MOUSE FALLBACK CLICKED";
+            };
+
         refresh.Click += (_, _) => window.Title = $"{initialTitle} — REFRESH INVOKED";
         save.Click += (_, _) => window.Title = $"{initialTitle} — SAVE INVOKED";
         mouseTarget.Click += (_, _) => window.Title = $"{initialTitle} — MOUSE CLICKED";
@@ -57,6 +291,7 @@ internal static partial class Program
         panel.Children.Add(refresh);
         panel.Children.Add(save);
         panel.Children.Add(mouseTarget);
+        panel.Children.Add(mouseOnly);
         window.Content = panel;
 
         var application = new Application
@@ -250,6 +485,302 @@ internal static partial class Program
         finally
         {
             await StopUiFixtureAsync(fixture);
+        }
+    }
+
+    private static async Task
+        CheckAssistantMouseFallbackLiveAsync()
+    {
+        string token =
+            Guid.NewGuid()
+                .ToString("N")[..8];
+
+        string initialTitle =
+            $"{UiFixturePrefix} {token}";
+
+        string clickedTitle =
+            $"{initialTitle} — MOUSE FALLBACK CLICKED";
+
+        using Process fixture =
+            StartUiFixtureProcess(
+                token);
+
+        try
+        {
+            var windows =
+                new DesktopWindowTargetService();
+
+            DesktopWindowTarget target =
+                await WaitForFixtureWindowAsync(
+                    windows,
+                    fixture,
+                    initialTitle);
+
+            var ui =
+                new WindowsDesktopUiAutomationReader();
+
+            DesktopUiSnapshot snapshot =
+                await ui.CaptureAsync(
+                    target);
+
+            Require(
+                snapshot.Success,
+                snapshot.Error ??
+                "Mouse fallback fixture capture failed.");
+
+            DesktopUiControlResolution
+                resolved =
+                    DesktopUiControlResolver.Resolve(
+                        snapshot,
+                        "Mouse Only",
+                        "Button");
+
+            Require(
+                resolved.Match is not null,
+                "Mouse Only control was not exposed as a UIA Button.");
+
+            DesktopUiNodeSnapshot button =
+                resolved.Match!;
+
+            Require(
+                button.ControlType ==
+                    "Button",
+                "Mouse Only control has wrong UIA ControlType.");
+
+            Require(
+                !DesktopUiActionPolicy
+                    .IsTemporarilyBlocked(
+                        button,
+                        out _),
+                "Mouse Only control was rejected by policy.");
+
+            AutomationElement root =
+                AutomationElement.FromHandle(
+                    target.Handle);
+
+            AutomationElement? nativeControl =
+                DesktopUiAutomationLocator
+                    .ResolvePath(
+                        root,
+                        button.Path);
+
+            Require(
+                nativeControl is not null,
+                "Mouse Only native UIA element was not resolved.");
+
+            bool supportsInvoke =
+                nativeControl!
+                    .TryGetCurrentPattern(
+                        InvokePattern.Pattern,
+                        out object? pattern) &&
+                pattern is
+                    InvokePattern;
+
+            Require(
+                !supportsInvoke,
+                "Mouse Only fixture unexpectedly exposes InvokePattern.");
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "Fixture Mouse Only control exposes Button but no InvokePattern.");
+
+            using var handler =
+                new FakeHttp(
+                    (_, _) =>
+                        throw new InvalidOperationException(
+                            "Mouse fallback live test attempted Gemini."));
+
+            using var client =
+                new HttpClient(
+                    handler);
+
+            var chat =
+                new ChatCoordinator(
+                    new FakeCredentials
+                    {
+                        Key =
+                            "unused-mouse-fallback-key"
+                    },
+                    new ChatSettings
+                    {
+                        Provider =
+                            ChatProvider.Gemini,
+
+                        UseDesktopActions =
+                            true
+                    },
+                    () => null,
+                    client);
+
+            var desktopRouter =
+                new LocalDesktopCommandRouter(
+                    new DesktopAppCatalogService(
+                        () =>
+                            Array.Empty<
+                                DesktopAppTarget>()),
+                    windows);
+
+            var router =
+                new AssistantIntentRouter(
+                    desktopRouter);
+
+            var sequence =
+                new List<string>();
+
+            var uiExecutor =
+                new RecordingUiActionExecutor(
+                    new WindowsDesktopUiActionExecutor(),
+                    sequence);
+
+            var mouseExecutor =
+                new RecordingMouseActionExecutor(
+                    new WindowsDesktopMouseActionExecutor(),
+                    sequence);
+
+            var action =
+                new InvokeDesktopUiControlAction(
+                    () => true,
+                    windows,
+                    ui,
+                    uiExecutor,
+                    mouseExecutor);
+
+            var actions =
+                new AssistantActionRouter(
+                    new IAssistantAction[]
+                    {
+                        action
+                    });
+
+            var assistant =
+                new AssistantController(
+                    chat,
+                    intentRouter: router,
+                    actions: actions);
+
+            AssistantReply proposal =
+                await assistant.SendAsync(
+                    new AssistantRequest(
+                        $"klik tombol Mouse Only di window {initialTitle}"));
+
+            Require(
+                proposal.Backend ==
+                    AssistantBackend.Local,
+                "Mouse fallback preparation was not local.");
+
+            Require(
+                proposal.ActionProposal
+                    is not null,
+                "Mouse-only button did not produce confirmation.");
+
+            Require(
+                proposal.ActionProposal!
+                    .ConfirmationText
+                    .Contains(
+                        "mouse",
+                        StringComparison.OrdinalIgnoreCase),
+                "Mouse fallback was not disclosed to user.");
+
+            Require(
+                handler.Calls == 0,
+                "Mouse fallback preparation called Gemini.");
+
+            Require(
+                uiExecutor.Calls == 0 &&
+                mouseExecutor.Calls == 0,
+                "Execution occurred before confirmation.");
+
+            Require(
+                sequence.Count == 0,
+                "Backend execution occurred before confirmation.");
+
+            Require(
+                windows.Capture()
+                    .Any(
+                        x =>
+                            x.ProcessId ==
+                                fixture.Id &&
+                            x.Title ==
+                                initialTitle),
+                "Mouse-only control was clicked before confirmation.");
+
+            Require(
+                assistant.Conversation
+                    .GetRecentContext()
+                    .Count == 0,
+                "Mouse fallback preparation leaked into Gemini context.");
+
+            Console.WriteLine(
+                "Confirmation gate passed; no UIA or mouse action executed yet.");
+
+            AssistantReply confirmed =
+                await assistant
+                    .ConfirmActionAsync(
+                        proposal.ActionProposal.Id);
+
+            Require(
+                confirmed.Backend ==
+                    AssistantBackend.Local,
+                "Mouse fallback execution was not local.");
+
+            Require(
+                handler.Calls == 0,
+                "Mouse fallback execution called Gemini.");
+
+            Require(
+                uiExecutor.Calls == 1,
+                "UI Automation was not attempted exactly once.");
+
+            Require(
+                uiExecutor.LastResult?.Outcome ==
+                    DesktopUiInvokeOutcome.UnsupportedPattern,
+                "UIA did not report UnsupportedPattern.");
+
+            Require(
+                mouseExecutor.Calls == 1,
+                "Mouse fallback was not used exactly once.");
+
+            Require(
+                sequence.Count == 2 &&
+                sequence[0] == "uia" &&
+                sequence[1] == "mouse",
+                "Mouse fallback did not occur strictly after UIA.");
+
+            Require(
+                mouseExecutor.LastResult?.Success == true,
+                mouseExecutor.LastResult?.Message ?? "Mouse fallback returned no result.");
+
+            await WaitForFixtureWindowAsync(
+                windows,
+                fixture,
+                clickedTitle);
+
+            Require(
+                confirmed.Text.Contains(
+                    "mouse",
+                    StringComparison.OrdinalIgnoreCase),
+                "Assistant result did not disclose mouse fallback.");
+
+            Require(
+                assistant.Conversation
+                    .GetRecentContext()
+                    .Count == 0,
+                "Mouse fallback result leaked into Gemini context.");
+
+            Console.WriteLine(
+                "Execution order: UIA → mouse.");
+
+            Console.WriteLine(
+                "Native mouse fallback activated Mouse Only.");
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "PASS: Assistant UIA-first mouse fallback acceptance.");
+        }
+        finally
+        {
+            await StopUiFixtureAsync(
+                fixture);
         }
     }
 
