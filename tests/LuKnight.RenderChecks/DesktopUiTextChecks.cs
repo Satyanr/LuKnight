@@ -46,6 +46,19 @@ internal static partial class Program
         foreach (string id in new[] { "ApiKeyInput", "APIKeyInput", "PasswordBox", "otp_input", "PINInput" })
             Require(!DesktopUiTextInputPolicy.ValidateTarget(field with { AutomationId = id }, out _),
                 $"Sensitive AutomationId accepted: {id}");
+        foreach (string id in new[]
+        {
+            "Password1", "PIN2", "OTP6", "CVV2", "CVC3", "Token1", "Secret2",
+            "ApiKey1", "APIKey2", "VerificationCode2", "RecoveryCode3"
+        })
+            Require(!DesktopUiTextInputPolicy.ValidateTarget(field with { AutomationId = id }, out _),
+                $"Numbered sensitive AutomationId accepted: {id}");
+        foreach (string safe in new[] { "Shipping", "Pinpoint", "Tokenizer", "Search1", "Address2", "Email3" })
+            Require(DesktopUiTextInputPolicy.ValidateTarget(field with { Name = safe, AutomationId = safe }, out _),
+                $"Safe numbered field was rejected: {safe}");
+        foreach (string id in new[] { "ApiKey1", "VerificationCode2", "SecurityCode3", "RecoveryCode4", "BackupCode5" })
+            Require(!DesktopUiTextInputPolicy.ValidateTarget(field with { AutomationId = id }, out _),
+                $"Sensitive compound field escaped policy: {id}");
         foreach (string name in new[] { "Search", "Name", "Email", "Shipping" })
             Require(DesktopUiTextInputPolicy.ValidateTarget(field with { Name = name }, out _),
                 $"Normal field rejected: {name}");

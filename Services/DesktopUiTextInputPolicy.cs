@@ -85,7 +85,7 @@ public static class DesktopUiTextInputPolicy
 
         foreach (string term in SensitiveTerms)
         {
-            if (ContainsPhrase(
+            if (ContainsSensitiveTerm(
                     metadata,
                     Normalize(term)))
             {
@@ -149,12 +149,107 @@ public static class DesktopUiTextInputPolicy
         return true;
     }
 
-    private static bool ContainsPhrase(
-        string value,
-        string phrase) =>
-        $" {value} ".Contains(
-            $" {phrase} ",
-            StringComparison.Ordinal);
+    private static bool ContainsSensitiveTerm(
+        string metadata,
+        string term)
+    {
+        if (string.IsNullOrWhiteSpace(metadata) ||
+            string.IsNullOrWhiteSpace(term))
+        {
+            return false;
+        }
+
+        string[] metadataTokens =
+            metadata.Split(
+                ' ',
+                StringSplitOptions.RemoveEmptyEntries);
+
+        string[] termTokens =
+            term.Split(
+                ' ',
+                StringSplitOptions.RemoveEmptyEntries);
+
+        if (termTokens.Length == 0 ||
+            metadataTokens.Length < termTokens.Length)
+        {
+            return false;
+        }
+
+        for (int start = 0;
+             start <= metadataTokens.Length - termTokens.Length;
+             start++)
+        {
+            bool matched =
+                true;
+
+            for (int index = 0;
+                 index < termTokens.Length;
+                 index++)
+            {
+                string actual =
+                    metadataTokens[start + index];
+
+                string expected =
+                    termTokens[index];
+
+                if (string.Equals(
+                        actual,
+                        expected,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                bool finalToken =
+                    index ==
+                    termTokens.Length - 1;
+
+                if (finalToken &&
+                    HasNumericSuffix(
+                        actual,
+                        expected))
+                {
+                    continue;
+                }
+
+                matched =
+                    false;
+
+                break;
+            }
+
+            if (matched)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasNumericSuffix(
+        string actual,
+        string expected)
+    {
+        if (!actual.StartsWith(
+                expected,
+                StringComparison.Ordinal) ||
+            actual.Length <=
+                expected.Length)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<char> suffix =
+            actual.AsSpan(
+                expected.Length);
+
+        foreach (char c in suffix)
+        {
+            if (!char.IsDigit(c))
+                return false;
+        }
+
+        return true;
+    }
 
     private static string Normalize(
         string? value)
