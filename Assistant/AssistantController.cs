@@ -4,6 +4,21 @@ namespace LuKnight.Assistant;
 
 public sealed class AssistantController
 {
+    private static readonly TimeSpan
+        PlanLifetime =
+            TimeSpan.FromMinutes(5);
+
+    private static readonly TimeSpan
+        StandardConfirmationLifetime =
+            TimeSpan.FromMinutes(1);
+
+    private static readonly TimeSpan
+        SensitiveFinalLifetime =
+            TimeSpan.FromSeconds(30);
+
+    private readonly Func<DateTimeOffset>
+        _clock;
+
     private readonly ChatCoordinator _chat;
     private readonly SemaphoreSlim _requestGate = new(1, 1);
     private PendingAssistantPlan?
@@ -12,7 +27,8 @@ public sealed class AssistantController
         PendingAssistantPlan(
             Guid Id,
             AssistantPlan Plan,
-            int CurrentStepIndex);
+            int CurrentStepIndex,
+            DateTimeOffset ExpiresAt);
 
     private PendingAssistantAction? _pendingAction;
 
@@ -49,8 +65,12 @@ public sealed class AssistantController
         AssistantToolRouter? tools = null,
         AssistantEmotionEngine? emotions = null,
         AssistantContextSourceRouter? contextSources = null,
-        AssistantActionRouter? actions = null)
+        AssistantActionRouter? actions = null,
+        Func<DateTimeOffset>? clock = null)
     {
+        _clock =
+            clock ??
+            (() => DateTimeOffset.UtcNow);
         _chat = chat ?? throw new ArgumentNullException(nameof(chat));
         Personality = personality ?? new PersonalityEngine();
         Memory = memory ?? new MemoryService();
@@ -115,6 +135,8 @@ public sealed class AssistantController
         {
             if (_chat.IsBusy)
                 throw new InvalidOperationException("Tunggu permintaan chat selesai.");
+
+            PruneExpiredPendingState();
 
             if (_pendingAction is not null || _pendingPlan is not null)
                 throw new InvalidOperationException("Selesaikan atau batalkan tindakan atau rencana desktop terlebih dahulu.");
@@ -224,6 +246,68 @@ public sealed class AssistantController
         }
     }
 
+    private static AssistantPlan
+        FreezePlan(
+            AssistantPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(
+            plan);
+
+        AssistantPlanStep[] steps =
+            plan.Steps
+                .Select(
+                    (step, index) =>
+                        new AssistantPlanStep(
+                            index,
+                            step.Command))
+                .ToArray();
+
+        return new AssistantPlan(
+            Array.AsReadOnly(
+                steps));
+    }
+    private static DateTimeOffset Min(
+        DateTimeOffset first,
+        DateTimeOffset second) =>
+        first <= second
+            ? first
+            : second;
+    private void PruneExpiredPendingState()
+    {
+        DateTimeOffset now =
+            _clock();
+
+        PendingAssistantAction? action =
+            _pendingAction;
+
+        if (action is not null &&
+            now >= action.ExpiresAt)
+        {
+            _pendingAction =
+                null;
+
+            AbortPlanFor(
+                action);
+        }
+
+        PendingAssistantPlan? plan =
+            _pendingPlan;
+
+        if (plan is not null &&
+            now >= plan.ExpiresAt)
+        {
+            _pendingPlan =
+                null;
+
+            if (_pendingAction?.PlanId ==
+                plan.Id)
+            {
+                _pendingAction =
+                    null;
+            }
+        }
+    }
+
     private async Task<AssistantReply>
         StartPlanAsync(
             AssistantRequest request,
@@ -239,11 +323,16 @@ public sealed class AssistantController
             includeInContext:
                 false);
 
+        DateTimeOffset now =
+            _clock();
+
         _pendingPlan =
             new PendingAssistantPlan(
                 Guid.NewGuid(),
-                plan,
-                0);
+                FreezePlan(plan),
+                0,
+                now.Add(
+                    PlanLifetime));
 
         try
         {
@@ -293,6 +382,15 @@ public sealed class AssistantController
                 AssistantBackend.Local,
                 DateTimeOffset.UtcNow,
                 AssistantEmotion.Happy);
+        }
+
+        if (_clock() >= plan.ExpiresAt)
+        {
+            _pendingAction = null;
+            _pendingPlan = null;
+            const string expired = "Rencana desktop sudah kedaluwarsa. Tidak ada langkah lain yang dijalankan.";
+            Conversation.AddAssistant(expired, includeInContext: false);
+            return new AssistantReply(expired, AssistantBackend.Local, _clock(), AssistantEmotion.Confused);
         }
 
         AssistantPlanStep step =
@@ -373,9 +471,38 @@ public sealed class AssistantController
         Guid proposalId =
             Guid.NewGuid();
 
+        DateTimeOffset now =
+            _clock();
+
+        if (now >=
+            plan.ExpiresAt)
+        {
+            _pendingAction =
+                null;
+
+            _pendingPlan =
+                null;
+
+            const string expired =
+                "Rencana desktop sudah kedaluwarsa. Tidak ada langkah lain yang dijalankan.";
+
+            Conversation.AddAssistant(
+                expired,
+                includeInContext:
+                    false);
+
+            return new AssistantReply(
+                expired,
+                AssistantBackend.Local,
+                DateTimeOffset.UtcNow,
+                AssistantEmotion.Confused);
+        }
+
         DateTimeOffset expiresAt =
-            DateTimeOffset.UtcNow
-                .AddMinutes(1);
+            Min(
+                now.Add(
+                    StandardConfirmationLifetime),
+                plan.ExpiresAt);
 
         _pendingAction =
             new PendingAssistantAction(
@@ -480,6 +607,28 @@ public sealed class AssistantController
                 AssistantEmotion.Confused);
         }
 
+        if (_clock() >=
+            plan.ExpiresAt)
+        {
+            _pendingPlan =
+                null;
+
+            string expired =
+                $"Langkah {stepIndex + 1}/{plan.Plan.Count} selesai, " +
+                "tetapi batas waktu rencana sudah habis. Sisa langkah dihentikan.";
+
+            Conversation.AddAssistant(
+                expired,
+                includeInContext:
+                    false);
+
+            return new AssistantReply(
+                expired,
+                AssistantBackend.Local,
+                DateTimeOffset.UtcNow,
+                AssistantEmotion.Neutral);
+        }
+
         int nextIndex =
             stepIndex + 1;
 
@@ -531,7 +680,7 @@ public sealed class AssistantController
         }
 
         Guid id = Guid.NewGuid();
-        DateTimeOffset expiresAt = DateTimeOffset.UtcNow.AddMinutes(1);
+        DateTimeOffset expiresAt = _clock().Add(StandardConfirmationLifetime);
         AssistantConfirmationStage stage =
             prepared.Action.Risk ==
                 AssistantActionRisk.Sensitive
@@ -646,13 +795,43 @@ public sealed class AssistantController
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            if (DateTimeOffset.UtcNow > pending.ExpiresAt)
+            if (_clock() >= pending.ExpiresAt)
             {
                 _pendingAction = null;
                 AbortPlanFor(pending);
                 const string expired = "Konfirmasi tindakan sudah kedaluwarsa.";
                 Conversation.AddAssistant(expired, pending.Action.IncludeInContext);
                 return new AssistantReply(expired, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Confused);
+            }
+
+            if (pending.PlanId is
+                    Guid expiryPlanId &&
+                _pendingPlan is
+                    { } expiryPlan &&
+                expiryPlan.Id ==
+                    expiryPlanId &&
+                _clock() >=
+                    expiryPlan.ExpiresAt)
+            {
+                _pendingAction =
+                    null;
+
+                _pendingPlan =
+                    null;
+
+                const string expired =
+                    "Rencana desktop sudah kedaluwarsa. Tindakan tidak dijalankan.";
+
+                Conversation.AddAssistant(
+                    expired,
+                    includeInContext:
+                        false);
+
+                return new AssistantReply(
+                    expired,
+                    AssistantBackend.Local,
+                    DateTimeOffset.UtcNow,
+                    AssistantEmotion.Confused);
             }
 
             if (pending.Stage ==
@@ -683,9 +862,49 @@ public sealed class AssistantController
                 Guid finalId =
                     Guid.NewGuid();
 
+                DateTimeOffset now =
+                    _clock();
+
                 DateTimeOffset finalExpiry =
-                    DateTimeOffset.UtcNow
-                        .AddSeconds(30);
+                    now.Add(
+                        SensitiveFinalLifetime);
+
+                if (pending.PlanId is
+                        Guid finalPlanId &&
+                    _pendingPlan is
+                        { } plan &&
+                    plan.Id ==
+                        finalPlanId)
+                {
+                    if (now >=
+                        plan.ExpiresAt)
+                    {
+                        _pendingAction =
+                            null;
+
+                        _pendingPlan =
+                            null;
+
+                        const string expired =
+                            "Rencana desktop sudah kedaluwarsa sebelum konfirmasi akhir.";
+
+                        Conversation.AddAssistant(
+                            expired,
+                            includeInContext:
+                                false);
+
+                        return new AssistantReply(
+                            expired,
+                            AssistantBackend.Local,
+                            DateTimeOffset.UtcNow,
+                            AssistantEmotion.Confused);
+                    }
+
+                    finalExpiry =
+                        Min(
+                            finalExpiry,
+                            plan.ExpiresAt);
+                }
 
                 PendingAssistantAction finalPending =
                     pending with

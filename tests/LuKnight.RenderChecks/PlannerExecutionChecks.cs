@@ -89,12 +89,15 @@ internal static partial class Program
         public int Preparations, Executions;
         public AssistantActionRisk Risk = AssistantActionRisk.Navigation;
         public bool Fail, Throw, FailPrepare, ThrowPrepare;
+        public bool IncludeInContext = true;
         public Action? OnExecute;
+        public Action? OnPrepare;
         public ActionPreparationResult Prepare(ActionInvocation invocation)
         {
             Preparations++;
+            OnPrepare?.Invoke();
             if (ThrowPrepare) throw new OperationCanceledException("Prepare cancelled");
-            return new(!FailPrepare, "Preparation result", new(Name, invocation.Arguments, "Test", "Confirm?", Risk: Risk));
+            return new(!FailPrepare, "Preparation result", new(Name, invocation.Arguments, "Test", "Confirm?", IncludeInContext: IncludeInContext, Risk: Risk));
         }
         public Task<ActionExecutionResult> ExecuteAsync(PreparedAssistantAction action, CancellationToken cancellationToken = default)
         {
@@ -109,6 +112,7 @@ internal static partial class Program
     private static async Task CheckPlannerExecutionAsync()
     {
         await CheckPlanAdmissionAndProgressAsync();
+        await CheckPlanLifetimeAsync();
         static DesktopAppTarget App(string id, string name) => new(id, name, id, new[] { id }, new[] { name.ToLowerInvariant() }, DesktopAppSource.BuiltIn);
         foreach (string scenario in new[] { "success", "restricted", "conversation", "cancel", "failure", "exception", "prepare-failure", "downgrade", "sensitive", "sensitive-downgrade", "cancel-token", "prepare-exception" })
         {
@@ -244,6 +248,72 @@ internal static partial class Program
             var standalone = await assistant.SendAsync(new AssistantRequest("buka launcher"));
             Require(standalone.ActionProposal is { IsPlanStep: false, PlanStepNumber: null, PlanStepCount: null }, "Standalone action received plan metadata.");
             assistant.CancelAction(standalone.ActionProposal!.Id);
+        }
+    }
+
+    private static async Task CheckPlanLifetimeAsync()
+    {
+        foreach (string scenario in new[] { "expired", "recover", "recover-proposal", "proposal-boundary", "during-preparation", "during-execution", "sensitive-expired", "clamp", "final-boundary" })
+        {
+            DateTimeOffset now = new(2026, 9, 14, 12, 0, 0, TimeSpan.Zero);
+            DateTimeOffset start = now;
+            var catalog = new MutablePlanAppCatalog();
+            catalog.Add(new("launcher", "Launcher", "launcher", new[] { "launcher" }, new[] { "launcher" }, DesktopAppSource.BuiltIn));
+            var open = new PlanTestAction(BuiltInActionNames.DesktopOpenApplication);
+            var focus = new PlanTestAction(BuiltInActionNames.DesktopFocusApplication);
+            if (scenario is "recover" or "recover-proposal") open.IncludeInContext = false;
+            if (scenario == "during-preparation") open.OnPrepare = () => now = start.AddMinutes(5);
+            if (scenario == "sensitive-expired") open.Risk = AssistantActionRisk.Sensitive;
+            if (scenario is "clamp" or "final-boundary")
+            {
+                focus.Risk = AssistantActionRisk.Sensitive;
+                open.OnExecute = () => now = start.AddMinutes(5).AddSeconds(-10);
+            }
+            if (scenario == "during-execution") open.OnExecute = () => now = start.AddMinutes(6);
+            using var handler = new FakeHttp((_, _) => throw new InvalidOperationException("Recovery called Gemini."));
+            using var client = new HttpClient(handler);
+            var chat = new ChatCoordinator(new FakeCredentials { Key = "unused-plan-key" },
+                new ChatSettings { Provider = ChatProvider.Gemini, UseDesktopActions = true }, () => null, client);
+            var assistant = new AssistantController(chat,
+                intentRouter: new AssistantIntentRouter(new LocalDesktopCommandRouter(catalog)),
+                actions: new AssistantActionRouter(new IAssistantAction[] { open, focus }, () => DesktopPermissionLevel.Sensitive), clock: () => now);
+            var first = await assistant.SendAsync(new AssistantRequest("buka launcher lalu fokus launcher"));
+            if (scenario == "during-preparation")
+            {
+                Require(first.ActionProposal is null && open.Executions == 0 && focus.Preparations == 0,
+                    "Preparation crossing the deadline created a proposal or advanced the plan.");
+                Require(!assistant.HasPendingPlan && !assistant.HasPendingAction && handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
+                    "Expired preparation retained state or leaked context.");
+                continue;
+            }
+            Require(first.ActionProposal?.ExpiresAt == start.AddMinutes(1), "Standard expiry ignored injected clock.");
+            if (scenario is "recover" or "recover-proposal")
+            {
+                now = start.AddMinutes(scenario == "recover" ? 6 : 1);
+                var replacement = await assistant.SendAsync(new AssistantRequest("buka launcher"));
+                Require(replacement.ActionProposal is { IsPlanStep: false } && !assistant.HasPendingPlan, "Expired plan blocked replacement.");
+                try { await assistant.ConfirmActionAsync(first.ActionProposal!.Id); Require(false, "Stale proposal accepted."); } catch (InvalidOperationException) { }
+                assistant.CancelAction(replacement.ActionProposal!.Id);
+            }
+            else if (scenario is "clamp" or "final-boundary")
+            {
+                var review = await assistant.ConfirmActionAsync(first.ActionProposal!.Id);
+                Require(review.ActionProposal?.ExpiresAt == start.AddMinutes(5), "Standard proposal exceeded absolute deadline.");
+                var final = await assistant.ConfirmActionAsync(review.ActionProposal!.Id);
+                Require(final.ActionProposal?.ExpiresAt == start.AddMinutes(5) && focus.Executions == 0, "SensitiveFinal extended deadline.");
+                now = scenario == "clamp" ? start.AddMinutes(5).AddTicks(-1) : start.AddMinutes(5);
+                await assistant.ConfirmActionAsync(final.ActionProposal!.Id);
+                Require(focus.Executions == (scenario == "clamp" ? 1 : 0), "Absolute deadline boundary incorrect.");
+            }
+            else
+            {
+                if (scenario != "during-execution") now = scenario == "proposal-boundary" ? start.AddMinutes(1) : start.AddMinutes(6);
+                var expired = await assistant.ConfirmActionAsync(first.ActionProposal!.Id);
+                Require(expired.ActionProposal is null && focus.Preparations == 0 && focus.Executions == 0, "Expired plan advanced.");
+                Require(open.Executions == (scenario == "during-execution" ? 1 : 0), "Expiry changed execution accounting.");
+                if (scenario == "during-execution") Require(expired.Text.Contains("selesai", StringComparison.Ordinal), "Completed action reported as cancelled.");
+            }
+            Require(!assistant.HasPendingPlan && !assistant.HasPendingAction && handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0, "Recovery state/privacy failure: " + scenario);
         }
     }
 }
