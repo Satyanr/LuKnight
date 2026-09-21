@@ -185,6 +185,19 @@ internal static partial class Program
 
             return;
         }
+        if (args.Contains(
+                "--planner-live"))
+        {
+            Task.Run(
+                CheckPlannerLiveAsync)
+                .GetAwaiter()
+                .GetResult();
+
+            Console.WriteLine(
+                $"PASS: {_checks} native multi-step planner checks.");
+
+            return;
+        }
         if (args.Contains("--permissions"))
         {
             Task.Run(CheckPermissionLevelsAsync).GetAwaiter().GetResult();

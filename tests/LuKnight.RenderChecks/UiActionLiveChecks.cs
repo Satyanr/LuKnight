@@ -16,6 +16,443 @@ using LuKnight.Services;
 internal static partial class Program
 {
     private static async Task
+        CheckPlannerLiveAsync()
+    {
+        string token =
+            Guid.NewGuid()
+                .ToString("N")[..8];
+
+        string initialTitle =
+            $"{UiFixturePrefix} {token}";
+
+        string refreshTitle =
+            $"{initialTitle} — REFRESH INVOKED";
+
+        string saveTitle =
+            $"{initialTitle} — SAVE INVOKED";
+
+        using Process fixture =
+            StartUiFixtureProcess(
+                token);
+
+        try
+        {
+            var windows =
+                new DesktopWindowTargetService();
+
+            DesktopWindowTarget target =
+                await WaitForFixtureWindowAsync(
+                    windows,
+                    fixture,
+                    initialTitle);
+
+            var ui =
+                new WindowsDesktopUiAutomationReader();
+
+            DesktopUiSnapshot snapshot =
+                await ui.CaptureAsync(
+                    target);
+
+            Require(
+                snapshot.Success,
+                snapshot.Error ??
+                    "Planner native fixture capture failed.");
+
+            DesktopUiControlResolution refresh =
+                DesktopUiControlResolver.Resolve(
+                    snapshot,
+                    "Refresh",
+                    "Button");
+
+            DesktopUiControlResolution save =
+                DesktopUiControlResolver.Resolve(
+                    snapshot,
+                    "Save",
+                    "Button");
+
+            Require(
+                refresh.Match is not null,
+                "Refresh button was not visible through native UIA.");
+
+            Require(
+                save.Match is not null,
+                "Save button was not visible through native UIA.");
+
+            Require(
+                DesktopUiActionRiskClassifier
+                    .ClassifyButton(
+                        refresh.Match!,
+                        target)
+                    .Risk ==
+                AssistantActionRisk.Interaction,
+                "Refresh did not classify as Interaction.");
+
+            Require(
+                DesktopUiActionRiskClassifier
+                    .ClassifyButton(
+                        save.Match!,
+                        target)
+                    .Risk ==
+                AssistantActionRisk.Sensitive,
+                "Save did not classify as Sensitive.");
+
+
+            var sequence =
+                new List<string>();
+
+            var invoke =
+                new RecordingUiActionExecutor(
+                    new WindowsDesktopUiActionExecutor(),
+                    sequence);
+
+            var mouse =
+                new RecordingMouseActionExecutor(
+                    new WindowsDesktopMouseActionExecutor(),
+                    sequence);
+
+
+            using var handler =
+                new FakeHttp(
+                    (_, _) =>
+                        throw new InvalidOperationException(
+                            "Native planner attempted Gemini."));
+
+            using var client =
+                new HttpClient(
+                    handler);
+
+            var chat =
+                new ChatCoordinator(
+                    new FakeCredentials
+                    {
+                        Key =
+                            "unused-planner-live-key"
+                    },
+                    new ChatSettings
+                    {
+                        Provider =
+                            ChatProvider.Gemini,
+
+                        UseDesktopActions =
+                            true,
+
+                        DesktopPermission =
+                            DesktopPermissionLevel
+                                .Sensitive
+                    },
+                    () => null,
+                    client);
+
+
+            var desktopRouter =
+                new LocalDesktopCommandRouter(
+                    new DesktopAppCatalogService(
+                        () =>
+                            Array.Empty<
+                                DesktopAppTarget>()),
+                    windows);
+
+            var intentRouter =
+                new AssistantIntentRouter(
+                    desktopRouter);
+
+            var action =
+                new InvokeDesktopUiControlAction(
+                    () =>
+                        chat.Options
+                            .UseDesktopActions,
+                    windows,
+                    ui,
+                    invoke,
+                    mouse);
+
+            var actions =
+                new AssistantActionRouter(
+                    new IAssistantAction[]
+                    {
+                        action
+                    },
+                    () =>
+                        chat.Options
+                            .DesktopPermission);
+
+            var assistant =
+                new AssistantController(
+                    chat,
+                    intentRouter:
+                        intentRouter,
+                    actions:
+                        actions);
+
+
+            string command =
+                $"klik tombol Refresh di window {initialTitle} " +
+                $"lalu klik tombol Save di window {refreshTitle}";
+
+
+            AssistantReply first =
+                await assistant.SendAsync(
+                    new AssistantRequest(
+                        command));
+
+            Require(
+                first.Backend ==
+                    AssistantBackend.Local,
+                "Native planner was not local.");
+
+            Require(
+                first.ActionProposal is
+                {
+                    IsPlanStep:
+                        true,
+
+                    PlanStepNumber:
+                        1,
+
+                    PlanStepCount:
+                        2,
+
+                    Risk:
+                        AssistantActionRisk.Interaction,
+
+                    ConfirmationStage:
+                        AssistantConfirmationStage.Standard
+                },
+                "Planner did not produce step 1/2 confirmation.");
+
+            Require(
+                invoke.Calls == 0 &&
+                mouse.Calls == 0 &&
+                sequence.Count == 0,
+                "Planner executed before first confirmation.");
+
+            Require(
+                assistant.HasPendingPlan &&
+                assistant.HasPendingAction,
+                "Native plan state was not retained.");
+
+            Require(
+                handler.Calls == 0,
+                "Plan preparation called Gemini.");
+
+            Require(
+                assistant.Conversation
+                    .GetRecentContext()
+                    .Count == 0,
+                "Plan preparation leaked into Gemini context.");
+
+
+            // Step 2 deliberately targets refreshTitle.
+            // That window title does not exist yet.
+            Require(
+                !windows.Capture()
+                    .Any(
+                        item =>
+                            item.ProcessId ==
+                                fixture.Id &&
+                            string.Equals(
+                                item.Title,
+                                refreshTitle,
+                                StringComparison.Ordinal)),
+                "Future-step target already existed before step 1.");
+
+
+            Guid firstId =
+                first.ActionProposal!.Id;
+
+            AssistantReply second =
+                await assistant
+                    .ConfirmActionAsync(
+                        firstId);
+
+            Require(
+                invoke.Calls == 1,
+                "Refresh was not invoked exactly once.");
+
+            Require(
+                mouse.Calls == 0,
+                "Refresh unexpectedly used mouse fallback.");
+
+            Require(
+                sequence.Count == 1 &&
+                sequence[0] ==
+                    "uia",
+                "Unexpected execution sequence after step 1.");
+
+            await WaitForFixtureWindowAsync(
+                windows,
+                fixture,
+                refreshTitle);
+
+
+            // If step 2 had been resolved before Refresh,
+            // this proposal could not exist because refreshTitle
+            // did not exist at plan creation time.
+            Require(
+                second.ActionProposal is
+                {
+                    IsPlanStep:
+                        true,
+
+                    PlanStepNumber:
+                        2,
+
+                    PlanStepCount:
+                        2,
+
+                    Risk:
+                        AssistantActionRisk.Sensitive,
+
+                    ConfirmationStage:
+                        AssistantConfirmationStage.SensitiveReview
+                },
+                $"Step 2 was not freshly routed after Refresh. Reply: {second.Text}; proposal: {second.ActionProposal}");
+
+            Require(
+                second.ActionProposal!.Id !=
+                    firstId,
+                "Step 2 reused step 1 proposal id.");
+
+            Require(
+                invoke.Calls == 1 &&
+                mouse.Calls == 0,
+                "Save executed before Sensitive review.");
+
+
+            Guid reviewId =
+                second.ActionProposal.Id;
+
+            AssistantReply final =
+                await assistant
+                    .ConfirmActionAsync(
+                        reviewId);
+
+            Require(
+                final.ActionProposal is
+                {
+                    IsPlanStep:
+                        true,
+
+                    PlanStepNumber:
+                        2,
+
+                    PlanStepCount:
+                        2,
+
+                    Risk:
+                        AssistantActionRisk.Sensitive,
+
+                    ConfirmationStage:
+                        AssistantConfirmationStage.SensitiveFinal
+                },
+                "Sensitive review did not produce final confirmation.");
+
+            Require(
+                final.ActionProposal!.Id !=
+                    reviewId,
+                "SensitiveFinal reused review id.");
+
+            Require(
+                invoke.Calls == 1 &&
+                mouse.Calls == 0 &&
+                sequence.Count == 1,
+                "First Sensitive Yes reached native executor.");
+
+            Require(
+                windows.Capture()
+                    .Any(
+                        item =>
+                            item.ProcessId ==
+                                fixture.Id &&
+                            string.Equals(
+                                item.Title,
+                                refreshTitle,
+                                StringComparison.Ordinal)),
+                "Sensitive review changed fixture state.");
+
+
+            AssistantReply finished =
+                await assistant
+                    .ConfirmActionAsync(
+                        final.ActionProposal.Id);
+
+            Require(
+                finished.ActionProposal is null,
+                "Completed native plan returned another proposal.");
+
+            Require(
+                invoke.Calls == 2,
+                "Native planner did not invoke exactly two UIA actions.");
+
+            Require(
+                mouse.Calls == 0,
+                "Native plan unexpectedly used mouse fallback.");
+
+            Require(
+                sequence.Count == 2 &&
+                sequence[0] == "uia" &&
+                sequence[1] == "uia",
+                "Native planner execution order was incorrect.");
+
+            await WaitForFixtureWindowAsync(
+                windows,
+                fixture,
+                saveTitle);
+
+
+            Require(
+                !assistant.HasPendingPlan &&
+                !assistant.HasPendingAction,
+                "Native plan remained pending after completion.");
+
+            Require(
+                handler.Calls == 0,
+                "Native plan called Gemini.");
+
+            Require(
+                assistant.Conversation
+                    .GetRecentContext()
+                    .Count == 0,
+                "Native plan leaked into Gemini context.");
+
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "Plan step 1/2: Refresh prepared.");
+
+            Console.WriteLine(
+                "First Yes: native Refresh UIA Invoke.");
+
+            Console.WriteLine(
+                "Step 2 freshly resolved after title changed.");
+
+            Console.WriteLine(
+                "Plan step 2/2: Save classified Sensitive.");
+
+            Console.WriteLine(
+                "Sensitive review: no execution.");
+
+            Console.WriteLine(
+                "Sensitive final: native Save UIA Invoke.");
+
+            Console.WriteLine(
+                "Execution sequence: UIA -> UIA.");
+
+            Console.WriteLine(
+                "Gemini calls: 0.");
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "PASS: native multi-step planner acceptance.");
+        }
+        finally
+        {
+            await StopUiFixtureAsync(
+                fixture);
+        }
+    }
+
+    private static async Task
         CheckSensitivePermissionLiveAsync()
     {
     string token =
