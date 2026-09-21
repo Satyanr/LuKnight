@@ -5,6 +5,7 @@ public enum AssistantIntentKind
     Conversation,
     Tool,
     Context,
+    SkillCatalog,
     Skill,
     Action,
     LocalResponse
@@ -53,6 +54,9 @@ public sealed record AssistantIntent(
         ArgumentNullException.ThrowIfNull(invocation);
         return new AssistantIntent(AssistantIntentKind.Skill, Skill: invocation);
     }
+
+    public static AssistantIntent ShowSkills() =>
+        new(AssistantIntentKind.SkillCatalog);
 
     public static AssistantIntent UseAction(ActionInvocation invocation)
     {

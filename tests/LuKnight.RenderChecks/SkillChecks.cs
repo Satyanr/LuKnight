@@ -9,6 +9,7 @@ internal static partial class Program
     {
         public string Id => "test-workflow";
         public string DisplayName => "Test Workflow";
+        public string Description => "Test deterministic workflow.";
         public IReadOnlyList<string> Aliases { get; } = ["test-flow"];
 
         public SkillExpansionResult Expand(SkillInvocation invocation) =>
@@ -27,6 +28,7 @@ internal static partial class Program
     {
         public string Id => id;
         public string DisplayName => id;
+        public string Description => "Invalid plan test skill.";
         public IReadOnlyList<string> Aliases => [];
         public SkillExpansionResult Expand(SkillInvocation invocation) =>
             SkillExpansionResult.Expanded(new AssistantPlan(steps));
@@ -36,12 +38,29 @@ internal static partial class Program
     {
         public string Id => "restricted-workflow";
         public string DisplayName => "Restricted Workflow";
+        public string Description => "Restricted workflow test skill.";
         public IReadOnlyList<string> Aliases => [];
         public SkillExpansionResult Expand(SkillInvocation invocation) =>
             SkillExpansionResult.Expanded(
                 new AssistantPlan(new[]
                 {
                     new AssistantPlanStep(0, "jalankan powershell")
+                }));
+    }
+
+    private sealed class RegistryTestSkill(
+        string id,
+        string[] aliases) : IAssistantSkill
+    {
+        public string Id => id;
+        public string DisplayName => id;
+        public string Description => "Registry test skill.";
+        public IReadOnlyList<string> Aliases => aliases;
+        public SkillExpansionResult Expand(SkillInvocation invocation) =>
+            SkillExpansionResult.Expanded(
+                new AssistantPlan(new[]
+                {
+                    new AssistantPlanStep(0, "buka downloads")
                 }));
     }
 
@@ -78,6 +97,18 @@ internal static partial class Program
             {
                 new TestWorkflowSkill()
             }));
+
+        AssistantReply catalogReply = await assistant.SendAsync(
+            new AssistantRequest("daftar skill"));
+        Require(catalogReply.Backend == AssistantBackend.Local &&
+                catalogReply.ActionProposal is null,
+            "Skill catalog was not handled locally.");
+        Require(catalogReply.Text.Contains(
+                "test-workflow", StringComparison.OrdinalIgnoreCase),
+            "Registered skill missing from catalog output.");
+        Require(handler.Calls == 0 &&
+                assistant.Conversation.GetRecentContext().Count == 0,
+            "Skill catalog called Gemini or leaked into context.");
 
         AssistantReply first = await assistant.SendAsync(
             new AssistantRequest("jalankan skill test-flow"));
@@ -166,6 +197,26 @@ internal static partial class Program
         Require(!router.Expand(new SkillInvocation("missing")).Success,
             "Unknown skill was accepted.");
 
+        var atomic = new AssistantSkillRouter(new IAssistantSkill[]
+        {
+            new RegistryTestSkill("alpha", ["shared"])
+        });
+        bool conflictThrown = false;
+        try
+        {
+            atomic.Register(new RegistryTestSkill("beta", ["shared"]));
+        }
+        catch (InvalidOperationException)
+        {
+            conflictThrown = true;
+        }
+        Require(conflictThrown, "Conflicting skill alias was accepted.");
+        Require(!atomic.RegisteredSkills.Contains(
+                "beta", StringComparer.OrdinalIgnoreCase),
+            "Failed registration left a partial skill.");
+        Require(!atomic.Expand(new SkillInvocation("beta")).Success,
+            "Partially registered skill remained resolvable.");
+
         var empty = new AssistantSkillRouter(new IAssistantSkill[]
         {
             new InvalidPlanSkill("empty", Array.Empty<AssistantPlanStep>())
@@ -193,13 +244,35 @@ internal static partial class Program
                 !invalid.IncludeLocalResponseInContext,
             "Malformed skill command escaped local handling.");
 
-        var builtIn = new SearchDownloadsSkill();
-        SkillExpansionResult expanded = builtIn.Expand(
+        AssistantIntent catalogIntent = new AssistantIntentRouter().Route(
+            "skill apa yang tersedia");
+        Require(catalogIntent.Kind == AssistantIntentKind.SkillCatalog,
+            "Skill catalog command was not routed locally.");
+
+        var builtIns = new AssistantSkillRouter(BuiltInSkillCatalog.Create());
+        Require(builtIns.Catalog.Count == 4,
+            "Unexpected built-in skill count.");
+        Require(builtIns.Catalog.Select(skill => skill.Id)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase)
+                .SetEquals(new[]
+                {
+                    "search-downloads",
+                    "search-documents",
+                    "search-desktop",
+                    "search-pictures"
+                }),
+            "Built-in skill catalog is incorrect.");
+        SkillExpansionResult expanded = builtIns.Expand(
             new SkillInvocation("search-downloads", "invoice 2026"));
         Require(expanded.Plan?.Steps.Select(x => x.Command).SequenceEqual(
                     new[] { "buka downloads", "cari invoice 2026 di downloads" }) == true,
             "Search Downloads emitted the wrong raw commands.");
-        Require(!builtIn.Expand(new SkillInvocation("search-downloads")).Success,
+        SkillExpansionResult documents = builtIns.Expand(
+            new SkillInvocation("search-documents", "invoice 2026"));
+        Require(documents.Plan?.Steps.Select(step => step.Command).SequenceEqual(
+                    new[] { "buka documents", "cari invoice 2026 di documents" }) == true,
+            "Search Documents emitted wrong commands.");
+        Require(!builtIns.Expand(new SkillInvocation("search-downloads")).Success,
             "Search Downloads accepted an empty query.");
     }
 }

@@ -67,6 +67,9 @@ public sealed class AssistantIntentRouter
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)));
         }
 
+        if (SkillCommandParser.IsCatalogCommand(input))
+            return AssistantIntent.ShowSkills();
+
         SkillInvocation? skill = SkillCommandParser.Parse(input);
         if (skill is not null)
             return AssistantIntent.UseSkill(skill);

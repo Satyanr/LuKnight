@@ -118,10 +118,7 @@ public sealed class AppServices
             new OpenExplorerFolderAction(() => Chat.Options.UseDesktopActions, ExplorerActions),
             new SearchExplorerAction(() => Chat.Options.UseDesktopActions, ExplorerActions)
         }, () => Chat.Options.DesktopPermission);
-        Skills = new AssistantSkillRouter(new IAssistantSkill[]
-        {
-            new SearchDownloadsSkill()
-        });
+        Skills = new AssistantSkillRouter(BuiltInSkillCatalog.Create());
         Assistant = new AssistantController(
             Chat,
             memory: Memory,

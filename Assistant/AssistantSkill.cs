@@ -23,6 +23,13 @@ public interface IAssistantSkill
 {
     string Id { get; }
     string DisplayName { get; }
+    string Description { get; }
     IReadOnlyList<string> Aliases { get; }
     SkillExpansionResult Expand(SkillInvocation invocation);
 }
+
+public sealed record AssistantSkillDescriptor(
+    string Id,
+    string DisplayName,
+    string Description,
+    IReadOnlyList<string> Aliases);

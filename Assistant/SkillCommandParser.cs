@@ -3,6 +3,23 @@ namespace LuKnight.Assistant;
 public static class SkillCommandParser
 {
     private static readonly string[] Prefixes = ["jalankan skill", "run skill"];
+    private static readonly string[] CatalogCommands =
+    [
+        "daftar skill",
+        "lihat skill",
+        "skill apa saja",
+        "skill apa yang tersedia",
+        "list skills",
+        "show skills"
+    ];
+
+    public static bool IsCatalogCommand(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return false;
+        string text = input.Trim();
+        return CatalogCommands.Any(command =>
+            string.Equals(text, command, StringComparison.OrdinalIgnoreCase));
+    }
 
     public static bool LooksLikeSkillCommand(string? input)
     {

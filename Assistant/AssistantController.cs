@@ -230,6 +230,9 @@ public sealed class AssistantController
                     cancellationToken);
             }
 
+            if (intent.Kind == AssistantIntentKind.SkillCatalog)
+                return ShowSkillCatalog(request);
+
             if (intent.Kind == AssistantIntentKind.Skill)
             {
                 return await ExecuteSkillAsync(
@@ -256,6 +259,35 @@ public sealed class AssistantController
         {
             _requestGate.Release();
         }
+    }
+
+    private AssistantReply ShowSkillCatalog(AssistantRequest request)
+    {
+        IReadOnlyList<AssistantSkillDescriptor> skills = Skills.Catalog;
+        string message;
+        if (skills.Count == 0)
+        {
+            message = "Belum ada skill lokal yang tersedia.";
+        }
+        else
+        {
+            string entries = string.Join(
+                Environment.NewLine,
+                skills.Select(skill =>
+                    $"- {skill.Id} — {skill.DisplayName}: {skill.Description}"));
+            message =
+                "Skill lokal yang tersedia:" + Environment.NewLine +
+                entries + Environment.NewLine + Environment.NewLine +
+                "Gunakan: jalankan skill <nama> atau jalankan skill <nama> dengan <parameter>.";
+        }
+
+        Conversation.AddUser(request, includeInContext: false);
+        Conversation.AddAssistant(message, includeInContext: false);
+        return new AssistantReply(
+            message,
+            AssistantBackend.Local,
+            _clock(),
+            AssistantEmotion.Neutral);
     }
 
     private async Task<AssistantReply> ExecuteSkillAsync(

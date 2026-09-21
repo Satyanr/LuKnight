@@ -21,16 +21,50 @@ public sealed class AssistantSkillRouter
 
     public IReadOnlyCollection<string> RegisteredSkills => _skills.Keys.ToArray();
 
+    public IReadOnlyList<AssistantSkillDescriptor> Catalog =>
+        _skills.Values
+            .OrderBy(skill => skill.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .Select(skill => new AssistantSkillDescriptor(
+                skill.Id,
+                skill.DisplayName,
+                skill.Description,
+                skill.Aliases.ToArray()))
+            .ToArray();
+
     public void Register(IAssistantSkill skill)
     {
         ArgumentNullException.ThrowIfNull(skill);
         string id = skill.Id.Trim();
         if (!ValidId.IsMatch(id))
             throw new ArgumentException($"Skill id '{skill.Id}' tidak valid.", nameof(skill));
-        if (!_skills.TryAdd(id, skill))
+        if (string.IsNullOrWhiteSpace(skill.DisplayName))
+            throw new ArgumentException("Display name skill tidak boleh kosong.", nameof(skill));
+        if (string.IsNullOrWhiteSpace(skill.Description))
+            throw new ArgumentException("Description skill tidak boleh kosong.", nameof(skill));
+        if (_skills.ContainsKey(id))
             throw new InvalidOperationException($"Skill '{id}' sudah terdaftar.");
-        RegisterAlias(id, id);
-        foreach (string alias in skill.Aliases) RegisterAlias(alias, id);
+
+        IReadOnlyList<string> rawAliases = skill.Aliases ??
+            throw new ArgumentException("Alias collection skill tidak boleh null.", nameof(skill));
+        var aliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { id };
+        foreach (string rawAlias in rawAliases)
+        {
+            string alias = rawAlias?.Trim() ?? string.Empty;
+            if (!ValidId.IsMatch(alias))
+                throw new ArgumentException($"Skill alias '{rawAlias}' tidak valid.", nameof(skill));
+            aliases.Add(alias);
+        }
+
+        foreach (string alias in aliases)
+        {
+            if (_aliases.TryGetValue(alias, out string? existing) &&
+                !string.Equals(existing, id, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    $"Skill alias '{alias}' sudah digunakan oleh '{existing}'.");
+        }
+
+        _skills.Add(id, skill);
+        foreach (string alias in aliases) _aliases[alias] = id;
     }
 
     public SkillExpansionResult Expand(SkillInvocation invocation)
@@ -44,17 +78,6 @@ public sealed class AssistantSkillRouter
         SkillExpansionResult result = skill.Expand(invocation);
         if (!result.Success || result.Plan is null) return result;
         return NormalizePlan(result);
-    }
-
-    private void RegisterAlias(string alias, string id)
-    {
-        string value = alias.Trim();
-        if (!ValidId.IsMatch(value))
-            throw new ArgumentException($"Skill alias '{alias}' tidak valid.");
-        if (_aliases.TryGetValue(value, out string? existing) &&
-            !string.Equals(existing, id, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"Skill alias '{value}' sudah digunakan.");
-        _aliases[value] = id;
     }
 
     private static SkillExpansionResult NormalizePlan(SkillExpansionResult result)
