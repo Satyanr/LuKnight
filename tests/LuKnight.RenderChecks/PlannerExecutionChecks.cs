@@ -114,6 +114,7 @@ internal static partial class Program
         await CheckPlanAdmissionAndProgressAsync();
         await CheckPlanLifetimeAsync();
         await CheckPlannerDoesNotRetryPreparationAsync();
+        await CheckRuntimeWindowVariablesAsync();
         static DesktopAppTarget App(string id, string name) => new(id, name, id, new[] { id }, new[] { name.ToLowerInvariant() }, DesktopAppSource.BuiltIn);
         foreach (string scenario in new[] { "success", "restricted", "conversation", "cancel", "failure", "exception", "prepare-failure", "downgrade", "sensitive", "sensitive-downgrade", "cancel-token", "prepare-exception" })
         {
@@ -178,6 +179,115 @@ internal static partial class Program
                 Require(open.Executions == 0 && focus.Executions == 0, "Blocked plan executed an action.");
             Require(!assistant.HasPendingPlan && !assistant.HasPendingAction && !assistant.IsBusy, "Plan state not cleared: " + scenario);
             Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0, "Plan leaked Gemini/context.");
+        }
+    }
+
+    private sealed class MutablePlanWindowCatalog(DesktopWindowTarget target)
+        : IDesktopWindowTargetCatalog
+    {
+        public DesktopWindowTarget? Target = target;
+        public IReadOnlyList<DesktopWindowTarget> Capture() => Target is null ? [] : [Target];
+        public DesktopWindowResolution Resolve(string query) =>
+            Target is not null && string.Equals(Target.Title, query, StringComparison.OrdinalIgnoreCase)
+                ? new(Target, [Target]) : new(null, []);
+        public bool TryResolveById(string id, out DesktopWindowTarget target)
+        {
+            if (Target is not null && string.Equals(Target.Id, id, StringComparison.Ordinal))
+            { target = Target; return true; }
+            target = default!; return false;
+        }
+    }
+
+    private sealed class RuntimeWindowTestAction(
+        MutablePlanWindowCatalog windows, bool removeAfterFirst = false) : IAssistantAction
+    {
+        public string Name => BuiltInActionNames.DesktopInvokeUiControl;
+        public int Preparations, Executions;
+        public string? LastWindowQuery;
+        public ActionPreparationResult Prepare(ActionInvocation invocation)
+        {
+            Preparations++;
+            invocation.Arguments.TryGetValue("window", out string? query);
+            LastWindowQuery = query;
+            DesktopWindowResolution resolved = windows.Resolve(query ?? "");
+            if (!resolved.Found || resolved.Match is null)
+                return new(false, "Window tidak ditemukan.");
+            AssistantActionRisk risk = invocation.Arguments.TryGetValue("query", out string? control) &&
+                string.Equals(control, "Save", StringComparison.OrdinalIgnoreCase)
+                    ? AssistantActionRisk.Sensitive : AssistantActionRisk.Interaction;
+            return new(true, "Prepared.", new PreparedAssistantAction(
+                Name, new Dictionary<string, string> { ["windowId"] = resolved.Match.Id },
+                "Runtime test", "Confirm?", IncludeInContext: false, Risk: risk));
+        }
+        public Task<ActionExecutionResult> ExecuteAsync(
+            PreparedAssistantAction action, CancellationToken cancellationToken = default)
+        {
+            Executions++;
+            if (Executions == 1)
+                windows.Target = removeAfterFirst ? null : windows.Target! with { Title = "After Refresh" };
+            return Task.FromResult(new ActionExecutionResult(true, "Executed."));
+        }
+    }
+
+    private static async Task CheckRuntimeWindowVariablesAsync()
+    {
+        foreach (bool removeWindow in new[] { false, true })
+        {
+            var windows = new MutablePlanWindowCatalog(new DesktopWindowTarget(
+                (nint)123, 456, "fixture", "Before Refresh", 0, false, true));
+            var action = new RuntimeWindowTestAction(windows, removeWindow);
+            var skill = new UserDefinedAssistantSkill(new UserSkillDefinition
+            {
+                SchemaVersion = 3, Id = "runtime-test", DisplayName = "Runtime Test",
+                Description = "Runtime test.", Parameters = [],
+                Steps =
+                [
+                    "klik tombol Refresh di window Before Refresh",
+                    "klik tombol Save di window {last.window}"
+                ]
+            });
+            using var handler = new FakeHttp((_, _) =>
+                throw new InvalidOperationException("Runtime workflow called Gemini."));
+            using var client = new HttpClient(handler);
+            var chat = new ChatCoordinator(
+                new FakeCredentials { Key = "unused-runtime-key" },
+                new ChatSettings
+                {
+                    Provider = ChatProvider.Gemini, UseDesktopActions = true,
+                    DesktopPermission = DesktopPermissionLevel.Sensitive
+                }, () => null, client);
+            var assistant = new AssistantController(
+                chat,
+                intentRouter: new AssistantIntentRouter(
+                    new LocalDesktopCommandRouter(new MutablePlanAppCatalog(), windows)),
+                actions: new AssistantActionRouter(
+                    new IAssistantAction[] { action },
+                    () => DesktopPermissionLevel.Sensitive),
+                skills: new AssistantSkillRouter(new[] { skill }));
+            AssistantReply first = await assistant.SendAsync(
+                new AssistantRequest("jalankan skill runtime-test"));
+            Require(first.ActionProposal is { PlanStepNumber: 1, PlanStepCount: 2 },
+                "Runtime workflow did not start.");
+            AssistantReply next = await assistant.ConfirmActionAsync(first.ActionProposal!.Id);
+            Require(action.Executions == 1, "Runtime step 1 did not execute.");
+            if (removeWindow)
+                Require(action.Preparations == 1 && next.ActionProposal is null &&
+                        !assistant.HasPendingPlan && !assistant.HasPendingAction,
+                    "Missing runtime variable reached preparation or remained pending.");
+            else
+            {
+                Require(action.Preparations == 2 && string.Equals(
+                        action.LastWindowQuery, "After Refresh", StringComparison.OrdinalIgnoreCase),
+                    $"Runtime {{last.window}} did not use fresh window state: preparations={action.Preparations}, query='{action.LastWindowQuery}', reply='{next.Text}'.");
+                Require(next.ActionProposal is
+                {
+                    PlanStepNumber: 2,
+                    Risk: AssistantActionRisk.Sensitive,
+                    ConfirmationStage: AssistantConfirmationStage.SensitiveReview
+                }, "Runtime step 2 lost Sensitive classification.");
+            }
+            Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
+                "Runtime workflow leaked Gemini/context.");
         }
     }
 

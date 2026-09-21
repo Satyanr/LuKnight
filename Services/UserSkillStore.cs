@@ -13,7 +13,7 @@ public sealed record UserSkillLoadResult(
 public sealed class UserSkillStore
 {
     private static readonly Regex PlaceholderPattern = new(
-        @"\{([a-z][a-z0-9_-]{0,31}|argument)\}",
+        @"\{([a-z][a-z0-9_-]{0,31}|argument|last\.(?:window|process))\}",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private readonly string _directory;
     public string DirectoryPath => _directory;
@@ -79,7 +79,7 @@ public sealed class UserSkillStore
 
     internal static string? Validate(UserSkillDefinition value)
     {
-        if (value.SchemaVersion is not 1 and not 2)
+        if (value.SchemaVersion is not 1 and not 2 and not 3)
             return "Schema user skill tidak didukung.";
         if (!AssistantSkillPolicy.IsValidId(value.Id)) return "ID user skill tidak valid.";
         string display = value.DisplayName?.Trim() ?? string.Empty;
@@ -96,9 +96,10 @@ public sealed class UserSkillStore
         if (value.SchemaVersion == 1 && value.Parameters.Length > 0)
             return "Schema 1 tidak mendukung named parameters.";
         HashSet<string>? declared = null;
-        if (value.SchemaVersion == 2)
+        if (value.SchemaVersion is 2 or 3)
         {
-            if (value.Parameters.Length is < 1 or > AssistantSkillPolicy.MaxParameters)
+            if (value.Parameters.Length > AssistantSkillPolicy.MaxParameters ||
+                (value.SchemaVersion == 2 && value.Parameters.Length < 1))
                 return "Named parameters user skill tidak valid.";
             declared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (UserSkillParameterDefinition parameter in value.Parameters)
@@ -115,8 +116,9 @@ public sealed class UserSkillStore
         if (value.Steps is null || value.Steps.Length is < 1 or > LocalMultiStepPlanParser.MaxSteps)
             return $"User skill harus memiliki 1 sampai {LocalMultiStepPlanParser.MaxSteps} langkah.";
         int total = 0;
-        foreach (string? raw in value.Steps)
+        for (int stepIndex = 0; stepIndex < value.Steps.Length; stepIndex++)
         {
+            string? raw = value.Steps[stepIndex];
             string step = raw?.Trim() ?? string.Empty;
             if (step.Length is < 1 or > LocalMultiStepPlanParser.MaxStepLength)
                 return "Langkah user skill tidak valid.";
@@ -129,13 +131,30 @@ public sealed class UserSkillStore
             foreach (Match placeholder in placeholders)
             {
                 string name = placeholder.Groups[1].Value;
+                bool runtimeVariable = name.StartsWith(
+                    "last.", StringComparison.OrdinalIgnoreCase);
                 if (value.SchemaVersion == 1 &&
                     !string.Equals(name, "argument", StringComparison.OrdinalIgnoreCase))
                     return "Schema 1 hanya mendukung placeholder {argument}.";
                 if (value.SchemaVersion == 2)
                 {
+                    if (runtimeVariable)
+                        return "Schema 2 tidak mendukung runtime workflow variables.";
                     if (string.Equals(name, "argument", StringComparison.OrdinalIgnoreCase))
                         return "Schema 2 tidak mendukung placeholder legacy {argument}.";
+                    if (!declared!.Contains(name))
+                        return $"Placeholder '{{{name}}}' tidak memiliki definisi parameter.";
+                }
+                if (value.SchemaVersion == 3)
+                {
+                    if (string.Equals(name, "argument", StringComparison.OrdinalIgnoreCase))
+                        return "Schema 3 tidak mendukung placeholder legacy {argument}.";
+                    if (runtimeVariable)
+                    {
+                        if (stepIndex == 0)
+                            return "Langkah pertama tidak dapat menggunakan variable dari langkah sebelumnya.";
+                        continue;
+                    }
                     if (!declared!.Contains(name))
                         return $"Placeholder '{{{name}}}' tidak memiliki definisi parameter.";
                 }
@@ -143,7 +162,7 @@ public sealed class UserSkillStore
             total += step.Length;
             if (total > LocalMultiStepPlanParser.MaxInputLength) return "Total user skill terlalu panjang.";
         }
-        if (value.SchemaVersion == 2)
+        if (value.SchemaVersion is 2 or 3)
         {
             string combined = string.Join("\n", value.Steps);
             foreach (UserSkillParameterDefinition parameter in value.Parameters)

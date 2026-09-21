@@ -184,9 +184,15 @@ internal static partial class Program
                   ],
                   "steps": ["buka documents", "cari {project} {query} di documents"] }
                 """);
+            File.WriteAllText(Path.Combine(directory, "runtime.json"), """
+                { "schemaVersion": 3, "id": "runtime-window",
+                  "displayName": "Runtime", "description": "Runtime workflow.", "aliases": [],
+                  "parameters": [{ "name": "window", "required": true, "maxLength": 200 }],
+                  "steps": ["klik Refresh di {window}", "klik Save di {last.window}"] }
+                """);
             UserSkillLoadResult loaded = new UserSkillStore(directory).Load();
-            Require(loaded.Skills.Count == 1 && loaded.Issues.Count == 0,
-                "Valid schema-2 workflow failed validation.");
+            Require(loaded.Skills.Count == 2 && loaded.Issues.Count == 0,
+                "Valid schema-2/schema-3 workflow failed validation.");
             File.WriteAllText(Path.Combine(directory, "undeclared.json"), """
                 { "schemaVersion": 2, "id": "bad-placeholder",
                   "displayName": "Bad", "description": "Bad placeholder.", "aliases": [],
@@ -198,8 +204,19 @@ internal static partial class Program
                   "displayName": "Bad", "description": "Bad legacy.", "aliases": [],
                   "parameters": [{ "name": "query" }], "steps": ["cari {query}"] }
                 """);
+            File.WriteAllText(Path.Combine(directory, "runtime-first.json"), """
+                { "schemaVersion": 3, "id": "runtime-first", "displayName": "Bad",
+                  "description": "Bad runtime.", "aliases": [], "parameters": [],
+                  "steps": ["fokus window {last.window}"] }
+                """);
+            File.WriteAllText(Path.Combine(directory, "runtime-schema2.json"), """
+                { "schemaVersion": 2, "id": "runtime-v2", "displayName": "Bad",
+                  "description": "Bad runtime schema.", "aliases": [],
+                  "parameters": [{ "name": "window" }],
+                  "steps": ["buka {window}", "fokus {last.window}"] }
+                """);
             UserSkillLoadResult rejected = new UserSkillStore(directory).Load();
-            Require(rejected.Skills.Count == 1 && rejected.Issues.Count == 2,
+            Require(rejected.Skills.Count == 2 && rejected.Issues.Count == 4,
                 "Invalid schema/placeholder definitions were accepted.");
         }
         finally { Directory.Delete(directory, recursive: true); }
@@ -505,5 +522,39 @@ internal static partial class Program
                     ["shell"] = "powershell"
                 })).Success,
             "Unknown named parameter was accepted.");
+
+        var runtimeDefinition = new UserSkillDefinition
+        {
+            SchemaVersion = 3,
+            Id = "runtime-window",
+            DisplayName = "Runtime Window",
+            Description = "Runtime variable test.",
+            Parameters = [new() { Name = "window", Required = true, MaxLength = 200 }],
+            Steps =
+            [
+                "klik tombol Refresh di window {window}",
+                "klik tombol Save di window {last.window}"
+            ]
+        };
+        var runtimeSkill = new UserDefinedAssistantSkill(runtimeDefinition);
+        SkillExpansionResult runtimeExpanded = runtimeSkill.Expand(new SkillInvocation(
+            "runtime-window", Parameters: new Dictionary<string, string>
+            { ["window"] = "Fixture" }));
+        Require(runtimeExpanded.Plan is { AllowRuntimeVariables: true },
+            "Schema 3 did not enable runtime variables.");
+        Require(runtimeExpanded.Plan!.Steps[1].Command ==
+                "klik tombol Save di window {last.window}",
+            "Runtime placeholder was expanded too early.");
+        WorkflowRuntimeResolution missingRuntime = WorkflowRuntimeVariableResolver.Resolve(
+            runtimeExpanded.Plan.Steps[1].Command,
+            new Dictionary<string, string>());
+        Require(!missingRuntime.Success,
+            "Missing previous-step runtime variable was accepted.");
+        WorkflowRuntimeResolution resolvedRuntime = WorkflowRuntimeVariableResolver.Resolve(
+            runtimeExpanded.Plan.Steps[1].Command,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            { ["last.window"] = "After Refresh" });
+        Require(resolvedRuntime.Command == "klik tombol Save di window After Refresh",
+            "Runtime variable did not resolve in one pass.");
     }
 }

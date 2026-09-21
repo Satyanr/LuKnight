@@ -5,7 +5,8 @@ public sealed record AssistantPlanStep(
     string Command);
 
 public sealed record AssistantPlan(
-    IReadOnlyList<AssistantPlanStep> Steps)
+    IReadOnlyList<AssistantPlanStep> Steps,
+    bool AllowRuntimeVariables = false)
 {
     public int Count =>
         Steps.Count;

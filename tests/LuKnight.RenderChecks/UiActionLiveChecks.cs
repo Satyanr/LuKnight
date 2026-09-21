@@ -27,14 +27,19 @@ internal static partial class Program
         Directory.CreateDirectory(skillDirectory);
         var definition = new UserSkillDefinition
         {
+            SchemaVersion = 3,
             Id = "fixture-workflow",
             DisplayName = "Fixture Workflow",
             Description = "Native user-defined skill acceptance workflow.",
             Aliases = ["fixture-flow"],
+            Parameters =
+            [
+                new() { Name = "window", Required = true, MaxLength = 200 }
+            ],
             Steps =
             [
-                $"klik tombol Refresh di window {initialTitle}",
-                $"klik tombol Save di window {refreshTitle}"
+                "klik tombol Refresh di window {window}",
+                "klik tombol Save di window {last.window}"
             ]
         };
         File.WriteAllText(
@@ -82,7 +87,8 @@ internal static partial class Program
                 chat, intentRouter: intentRouter, actions: actions, skills: skills);
 
             AssistantReply first = await assistant.SendAsync(
-                new AssistantRequest("jalankan skill fixture-flow"));
+                new AssistantRequest(
+                    $"jalankan skill fixture-flow dengan parameter window=\"{initialTitle}\""));
             Require(first.ActionProposal is
             {
                 IsPlanStep: true, PlanStepNumber: 1, PlanStepCount: 2,

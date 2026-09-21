@@ -97,6 +97,9 @@ public sealed class AssistantSkillRouter
         }
 
         return SkillExpansionResult.Expanded(
-            new AssistantPlan(normalized.AsReadOnly()), result.Message);
+            new AssistantPlan(
+                normalized.AsReadOnly(),
+                plan.AllowRuntimeVariables),
+            result.Message);
     }
 }

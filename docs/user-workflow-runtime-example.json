@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 3,
+  "enabled": true,
+  "id": "refresh-and-save",
+  "displayName": "Refresh And Save",
+  "description": "Refresh a window and continue using its latest title.",
+  "aliases": [],
+  "parameters": [
+    {
+      "name": "window",
+      "required": true,
+      "maxLength": 200
+    }
+  ],
+  "steps": [
+    "klik tombol Refresh di window {window}",
+    "klik tombol Save di window {last.window}"
+  ]
+}

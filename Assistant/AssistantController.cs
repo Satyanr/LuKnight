@@ -4,6 +4,9 @@ namespace LuKnight.Assistant;
 
 public sealed class AssistantController
 {
+    private static readonly IReadOnlyDictionary<string, string> EmptyRuntimeVariables =
+        new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     private static readonly TimeSpan
         PlanLifetime =
             TimeSpan.FromMinutes(5);
@@ -32,7 +35,8 @@ public sealed class AssistantController
             Guid Id,
             AssistantPlan Plan,
             int CurrentStepIndex,
-            DateTimeOffset ExpiresAt);
+            DateTimeOffset ExpiresAt,
+            IReadOnlyDictionary<string, string> RuntimeVariables);
 
     private PendingAssistantAction? _pendingAction;
 
@@ -339,7 +343,8 @@ public sealed class AssistantController
 
         return new AssistantPlan(
             Array.AsReadOnly(
-                steps));
+                steps),
+            plan.AllowRuntimeVariables);
     }
     private static DateTimeOffset Min(
         DateTimeOffset first,
@@ -407,7 +412,8 @@ public sealed class AssistantController
                 FreezePlan(plan),
                 0,
                 now.Add(
-                    PlanLifetime));
+                    PlanLifetime),
+                EmptyRuntimeVariables);
 
         try
         {
@@ -472,11 +478,30 @@ public sealed class AssistantController
             plan.Plan.Steps[
                 plan.CurrentStepIndex];
 
+        string command = step.Command;
+        if (plan.Plan.AllowRuntimeVariables && preRoutedIntent is null)
+        {
+            WorkflowRuntimeResolution resolution =
+                WorkflowRuntimeVariableResolver.Resolve(command, plan.RuntimeVariables);
+            if (!resolution.Success || resolution.Command is null)
+            {
+                _pendingPlan = null;
+                string reason = resolution.Error ??
+                    "Variable workflow tidak dapat diselesaikan.";
+                string message =
+                    $"Rencana dihentikan pada langkah {step.Index + 1}: {reason}";
+                Conversation.AddAssistant(message, includeInContext: false);
+                return new AssistantReply(
+                    message, AssistantBackend.Local, _clock(), AssistantEmotion.Confused);
+            }
+            command = resolution.Command;
+        }
+
         // IMPORTANT:
         // route dilakukan baru sekarang.
         AssistantIntent intent =
             preRoutedIntent ?? IntentRouter.Route(
-                step.Command);
+                command);
         if (intent.Kind !=
             AssistantIntentKind.Action ||
             intent.Action is null)
@@ -744,11 +769,17 @@ public sealed class AssistantController
             }
         }
 
+        IReadOnlyDictionary<string, string> runtimeVariables =
+            plan.Plan.AllowRuntimeVariables
+                ? CaptureRuntimeVariables(pending.Action)
+                : EmptyRuntimeVariables;
+
         _pendingPlan =
             plan with
             {
                 CurrentStepIndex =
-                    nextIndex
+                    nextIndex,
+                RuntimeVariables = runtimeVariables
             };
 
         return await ContinuePlanAsync(
@@ -759,6 +790,30 @@ public sealed class AssistantController
         action.Name is
             BuiltInActionNames.DesktopInvokeUiControl or
             BuiltInActionNames.DesktopSetUiText;
+
+    private IReadOnlyDictionary<string, string> CaptureRuntimeVariables(
+        PreparedAssistantAction action)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!action.Arguments.TryGetValue("windowId", out string? windowId) ||
+            !IntentRouter.DesktopWindows.TryResolveById(windowId, out DesktopWindowTarget window))
+            return new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(result);
+        AddRuntimeValue(result, "last.window", window.Title, 200);
+        AddRuntimeValue(result, "last.process", window.ProcessName, 100);
+        return new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(result);
+    }
+
+    private static void AddRuntimeValue(
+        IDictionary<string, string> destination,
+        string name,
+        string? rawValue,
+        int maximumLength)
+    {
+        string value = rawValue?.Trim() ?? string.Empty;
+        if (value.Length is < 1 || value.Length > maximumLength || value.Any(char.IsControl))
+            return;
+        destination[name] = value;
+    }
 
     private async Task<AssistantReply> PrepareActionAsync(
         AssistantRequest request,
