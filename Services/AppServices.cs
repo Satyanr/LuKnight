@@ -25,6 +25,8 @@ public sealed class AppServices
     public AssistantContextSourceRouter ContextSources { get; }
     public AssistantActionRouter Actions { get; }
     public AssistantSkillRouter Skills { get; }
+    public UserSkillStore UserSkills { get; }
+    public IReadOnlyList<UserSkillLoadIssue> UserSkillIssues { get; private set; } = [];
     public AssistantController Assistant { get; }
     public IVoiceCaptureService VoiceCapture { get; }
     public ISpeechToTextService SpeechToText { get; }
@@ -49,7 +51,8 @@ public sealed class AppServices
         IDesktopUiTextActionExecutor? uiTextActionExecutor = null,
         IDesktopKeyboardTextActionExecutor? keyboardTextActionExecutor = null,
         IDesktopUiScreenEvidenceService? uiScreenEvidenceService = null,
-        IDesktopUiAssistedResolver? uiAssistedResolver = null)
+        IDesktopUiAssistedResolver? uiAssistedResolver = null,
+        UserSkillStore? userSkillStore = null)
     {
         Settings = settings ?? new();
         Chat = new(credentials ?? new SecureCredentialService(), Settings.Current.Chat);
@@ -119,6 +122,16 @@ public sealed class AppServices
             new SearchExplorerAction(() => Chat.Options.UseDesktopActions, ExplorerActions)
         }, () => Chat.Options.DesktopPermission);
         Skills = new AssistantSkillRouter(BuiltInSkillCatalog.Create());
+        UserSkills = userSkillStore ?? new UserSkillStore();
+        UserSkillLoadResult userSkillResult = UserSkills.Load();
+        var skillIssues = new List<UserSkillLoadIssue>(userSkillResult.Issues);
+        foreach (IAssistantSkill skill in userSkillResult.Skills)
+        {
+            try { Skills.Register(skill); }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            { skillIssues.Add(new(skill.Id, $"Skill tidak diregistrasikan: {ex.Message}")); }
+        }
+        UserSkillIssues = skillIssues.AsReadOnly();
         Assistant = new AssistantController(
             Chat,
             memory: Memory,

@@ -1,13 +1,7 @@
-using System.Text.RegularExpressions;
-
 namespace LuKnight.Assistant;
 
 public sealed class AssistantSkillRouter
 {
-    private static readonly Regex ValidId = new(
-        @"\A[a-z0-9][a-z0-9._-]{0,63}\z",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
     private readonly Dictionary<string, IAssistantSkill> _skills =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _aliases =
@@ -35,7 +29,7 @@ public sealed class AssistantSkillRouter
     {
         ArgumentNullException.ThrowIfNull(skill);
         string id = skill.Id.Trim();
-        if (!ValidId.IsMatch(id))
+        if (!AssistantSkillPolicy.IsValidId(id))
             throw new ArgumentException($"Skill id '{skill.Id}' tidak valid.", nameof(skill));
         if (string.IsNullOrWhiteSpace(skill.DisplayName))
             throw new ArgumentException("Display name skill tidak boleh kosong.", nameof(skill));
@@ -50,7 +44,7 @@ public sealed class AssistantSkillRouter
         foreach (string rawAlias in rawAliases)
         {
             string alias = rawAlias?.Trim() ?? string.Empty;
-            if (!ValidId.IsMatch(alias))
+            if (!AssistantSkillPolicy.IsValidId(alias))
                 throw new ArgumentException($"Skill alias '{rawAlias}' tidak valid.", nameof(skill));
             aliases.Add(alias);
         }

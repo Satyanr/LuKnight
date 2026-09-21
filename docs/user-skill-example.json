@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "id": "find-project",
+  "displayName": "Find Project",
+  "description": "Open Documents and search for a project.",
+  "aliases": [
+    "cari-project"
+  ],
+  "steps": [
+    "buka documents",
+    "cari {argument} di documents"
+  ]
+}
