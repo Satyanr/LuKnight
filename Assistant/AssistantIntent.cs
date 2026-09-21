@@ -5,6 +5,7 @@ public enum AssistantIntentKind
     Conversation,
     Tool,
     Context,
+    Skill,
     Action,
     LocalResponse
 }
@@ -27,6 +28,7 @@ public sealed record AssistantIntent(
     AssistantIntentKind Kind,
     ToolInvocation? Tool = null,
     ContextInvocation? Context = null,
+    SkillInvocation? Skill = null,
     ActionInvocation? Action = null,
     string? LocalText = null,
     bool IncludeLocalResponseInContext = true)
@@ -44,6 +46,12 @@ public sealed record AssistantIntent(
     {
         ArgumentNullException.ThrowIfNull(invocation);
         return new AssistantIntent(AssistantIntentKind.Context, Context: invocation);
+    }
+
+    public static AssistantIntent UseSkill(SkillInvocation invocation)
+    {
+        ArgumentNullException.ThrowIfNull(invocation);
+        return new AssistantIntent(AssistantIntentKind.Skill, Skill: invocation);
     }
 
     public static AssistantIntent UseAction(ActionInvocation invocation)

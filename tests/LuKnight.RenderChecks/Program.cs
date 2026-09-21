@@ -173,6 +173,20 @@ internal static partial class Program
         }
 
         if (args.Contains(
+                "--skills"))
+        {
+            Task.Run(
+                CheckSkillsAsync)
+                .GetAwaiter()
+                .GetResult();
+
+            Console.WriteLine(
+                $"PASS: {_checks} skill-framework checks.");
+
+            return;
+        }
+
+        if (args.Contains(
                 "--planner-exec"))
         {
             Task.Run(

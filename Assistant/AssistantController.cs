@@ -49,6 +49,7 @@ public sealed class AssistantController
     public AssistantToolRouter Tools { get; }
     public AssistantContextSourceRouter ContextSources { get; }
     public AssistantActionRouter Actions { get; }
+    public AssistantSkillRouter Skills { get; }
     public AssistantEmotionEngine Emotions { get; }
     public bool IsBusy => _pendingPlan is not null || _pendingAction is not null || _requestGate.CurrentCount == 0 || _chat.IsBusy;
     public bool HasPendingPlan =>
@@ -66,6 +67,7 @@ public sealed class AssistantController
         AssistantEmotionEngine? emotions = null,
         AssistantContextSourceRouter? contextSources = null,
         AssistantActionRouter? actions = null,
+        AssistantSkillRouter? skills = null,
         Func<DateTimeOffset>? clock = null)
     {
         _clock =
@@ -115,6 +117,7 @@ public sealed class AssistantController
             new OpenExplorerFolderAction(() => _chat.Options.UseDesktopActions, new WindowsExplorerActionExecutor()),
             new SearchExplorerAction(() => _chat.Options.UseDesktopActions, new WindowsExplorerActionExecutor())
         }, () => _chat.Options.DesktopPermission);
+        Skills = skills ?? new AssistantSkillRouter();
         Emotions = emotions ?? new AssistantEmotionEngine();
     }
 
@@ -227,6 +230,15 @@ public sealed class AssistantController
                     cancellationToken);
             }
 
+            if (intent.Kind == AssistantIntentKind.Skill)
+            {
+                return await ExecuteSkillAsync(
+                    request,
+                    intent.Skill ?? throw new InvalidOperationException(
+                        "Skill intent tidak memiliki invocation."),
+                    cancellationToken);
+            }
+
             if (intent.Kind == AssistantIntentKind.Action)
             {
                 return await PrepareActionAsync(
@@ -244,6 +256,33 @@ public sealed class AssistantController
         {
             _requestGate.Release();
         }
+    }
+
+    private async Task<AssistantReply> ExecuteSkillAsync(
+        AssistantRequest request,
+        SkillInvocation invocation,
+        CancellationToken cancellationToken)
+    {
+        SkillExpansionResult expanded = Skills.Expand(invocation);
+        if (!expanded.Success || expanded.Plan is null)
+        {
+            string message = expanded.Message;
+            Conversation.AddUser(request, includeInContext: false);
+            Conversation.AddAssistant(message, includeInContext: false);
+            return new AssistantReply(
+                message,
+                AssistantBackend.Local,
+                _clock(),
+                AssistantEmotion.Confused);
+        }
+
+        AssistantPlan plan = expanded.Plan;
+        AssistantIntent firstIntent = IntentRouter.Route(plan.Steps[0].Command);
+        return await StartPlanAsync(
+            request,
+            plan,
+            firstIntent,
+            cancellationToken);
     }
 
     private static AssistantPlan

@@ -67,6 +67,14 @@ public sealed class AssistantIntentRouter
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)));
         }
 
+        SkillInvocation? skill = SkillCommandParser.Parse(input);
+        if (skill is not null)
+            return AssistantIntent.UseSkill(skill);
+        if (SkillCommandParser.LooksLikeSkillCommand(input))
+            return AssistantIntent.RespondLocal(
+                "Format skill tidak valid. Gunakan: jalankan skill <nama> atau jalankan skill <nama> dengan <parameter>.",
+                includeInContext: false);
+
         DesktopUiTextCommand?
             uiText =
                 DesktopUiTextCommandParser

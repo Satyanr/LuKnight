@@ -24,6 +24,7 @@ public sealed class AppServices
     public AssistantToolRouter Tools { get; }
     public AssistantContextSourceRouter ContextSources { get; }
     public AssistantActionRouter Actions { get; }
+    public AssistantSkillRouter Skills { get; }
     public AssistantController Assistant { get; }
     public IVoiceCaptureService VoiceCapture { get; }
     public ISpeechToTextService SpeechToText { get; }
@@ -117,6 +118,10 @@ public sealed class AppServices
             new OpenExplorerFolderAction(() => Chat.Options.UseDesktopActions, ExplorerActions),
             new SearchExplorerAction(() => Chat.Options.UseDesktopActions, ExplorerActions)
         }, () => Chat.Options.DesktopPermission);
+        Skills = new AssistantSkillRouter(new IAssistantSkill[]
+        {
+            new SearchDownloadsSkill()
+        });
         Assistant = new AssistantController(
             Chat,
             memory: Memory,
@@ -124,7 +129,8 @@ public sealed class AppServices
             intentRouter: IntentRouter,
             tools: Tools,
             contextSources: ContextSources,
-            actions: Actions);
+            actions: Actions,
+            skills: Skills);
         Updates = new(Settings);
     }
 }
