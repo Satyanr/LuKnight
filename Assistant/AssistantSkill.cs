@@ -3,7 +3,8 @@ namespace LuKnight.Assistant;
 public sealed record SkillInvocation(
     string Name,
     string Argument = "",
-    bool IncludeInContext = false);
+    bool IncludeInContext = false,
+    IReadOnlyDictionary<string, string>? Parameters = null);
 
 public sealed record SkillExpansionResult(
     bool Success,

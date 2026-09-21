@@ -69,6 +69,7 @@ internal static partial class Program
     {
         CheckSkillParserAndRegistry();
         CheckUserSkillStore();
+        CheckNamedParameterSkillStore();
         await CheckUnsafeUserSkillRoutingAsync();
 
         var catalog = new MutablePlanAppCatalog();
@@ -166,6 +167,42 @@ internal static partial class Program
             "Restricted raw skill step bypassed normal routing or execution policy.");
         Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
             "Restricted skill escaped local handling.");
+    }
+
+    private static void CheckNamedParameterSkillStore()
+    {
+        string directory = CreateTemporarySkillDirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, "named.json"), """
+                { "schemaVersion": 2, "id": "project-search",
+                  "displayName": "Project Search", "description": "Search a project.",
+                  "aliases": [],
+                  "parameters": [
+                    { "name": "project", "required": true, "maxLength": 100 },
+                    { "name": "query", "required": true, "maxLength": 200 }
+                  ],
+                  "steps": ["buka documents", "cari {project} {query} di documents"] }
+                """);
+            UserSkillLoadResult loaded = new UserSkillStore(directory).Load();
+            Require(loaded.Skills.Count == 1 && loaded.Issues.Count == 0,
+                "Valid schema-2 workflow failed validation.");
+            File.WriteAllText(Path.Combine(directory, "undeclared.json"), """
+                { "schemaVersion": 2, "id": "bad-placeholder",
+                  "displayName": "Bad", "description": "Bad placeholder.", "aliases": [],
+                  "parameters": [{ "name": "query", "required": true, "maxLength": 20 }],
+                  "steps": ["cari {shell}"] }
+                """);
+            File.WriteAllText(Path.Combine(directory, "legacy-named.json"), """
+                { "schemaVersion": 1, "id": "bad-legacy",
+                  "displayName": "Bad", "description": "Bad legacy.", "aliases": [],
+                  "parameters": [{ "name": "query" }], "steps": ["cari {query}"] }
+                """);
+            UserSkillLoadResult rejected = new UserSkillStore(directory).Load();
+            Require(rejected.Skills.Count == 1 && rejected.Issues.Count == 2,
+                "Invalid schema/placeholder definitions were accepted.");
+        }
+        finally { Directory.Delete(directory, recursive: true); }
     }
 
     private static async Task CheckUnsafeUserSkillRoutingAsync()
@@ -319,6 +356,22 @@ internal static partial class Program
             "jalankan skill search-downloads dengan laporan 2026");
         Require(search is { Name: "search-downloads", Argument: "laporan 2026" },
             "Skill argument was not preserved.");
+        Require(search?.Parameters is null,
+            "Legacy skill argument compatibility broke.");
+        SkillInvocation? named = SkillCommandParser.Parse(
+            "jalankan skill find-project dengan parameter " +
+            "project=\"LuKnight\"; query=\"invoice 2026\"");
+        Require(named?.Parameters is { Count: 2 } &&
+                named.Parameters["project"] == "LuKnight" &&
+                named.Parameters["query"] == "invoice 2026",
+            "Named skill parameters were not parsed.");
+        SkillInvocation? quoted = SkillCommandParser.Parse(
+            "jalankan skill test dengan parameter query=\"alpha; beta\"");
+        Require(quoted?.Parameters?["query"] == "alpha; beta",
+            "Quoted parameter separator was split.");
+        Require(SkillCommandParser.Parse(
+                "jalankan skill test dengan parameter a=1; a=2") is null,
+            "Duplicate named parameter was accepted.");
         Require(SkillCommandParser.Parse("run skill test-workflow with report") is
             { Name: "test-workflow", Argument: "report" },
             "English skill syntax was not parsed.");
@@ -418,5 +471,39 @@ internal static partial class Program
             "Search Documents emitted wrong commands.");
         Require(!builtIns.Expand(new SkillInvocation("search-downloads")).Success,
             "Search Downloads accepted an empty query.");
+
+        var definition = new UserSkillDefinition
+        {
+            SchemaVersion = 2,
+            Id = "project-search",
+            DisplayName = "Project Search",
+            Description = "Search a project.",
+            Parameters =
+            [
+                new() { Name = "project", Required = true, MaxLength = 100 },
+                new() { Name = "query", Required = true, MaxLength = 200 }
+            ],
+            Steps = ["buka documents", "cari {project} {query} di documents"]
+        };
+        var workflow = new UserDefinedAssistantSkill(definition);
+        SkillExpansionResult namedExpanded = workflow.Expand(new SkillInvocation(
+            "project-search", Parameters: new Dictionary<string, string>
+            {
+                ["project"] = "LuKnight", ["query"] = "invoice 2026"
+            }));
+        Require(namedExpanded.Plan?.Steps[1].Command ==
+                "cari LuKnight invoice 2026 di documents",
+            "Named workflow expansion failed.");
+        Require(!workflow.Expand(new SkillInvocation(
+                "project-search", Parameters: new Dictionary<string, string>
+                { ["project"] = "LuKnight" })).Success,
+            "Required named parameter was optional.");
+        Require(!workflow.Expand(new SkillInvocation(
+                "project-search", Parameters: new Dictionary<string, string>
+                {
+                    ["project"] = "LuKnight", ["query"] = "invoice",
+                    ["shell"] = "powershell"
+                })).Success,
+            "Unknown named parameter was accepted.");
     }
 }
