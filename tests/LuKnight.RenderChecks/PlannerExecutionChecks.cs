@@ -113,6 +113,7 @@ internal static partial class Program
     {
         await CheckPlanAdmissionAndProgressAsync();
         await CheckPlanLifetimeAsync();
+        await CheckPlannerDoesNotRetryPreparationAsync();
         static DesktopAppTarget App(string id, string name) => new(id, name, id, new[] { id }, new[] { name.ToLowerInvariant() }, DesktopAppSource.BuiltIn);
         foreach (string scenario in new[] { "success", "restricted", "conversation", "cancel", "failure", "exception", "prepare-failure", "downgrade", "sensitive", "sensitive-downgrade", "cancel-token", "prepare-exception" })
         {
@@ -178,6 +179,50 @@ internal static partial class Program
             Require(!assistant.HasPendingPlan && !assistant.HasPendingAction && !assistant.IsBusy, "Plan state not cleared: " + scenario);
             Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0, "Plan leaked Gemini/context.");
         }
+    }
+
+    private static async Task CheckPlannerDoesNotRetryPreparationAsync()
+    {
+        var catalog = new MutablePlanAppCatalog();
+        catalog.Add(new DesktopAppTarget(
+            "launcher", "Launcher", "launcher", ["launcher"], ["launcher"],
+            DesktopAppSource.BuiltIn));
+        var open = new PlanTestAction(BuiltInActionNames.DesktopOpenApplication);
+        var focus = new PlanTestAction(BuiltInActionNames.DesktopFocusApplication)
+        {
+            FailPrepare = true
+        };
+        using var handler = new FakeHttp((_, _) =>
+            throw new InvalidOperationException("No-retry planner test called Gemini."));
+        using var client = new HttpClient(handler);
+        var chat = new ChatCoordinator(
+            new FakeCredentials { Key = "unused-no-retry-key" },
+            new ChatSettings
+            {
+                Provider = ChatProvider.Gemini,
+                UseDesktopActions = true,
+                DesktopPermission = DesktopPermissionLevel.Sensitive
+            }, () => null, client);
+        var assistant = new AssistantController(
+            chat,
+            intentRouter: new AssistantIntentRouter(new LocalDesktopCommandRouter(catalog)),
+            actions: new AssistantActionRouter(
+                new IAssistantAction[] { open, focus },
+                () => DesktopPermissionLevel.Sensitive));
+        AssistantReply first = await assistant.SendAsync(
+            new AssistantRequest("buka launcher lalu fokus launcher"));
+        Require(first.ActionProposal is not null,
+            "No-retry test did not prepare first step.");
+        AssistantReply failed = await assistant.ConfirmActionAsync(first.ActionProposal!.Id);
+        Require(open.Executions == 1, "First step did not execute.");
+        Require(focus.Preparations == 1,
+            "Failed preparation was automatically retried.");
+        Require(focus.Executions == 0, "Failed preparation reached execution.");
+        Require(failed.ActionProposal is null &&
+                !assistant.HasPendingPlan && !assistant.HasPendingAction,
+            "Failed preparation did not stop the plan.");
+        Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
+            "No-retry handling leaked Gemini/context.");
     }
 
     private static async Task CheckPlanAdmissionAndProgressAsync()

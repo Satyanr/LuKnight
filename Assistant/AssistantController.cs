@@ -16,6 +16,10 @@ public sealed class AssistantController
         SensitiveFinalLifetime =
             TimeSpan.FromSeconds(30);
 
+    private static readonly TimeSpan
+        UiMutationSettleDelay =
+            TimeSpan.FromMilliseconds(150);
+
     private readonly Func<DateTimeOffset>
         _clock;
 
@@ -506,21 +510,6 @@ public sealed class AssistantController
                 intent.Action,
                 cancellationToken);
 
-        // Native UI providers may return from an action just before the resulting
-        // cross-process window state becomes observable. Re-read a later plan
-        // step for a short, bounded period; preparation is read-only and every
-        // attempt still creates a fresh identity for confirmation.
-        for (int retry = 0;
-             plan.CurrentStepIndex > 0 &&
-             (!prepared.Success || prepared.Action is null) &&
-             retry < 4 &&
-             _clock() < plan.ExpiresAt;
-             retry++)
-        {
-            await Task.Delay(100, cancellationToken);
-            prepared = await Actions.PrepareAsync(intent.Action, cancellationToken);
-        }
-
         if (!prepared.Success ||
             prepared.Action is null)
         {
@@ -739,6 +728,22 @@ public sealed class AssistantController
                 AssistantEmotion.Happy);
         }
 
+        if (NeedsUiSettle(pending.Action))
+        {
+            await Task.Delay(UiMutationSettleDelay, cancellationToken);
+            if (_clock() >= plan.ExpiresAt)
+            {
+                _pendingPlan = null;
+                string expired =
+                    $"Langkah {stepIndex + 1}/{plan.Plan.Count} selesai, " +
+                    "tetapi batas waktu rencana habis saat menunggu UI stabil. " +
+                    "Sisa langkah dihentikan.";
+                Conversation.AddAssistant(expired, includeInContext: false);
+                return new AssistantReply(
+                    expired, AssistantBackend.Local, _clock(), AssistantEmotion.Neutral);
+            }
+        }
+
         _pendingPlan =
             plan with
             {
@@ -749,6 +754,11 @@ public sealed class AssistantController
         return await ContinuePlanAsync(
             cancellationToken);
     }
+
+    private static bool NeedsUiSettle(PreparedAssistantAction action) =>
+        action.Name is
+            BuiltInActionNames.DesktopInvokeUiControl or
+            BuiltInActionNames.DesktopSetUiText;
 
     private async Task<AssistantReply> PrepareActionAsync(
         AssistantRequest request,
