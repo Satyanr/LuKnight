@@ -212,6 +212,13 @@ internal static partial class Program
 
             return;
         }
+        if (args.Contains(
+                "--user-skill-live"))
+        {
+            Task.Run(CheckUserSkillLiveAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} native user-skill checks.");
+            return;
+        }
         if (args.Contains("--permissions"))
         {
             Task.Run(CheckPermissionLevelsAsync).GetAwaiter().GetResult();

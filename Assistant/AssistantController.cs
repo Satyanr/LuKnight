@@ -506,6 +506,21 @@ public sealed class AssistantController
                 intent.Action,
                 cancellationToken);
 
+        // Native UI providers may return from an action just before the resulting
+        // cross-process window state becomes observable. Re-read a later plan
+        // step for a short, bounded period; preparation is read-only and every
+        // attempt still creates a fresh identity for confirmation.
+        for (int retry = 0;
+             plan.CurrentStepIndex > 0 &&
+             (!prepared.Success || prepared.Action is null) &&
+             retry < 4 &&
+             _clock() < plan.ExpiresAt;
+             retry++)
+        {
+            await Task.Delay(100, cancellationToken);
+            prepared = await Actions.PrepareAsync(intent.Action, cancellationToken);
+        }
+
         if (!prepared.Success ||
             prepared.Action is null)
         {

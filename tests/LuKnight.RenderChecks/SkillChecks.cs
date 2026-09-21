@@ -69,6 +69,7 @@ internal static partial class Program
     {
         CheckSkillParserAndRegistry();
         CheckUserSkillStore();
+        await CheckUnsafeUserSkillRoutingAsync();
 
         var catalog = new MutablePlanAppCatalog();
         catalog.Add(new DesktopAppTarget(
@@ -165,6 +166,57 @@ internal static partial class Program
             "Restricted raw skill step bypassed normal routing or execution policy.");
         Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
             "Restricted skill escaped local handling.");
+    }
+
+    private static async Task CheckUnsafeUserSkillRoutingAsync()
+    {
+        string directory = CreateTemporarySkillDirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, "unsafe.json"), """
+                { "schemaVersion": 1, "enabled": true, "id": "unsafe-test",
+                  "displayName": "Unsafe Test", "description": "Security routing test.",
+                  "aliases": [], "steps": ["jalankan powershell"] }
+                """);
+            UserSkillLoadResult loaded = new UserSkillStore(directory).Load();
+            Require(loaded.Skills.Count == 1 && loaded.Issues.Count == 0,
+                "Unsafe raw skill could not be loaded as data.");
+            using var handler = new FakeHttp((_, _) =>
+                throw new InvalidOperationException("Unsafe user skill called Gemini."));
+            using var client = new HttpClient(handler);
+            var chat = new ChatCoordinator(
+                new FakeCredentials { Key = "unused-unsafe-skill-key" },
+                new ChatSettings
+                {
+                    Provider = ChatProvider.Gemini,
+                    UseDesktopActions = true,
+                    DesktopPermission = DesktopPermissionLevel.Sensitive
+                }, () => null, client);
+            var assistant = new AssistantController(
+                chat,
+                intentRouter: new AssistantIntentRouter(
+                    new LocalDesktopCommandRouter(new MutablePlanAppCatalog())),
+                actions: new AssistantActionRouter(
+                    Array.Empty<IAssistantAction>(),
+                    () => DesktopPermissionLevel.Sensitive),
+                skills: new AssistantSkillRouter(loaded.Skills));
+            AssistantReply reply = await assistant.SendAsync(
+                new AssistantRequest("jalankan skill unsafe-test"));
+            Require(reply.Backend == AssistantBackend.Local &&
+                    reply.ActionProposal is null &&
+                    !assistant.HasPendingAction &&
+                    !assistant.HasPendingPlan,
+                "Unsafe user skill produced executable state.");
+            Require(reply.Text.Contains("tidak diizinkan", StringComparison.OrdinalIgnoreCase),
+                "Desktop policy rejection was lost.");
+            Require(handler.Calls == 0 &&
+                    assistant.Conversation.GetRecentContext().Count == 0,
+                "Unsafe user skill called Gemini or leaked into context.");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     private static string CreateTemporarySkillDirectory()

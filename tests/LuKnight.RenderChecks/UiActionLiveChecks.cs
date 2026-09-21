@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Windows.Automation.Peers;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -15,6 +16,142 @@ using LuKnight.Services;
 
 internal static partial class Program
 {
+    private static async Task CheckUserSkillLiveAsync()
+    {
+        string token = Guid.NewGuid().ToString("N")[..8];
+        string initialTitle = $"{UiFixturePrefix} {token}";
+        string refreshTitle = $"{initialTitle} — REFRESH INVOKED";
+        string saveTitle = $"{initialTitle} — SAVE INVOKED";
+        string skillDirectory = Path.Combine(Path.GetTempPath(),
+            "LuKnight-UserSkillLive", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(skillDirectory);
+        var definition = new UserSkillDefinition
+        {
+            Id = "fixture-workflow",
+            DisplayName = "Fixture Workflow",
+            Description = "Native user-defined skill acceptance workflow.",
+            Aliases = ["fixture-flow"],
+            Steps =
+            [
+                $"klik tombol Refresh di window {initialTitle}",
+                $"klik tombol Save di window {refreshTitle}"
+            ]
+        };
+        File.WriteAllText(
+            Path.Combine(skillDirectory, "fixture-workflow.json"),
+            JsonSerializer.Serialize(definition, SettingsService.JsonOptions));
+        using Process fixture = StartUiFixtureProcess(token);
+        try
+        {
+            UserSkillLoadResult loaded = new UserSkillStore(skillDirectory).Load();
+            Require(loaded.Skills.Count == 1 && loaded.Issues.Count == 0,
+                "Native user skill JSON was not loaded.");
+            var skills = new AssistantSkillRouter(BuiltInSkillCatalog.Create());
+            foreach (IAssistantSkill skill in loaded.Skills) skills.Register(skill);
+            Require(skills.Catalog.Any(item => item.Id == "fixture-workflow"),
+                "User-defined skill missing from runtime catalog.");
+
+            var windows = new DesktopWindowTargetService();
+            await WaitForFixtureWindowAsync(windows, fixture, initialTitle);
+            var ui = new WindowsDesktopUiAutomationReader();
+            var sequence = new List<string>();
+            var invoke = new RecordingUiActionExecutor(
+                new WindowsDesktopUiActionExecutor(), sequence);
+            var mouse = new RecordingMouseActionExecutor(
+                new WindowsDesktopMouseActionExecutor(), sequence);
+            using var handler = new FakeHttp((_, _) =>
+                throw new InvalidOperationException("Native user skill attempted Gemini."));
+            using var client = new HttpClient(handler);
+            var chat = new ChatCoordinator(
+                new FakeCredentials { Key = "unused-user-skill-live-key" },
+                new ChatSettings
+                {
+                    Provider = ChatProvider.Gemini,
+                    UseDesktopActions = true,
+                    DesktopPermission = DesktopPermissionLevel.Sensitive
+                }, () => null, client);
+            var desktopRouter = new LocalDesktopCommandRouter(
+                new DesktopAppCatalogService(() => Array.Empty<DesktopAppTarget>()), windows);
+            var intentRouter = new AssistantIntentRouter(desktopRouter);
+            var uiAction = new InvokeDesktopUiControlAction(
+                () => chat.Options.UseDesktopActions, windows, ui, invoke, mouse);
+            var actions = new AssistantActionRouter(
+                new IAssistantAction[] { uiAction },
+                () => chat.Options.DesktopPermission);
+            var assistant = new AssistantController(
+                chat, intentRouter: intentRouter, actions: actions, skills: skills);
+
+            AssistantReply first = await assistant.SendAsync(
+                new AssistantRequest("jalankan skill fixture-flow"));
+            Require(first.ActionProposal is
+            {
+                IsPlanStep: true, PlanStepNumber: 1, PlanStepCount: 2,
+                Risk: AssistantActionRisk.Interaction,
+                ConfirmationStage: AssistantConfirmationStage.Standard
+            }, "User skill did not enter native planner step 1/2.");
+            Require(invoke.Calls == 0 && mouse.Calls == 0,
+                "User skill executed before confirmation.");
+            Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
+                "User skill preparation leaked Gemini/context.");
+            Require(!windows.Capture().Any(window =>
+                    window.ProcessId == fixture.Id &&
+                    string.Equals(window.Title, refreshTitle, StringComparison.Ordinal)),
+                "Future user-skill target existed before step 1.");
+
+            AssistantReply review = await assistant.ConfirmActionAsync(first.ActionProposal!.Id);
+            Require(invoke.Calls == 1 && mouse.Calls == 0 &&
+                    sequence.SequenceEqual(new[] { "uia" }),
+                "Refresh was not native UIA-only.");
+            await WaitForFixtureWindowAsync(windows, fixture, refreshTitle);
+            Require(review.ActionProposal is
+            {
+                IsPlanStep: true, PlanStepNumber: 2, PlanStepCount: 2,
+                Risk: AssistantActionRisk.Sensitive,
+                ConfirmationStage: AssistantConfirmationStage.SensitiveReview
+            }, "User skill step 2 was not freshly routed as Sensitive.");
+
+            Guid reviewId = review.ActionProposal!.Id;
+            AssistantReply final = await assistant.ConfirmActionAsync(reviewId);
+            Require(final.ActionProposal is
+            {
+                IsPlanStep: true, PlanStepNumber: 2, PlanStepCount: 2,
+                Risk: AssistantActionRisk.Sensitive,
+                ConfirmationStage: AssistantConfirmationStage.SensitiveFinal
+            }, "User skill SensitiveReview did not produce final confirmation.");
+            Require(final.ActionProposal!.Id != reviewId &&
+                    invoke.Calls == 1 && mouse.Calls == 0 && sequence.Count == 1,
+                "First Sensitive confirmation executed or reused its ID.");
+
+            AssistantReply completed = await assistant.ConfirmActionAsync(final.ActionProposal.Id);
+            Require(completed.ActionProposal is null && invoke.Calls == 2 &&
+                    mouse.Calls == 0 && sequence.SequenceEqual(new[] { "uia", "uia" }),
+                "User skill native execution did not complete in UIA order.");
+            await WaitForFixtureWindowAsync(windows, fixture, saveTitle);
+            Require(!assistant.HasPendingAction && !assistant.HasPendingPlan,
+                "User skill remained pending after completion.");
+            Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
+                "Native user skill called Gemini or leaked into context.");
+
+            Console.WriteLine();
+            Console.WriteLine("User JSON skill loaded.");
+            Console.WriteLine("Step 1/2: native Refresh UIA Invoke.");
+            Console.WriteLine("Step 2 freshly routed after native state change.");
+            Console.WriteLine("Step 2/2: Sensitive Save.");
+            Console.WriteLine("Sensitive review: no execution.");
+            Console.WriteLine("Sensitive final: native Save UIA Invoke.");
+            Console.WriteLine("Gemini calls: 0.");
+            Console.WriteLine();
+            Console.WriteLine("PASS: native user-defined skill acceptance.");
+        }
+        finally
+        {
+            await StopUiFixtureAsync(fixture);
+            try { Directory.Delete(skillDirectory, recursive: true); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            { Console.WriteLine($"Warning: temporary skill folder cleanup failed: {ex.Message}"); }
+        }
+    }
+
     private static async Task
         CheckPlannerLiveAsync()
     {
