@@ -290,3 +290,26 @@ no execution authority and does not delay shutdown.
 
 Programming errors in core composition are not silently converted into degraded
 startup state.
+
+## Long-run bounded state
+
+Long-running Lu-Knight sessions must keep local runtime state bounded.
+
+Current invariants include:
+
+- session transcript: maximum 100 turns
+- provider context: maximum 20 eligible turns
+- long-term memory: maximum 200 entries
+- local schedules: maximum 128
+- proactive companion: maximum 3 presentations per session
+- forensic invalid-state backups: maximum 3 generations per state file
+
+Forensic retention is best-effort when filesystem access prevents deletion.
+Committed primary and backup generations are outside forensic pruning.
+
+Repeated cancellation, reminder recovery, window recreation, and persistent
+state rotation must not create pending authorization, duplicate native
+execution, stale temporary files, or unbounded local artifacts.
+
+Stress acceptance validates bounded state and lifecycle behavior; it is not a
+performance benchmark.

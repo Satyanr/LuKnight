@@ -15,6 +15,8 @@ internal enum CommittedStateCandidateStatus
 
 internal static class CommittedStateRecovery
 {
+    public const int MaxInvalidSnapshots = 3;
+
     public static string BackupPath(
         string path) =>
         path + ".bak";
@@ -75,7 +77,7 @@ internal static class CommittedStateRecovery
                 overwrite:
                     false);
 
-
+            PruneInvalidSnapshots(path);
             return true;
         }
         catch (Exception ex)
@@ -187,6 +189,67 @@ internal static class CommittedStateRecovery
         }
     }
 
+
+    private static void
+        PruneInvalidSnapshots(
+            string path)
+    {
+        try
+        {
+            string fullPath =
+                Path.GetFullPath(
+                    path);
+
+            string directory =
+                Path.GetDirectoryName(
+                    fullPath)!;
+
+            string name =
+                Path.GetFileName(
+                    fullPath);
+
+
+            if (!Directory.Exists(
+                    directory))
+            {
+                return;
+            }
+
+
+            string[] invalid =
+                Directory
+                    .GetFiles(
+                        directory,
+                        name +
+                        ".invalid-*.bak",
+                        SearchOption.TopDirectoryOnly)
+                    .OrderByDescending(
+                        file =>
+                            File.GetLastWriteTimeUtc(
+                                file))
+                    .ThenByDescending(
+                        file =>
+                            file,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+
+            foreach (string stale
+                     in invalid.Skip(
+                         MaxInvalidSnapshots))
+            {
+                TryDelete(
+                    stale);
+            }
+        }
+        catch (Exception ex)
+            when (ex is
+                IOException or
+                UnauthorizedAccessException)
+        {
+            // Best-effort forensic retention.
+        }
+    }
 
     private static void TryDelete(
         string path)

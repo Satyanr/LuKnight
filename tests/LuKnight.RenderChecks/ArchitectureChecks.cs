@@ -580,6 +580,18 @@ internal static partial class Program
             appSource.Contains("Automatic update check", StringComparison.Ordinal),
             "Optional notification polling or updater lacks a startup isolation boundary.");
 
+        string conversationSource = Read("Assistant/ConversationManager.cs");
+        string memorySource = Read("Services/MemoryService.cs");
+        string committedRecovery = Read("Services/CommittedStateRecovery.cs");
+        Require(Compact(conversationSource).Contains("MaxSessionTurns=100", StringComparison.Ordinal) &&
+            Compact(conversationSource).Contains("MaxContextTurns=20", StringComparison.Ordinal),
+            "Conversation history bounds changed unexpectedly.");
+        Require(Compact(memorySource).Contains("MaxEntries=200", StringComparison.Ordinal),
+            "Long-term memory bound disappeared.");
+        Require(Compact(committedRecovery).Contains("MaxInvalidSnapshots=3", StringComparison.Ordinal) &&
+            committedRecovery.Contains("PruneInvalidSnapshots", StringComparison.Ordinal),
+            "Corrupt-state forensic snapshots are unbounded.");
+
         string scheduleStoreSource =
             Read(
                 "Services/LocalScheduleStore.cs");
