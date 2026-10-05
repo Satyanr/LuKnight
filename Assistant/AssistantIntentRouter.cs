@@ -139,7 +139,7 @@ public sealed class AssistantIntentRouter
 
         if (IsApplicationAwarenessQuery(input))
         {
-            return AssistantIntent.UseTool(new ToolInvocation(BuiltInToolNames.DesktopListApplications, new Dictionary<string, string>()));
+            return AssistantIntent.UseTool(new ToolInvocation(BuiltInToolNames.DesktopListApplications, new Dictionary<string, string>(), IncludeInContext: false));
         }
 
         return _desktop.TryRoute(input) ?? AssistantIntent.Conversation();

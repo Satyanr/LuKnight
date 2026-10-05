@@ -522,5 +522,27 @@ internal static partial class Program
             capabilityCreation >
                 skillRegistration,
             "Capability registry is created before user skill registration.");
+
+        string controllerSource =
+            Read(
+                "Assistant/AssistantController.cs");
+
+
+        Require(
+            controllerSource.Contains(
+                "retainInConversationContext",
+                StringComparison.Ordinal),
+            "Explicit request-scoped context boundary is missing.");
+
+        string desktopRouter =
+            Read(
+                "Assistant/LocalDesktopCommandRouter.cs");
+
+
+        Require(
+            desktopRouter.Contains(
+                "IncludeInContext: false",
+                StringComparison.Ordinal),
+            "Local desktop router does not mark actions private.");
     }
 }

@@ -40,16 +40,16 @@ public sealed class LocalDesktopCommandRouter
 
     private AssistantIntent Application(string target, bool focus)
     {
-        if (string.IsNullOrWhiteSpace(target)) return AssistantIntent.RespondLocal("Sebutkan nama aplikasi yang ingin dibuka atau difokuskan.");
+        if (string.IsNullOrWhiteSpace(target)) return AssistantIntent.RespondLocal("Sebutkan nama aplikasi yang ingin dibuka atau difokuskan.", includeInContext: false);
         if (target.Length > 200 || DesktopAppPolicy.IsRestrictedQuery(target))
-            return AssistantIntent.RespondLocal("Perintah ini tidak diizinkan. Gunakan nama aplikasi biasa yang terdaftar di Windows; shell, script, dan executable path tidak didukung.");
+            return AssistantIntent.RespondLocal("Perintah ini tidak diizinkan. Gunakan nama aplikasi biasa yang terdaftar di Windows; shell, script, dan executable path tidak didukung.", includeInContext: false);
         var result = _apps.Resolve(target);
         if (result.Found && result.Match is { } app)
-            return AssistantIntent.UseAction(new(focus ? BuiltInActionNames.DesktopFocusApplication : BuiltInActionNames.DesktopOpenApplication,
-                new Dictionary<string, string> { ["appId"] = app.Id }));
+            return AssistantIntent.UseAction(new ActionInvocation(focus ? BuiltInActionNames.DesktopFocusApplication : BuiltInActionNames.DesktopOpenApplication,
+                new Dictionary<string, string> { ["appId"] = app.Id }, IncludeInContext: false));
         if (result.Ambiguous)
-            return AssistantIntent.RespondLocal($"Aku menemukan beberapa aplikasi yang mirip: {string.Join(", ", result.Alternatives.Take(3).Select(a => a.DisplayName))}. Sebutkan nama yang lebih spesifik.");
-        return AssistantIntent.RespondLocal($"Aku tidak menemukan aplikasi \"{target}\" di aplikasi Windows yang terdaftar.");
+            return AssistantIntent.RespondLocal($"Aku menemukan beberapa aplikasi yang mirip: {string.Join(", ", result.Alternatives.Take(3).Select(a => a.DisplayName))}. Sebutkan nama yang lebih spesifik.", includeInContext: false);
+        return AssistantIntent.RespondLocal($"Aku tidak menemukan aplikasi \"{target}\" di aplikasi Windows yang terdaftar.", includeInContext: false);
     }
 
     private AssistantIntent Window(string query)
@@ -81,10 +81,10 @@ public sealed class LocalDesktopCommandRouter
 
     private static AssistantIntent Folder(string target) => ExplorerLocationCatalog.TryResolve(target, out var location)
         ? LocationAction(location.Id)
-        : AssistantIntent.RespondLocal("Lokasi folder belum didukung. Pilih Home, Desktop, Documents, Downloads, Pictures, Music, atau Videos.");
+        : AssistantIntent.RespondLocal("Lokasi folder belum didukung. Pilih Home, Desktop, Documents, Downloads, Pictures, Music, atau Videos.", includeInContext: false);
 
-    private static AssistantIntent LocationAction(string id) => AssistantIntent.UseAction(new(BuiltInActionNames.DesktopOpenFolder,
-        new Dictionary<string, string> { ["locationId"] = id }));
+    private static AssistantIntent LocationAction(string id) => AssistantIntent.UseAction(new ActionInvocation(BuiltInActionNames.DesktopOpenFolder,
+        new Dictionary<string, string> { ["locationId"] = id }, IncludeInContext: false));
 
     private static AssistantIntent? TrySearch(string text)
     {
@@ -103,12 +103,12 @@ public sealed class LocalDesktopCommandRouter
         }
         // Do not silently search everywhere when an explicit scope is unrecognized.
         if (locationId is null && Regex.IsMatch(query, @"\sdi\s", RegexOptions.IgnoreCase))
-            return AssistantIntent.RespondLocal("Lokasi pencarian belum dikenal. Gunakan nama folder seperti Documents atau Downloads.");
+            return AssistantIntent.RespondLocal("Lokasi pencarian belum dikenal. Gunakan nama folder seperti Documents atau Downloads.", includeInContext: false);
         if (!WindowsExplorerActionExecutor.IsValidQuery(query))
-            return AssistantIntent.RespondLocal("Kata pencarian harus berisi 2 sampai 200 karakter tanpa karakter kontrol.");
+            return AssistantIntent.RespondLocal("Kata pencarian harus berisi 2 sampai 200 karakter tanpa karakter kontrol.", includeInContext: false);
         var arguments = new Dictionary<string, string> { ["query"] = query };
         if (locationId is not null) arguments["locationId"] = locationId;
-        return AssistantIntent.UseAction(new(BuiltInActionNames.DesktopSearchExplorer, arguments));
+        return AssistantIntent.UseAction(new ActionInvocation(BuiltInActionNames.DesktopSearchExplorer, arguments, IncludeInContext: false));
     }
 
     private static string? Extract(string text, IEnumerable<string> prefixes)

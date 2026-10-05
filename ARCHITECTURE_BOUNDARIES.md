@@ -167,3 +167,26 @@ A presented reminder remains pending until Run or Dismiss acknowledgement.
 Presentation cooldown must not be treated as acknowledgement.
 
 An unacknowledged reminder has priority over proactive companion suggestions.
+
+## Request-scoped context
+
+Explicit context sources are one-shot:
+
+- file
+- clipboard
+- screen
+- system status
+
+The source reference may be sent to the AI only for the request that explicitly
+requested it.
+
+The request and reference-derived assistant response may remain visible in the
+local session transcript, but must not enter future short-term provider context.
+
+Failed context requests are also excluded from future provider context.
+
+Deterministic desktop commands and their local responses are not conversation
+context.
+
+Workflow runtime outputs, including window/process metadata, remain local to the
+workflow state and must not enter Gemini conversation history.

@@ -220,15 +220,16 @@ public sealed class AssistantController
                 ContextCaptureResult captured = await ContextSources.CaptureAsync(invocation, cancellationToken);
                 if (!captured.Success || captured.Reference is null)
                 {
-                    Conversation.AddUser(request);
-                    Conversation.AddAssistant(captured.Message);
+                    Conversation.AddUser(request, includeInContext: false);
+                    Conversation.AddAssistant(captured.Message, includeInContext: false);
                     return new AssistantReply(captured.Message, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Confused);
                 }
 
                 return await SendConversationAsync(
                     request,
                     new[] { captured.Reference },
-                    cancellationToken);
+                    cancellationToken,
+                    retainInConversationContext: false);
             }
 
             if (intent.Kind == AssistantIntentKind.SkillCatalog)
@@ -888,6 +889,9 @@ public sealed class AssistantController
     {
         ActionPreparationResult prepared =
             await _actions.PrepareAsync(invocation, cancellationToken);
+        // Preparation must not promote a private local invocation into provider history.
+        if (!invocation.IncludeInContext && prepared.Action is { } privateAction)
+            prepared = prepared with { Action = privateAction with { IncludeInContext = false } };
         bool includeInContext = prepared.Action?.IncludeInContext ?? invocation.IncludeInContext;
         Conversation.AddUser(request, includeInContext);
         if (!prepared.Success || prepared.Action is null)
@@ -1262,10 +1266,11 @@ public sealed class AssistantController
     private async Task<AssistantReply> SendConversationAsync(
         AssistantRequest request,
         IReadOnlyList<ChatReferenceBlock> references,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retainInConversationContext = true)
     {
         IReadOnlyList<ChatContextTurn> context = BuildShortTermContext();
-        Conversation.AddUser(request);
+        Conversation.AddUser(request, includeInContext: retainInConversationContext);
 
         try
         {
@@ -1284,7 +1289,7 @@ public sealed class AssistantController
                 references,
                 cancellationToken);
 
-            Conversation.AddAssistant(reply);
+            Conversation.AddAssistant(reply, includeInContext: retainInConversationContext);
 
             AssistantBackend backend = _chat.LastReplyWasGemini ? AssistantBackend.Gemini : AssistantBackend.Local;
             AssistantEmotion emotion = Emotions.EvaluateConversation(

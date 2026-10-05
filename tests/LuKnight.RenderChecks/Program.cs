@@ -39,6 +39,19 @@ internal static partial class Program
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
         if (args.Contains(
+                "--privacy"))
+        {
+            Task.Run(
+                CheckPrivacyIsolationAsync)
+                .GetAwaiter()
+                .GetResult();
+
+            Console.WriteLine(
+                $"PASS: {_checks} privacy isolation checks.");
+
+            return;
+        }
+        if (args.Contains(
                 "--architecture"))
         {
             CheckArchitectureBoundaries();
