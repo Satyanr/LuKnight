@@ -1,4 +1,5 @@
 using System.IO;
+using LuKnight.Services;
 
 internal static partial class Program
 {
@@ -259,6 +260,74 @@ internal static partial class Program
             Read(
                 "Services/AppServices.cs");
 
+
+        foreach (string forbiddenPublicSurface
+                 in new[]
+                 {
+                     "public IDesktopActionExecutor ",
+                     "public IDesktopWindowActionExecutor ",
+                     "public IDesktopUiActionExecutor ",
+                     "public IDesktopMouseActionExecutor ",
+                     "public IDesktopUiTextActionExecutor ",
+                     "public IDesktopKeyboardTextActionExecutor ",
+                     "public IExplorerActionExecutor ",
+                     "public IDesktopUiAutomationReader ",
+                     "public IDesktopUiScreenEvidenceService ",
+                     "public IDesktopUiAssistedResolver "
+                 })
+        {
+            Require(
+                !services.Contains(
+                    forbiddenPublicSurface,
+                    StringComparison.Ordinal),
+                $"AppServices exposes raw desktop primitive: {forbiddenPublicSurface.Trim()}");
+        }
+
+        foreach (string requiredInjection
+                 in new[]
+                 {
+                     "IDesktopActionExecutor? desktopExecutor",
+                     "IExplorerActionExecutor? explorerExecutor",
+                     "IDesktopWindowActionExecutor? windowExecutor",
+                     "IDesktopUiAutomationReader? uiAutomation",
+                     "IDesktopUiActionExecutor? uiActionExecutor",
+                     "IDesktopMouseActionExecutor? mouseActionExecutor",
+                     "IDesktopUiTextActionExecutor? uiTextActionExecutor",
+                     "IDesktopKeyboardTextActionExecutor? keyboardTextActionExecutor",
+                     "IDesktopUiScreenEvidenceService? uiScreenEvidenceService",
+                     "IDesktopUiAssistedResolver? uiAssistedResolver"
+                 })
+        {
+            Require(
+                services.Contains(
+                    requiredInjection,
+                    StringComparison.Ordinal),
+                $"AppServices lost injectable desktop dependency: {requiredInjection}");
+        }
+
+        Require(
+            services.Contains(
+                "new WindowsDesktopUiActionExecutor()",
+                StringComparison.Ordinal) &&
+            services.Contains(
+                "new WindowsDesktopMouseActionExecutor()",
+                StringComparison.Ordinal),
+            "Native desktop executors are no longer composed at AppServices boundary.");
+
+        // Verify the compiled public API as well, independent of source formatting.
+        foreach (Type primitive in new[]
+        {
+            typeof(IDesktopActionExecutor), typeof(IDesktopWindowActionExecutor),
+            typeof(IDesktopUiActionExecutor), typeof(IDesktopMouseActionExecutor),
+            typeof(IDesktopUiTextActionExecutor), typeof(IDesktopKeyboardTextActionExecutor),
+            typeof(IExplorerActionExecutor), typeof(IDesktopUiAutomationReader),
+            typeof(IDesktopUiScreenEvidenceService), typeof(IDesktopUiAssistedResolver)
+        })
+        {
+            Require(!typeof(AppServices).GetProperties().Any(property => primitive.IsAssignableFrom(property.PropertyType)) &&
+                !typeof(AppServices).GetFields().Any(field => primitive.IsAssignableFrom(field.FieldType)),
+                $"AppServices public API exposes raw desktop primitive: {primitive.Name}");
+        }
 
         int skillRegistration =
             services.IndexOf(

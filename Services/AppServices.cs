@@ -11,16 +11,7 @@ public sealed class AppServices
     public AssistantIntentRouter IntentRouter { get; }
     public IDesktopAppCatalog DesktopApps { get; }
     public IDesktopWindowTargetCatalog DesktopWindows { get; }
-    public IDesktopWindowActionExecutor WindowActions { get; }
-    public IDesktopUiAutomationReader UiAutomation { get; }
-    public IDesktopUiActionExecutor UiActions { get; }
-    public IDesktopMouseActionExecutor MouseActions { get; }
-    public IDesktopUiTextActionExecutor UiTextActions { get; }
-    public IDesktopKeyboardTextActionExecutor KeyboardTextActions { get; }
-    public IDesktopUiScreenEvidenceService UiScreenEvidence { get; }
-    public IDesktopUiAssistedResolver UiAssistedResolver { get; }
     public LocalDesktopCommandRouter DesktopCommands { get; }
-    public IExplorerActionExecutor ExplorerActions { get; }
     public AssistantToolRouter Tools { get; }
     public AssistantContextSourceRouter ContextSources { get; }
     public AssistantActionRouter Actions { get; }
@@ -71,24 +62,24 @@ public sealed class AppServices
         Context = context ?? new();
         DesktopApps = desktopApps ?? DesktopAppCatalogService.Shared;
         DesktopWindows = desktopWindows ?? new DesktopWindowTargetService();
-        WindowActions = windowExecutor ?? new WindowsDesktopWindowActionExecutor();
-        UiAutomation = uiAutomation ?? new WindowsDesktopUiAutomationReader();
-        UiActions = uiActionExecutor ?? new WindowsDesktopUiActionExecutor();
-        MouseActions = mouseActionExecutor ?? new WindowsDesktopMouseActionExecutor();
-        UiTextActions = uiTextActionExecutor ?? new WindowsDesktopUiTextActionExecutor();
-        KeyboardTextActions = keyboardTextActionExecutor ?? new WindowsDesktopKeyboardTextActionExecutor();
-        UiScreenEvidence =
+        IDesktopWindowActionExecutor windowActions = windowExecutor ?? new WindowsDesktopWindowActionExecutor();
+        IDesktopUiAutomationReader uiAutomationReader = uiAutomation ?? new WindowsDesktopUiAutomationReader();
+        IDesktopUiActionExecutor uiActions = uiActionExecutor ?? new WindowsDesktopUiActionExecutor();
+        IDesktopMouseActionExecutor mouseActions = mouseActionExecutor ?? new WindowsDesktopMouseActionExecutor();
+        IDesktopUiTextActionExecutor uiTextActions = uiTextActionExecutor ?? new WindowsDesktopUiTextActionExecutor();
+        IDesktopKeyboardTextActionExecutor keyboardTextActions = keyboardTextActionExecutor ?? new WindowsDesktopKeyboardTextActionExecutor();
+        IDesktopUiScreenEvidenceService uiScreenEvidence =
             uiScreenEvidenceService ??
             new WindowsDesktopUiScreenEvidenceService();
 
-        UiAssistedResolver =
+        IDesktopUiAssistedResolver uiAssistedResolverInstance =
             uiAssistedResolver ??
             new DesktopUiAssistedResolver(
-                UiScreenEvidence);
+                uiScreenEvidence);
         DesktopAppIndexWarmup.Start(DesktopApps);
         DesktopCommands = new LocalDesktopCommandRouter(DesktopApps, DesktopWindows);
         IntentRouter = new AssistantIntentRouter(DesktopCommands);
-        ExplorerActions = explorerExecutor ?? new WindowsExplorerActionExecutor();
+        IExplorerActionExecutor explorerActions = explorerExecutor ?? new WindowsExplorerActionExecutor();
         desktopExecutor ??= new WindowsDesktopActionExecutor();
         Tools = new AssistantToolRouter(new IAssistantTool[]
         {
@@ -98,7 +89,7 @@ public sealed class AppServices
             new InspectDesktopUiTool(
                 () => Chat.Options.UseDesktopActions,
                 DesktopWindows,
-                UiAutomation)
+                uiAutomationReader)
         });
         ContextSources = new AssistantContextSourceRouter(new IAssistantContextSource[]
         {
@@ -111,23 +102,23 @@ public sealed class AppServices
         {
             new OpenDesktopApplicationAction(() => Chat.Options.UseDesktopActions, desktopExecutor, DesktopApps),
             new FocusDesktopApplicationAction(() => Chat.Options.UseDesktopActions, desktopExecutor, DesktopApps),
-            new FocusDesktopWindowAction(() => Chat.Options.UseDesktopActions, DesktopWindows, WindowActions),
+            new FocusDesktopWindowAction(() => Chat.Options.UseDesktopActions, DesktopWindows, windowActions),
             new SetDesktopUiTextAction(
                 () =>
                     Chat.Options.UseDesktopActions,
                 DesktopWindows,
-                UiAutomation,
-                UiTextActions,
-                KeyboardTextActions),
+                uiAutomationReader,
+                uiTextActions,
+                keyboardTextActions),
             new InvokeDesktopUiControlAction(
                 () => Chat.Options.UseDesktopActions,
                 DesktopWindows,
-                UiAutomation,
-                UiActions,
-                MouseActions,
-                UiAssistedResolver),
-            new OpenExplorerFolderAction(() => Chat.Options.UseDesktopActions, ExplorerActions),
-            new SearchExplorerAction(() => Chat.Options.UseDesktopActions, ExplorerActions)
+                uiAutomationReader,
+                uiActions,
+                mouseActions,
+                uiAssistedResolverInstance),
+            new OpenExplorerFolderAction(() => Chat.Options.UseDesktopActions, explorerActions),
+            new SearchExplorerAction(() => Chat.Options.UseDesktopActions, explorerActions)
         }, () => Chat.Options.DesktopPermission);
         Skills = new AssistantSkillRouter(BuiltInSkillCatalog.Create());
         UserSkills = userSkillStore ?? new UserSkillStore();
