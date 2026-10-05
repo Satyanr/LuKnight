@@ -29,6 +29,7 @@ public sealed class AppServices
     public LocalScheduleStore ScheduleStore { get; }
     public LocalSchedulerService Scheduler { get; }
     public LocalCompanionAdvisor CompanionAdvisor { get; }
+    public AssistantCapabilityRegistry Capabilities { get; }
     public UserSkillStore UserSkills { get; }
     public IReadOnlyList<UserSkillLoadIssue> UserSkillIssues { get; private set; } = [];
     public AssistantController Assistant { get; }
@@ -139,6 +140,7 @@ public sealed class AppServices
             { skillIssues.Add(new(skill.Id, $"Skill tidak diregistrasikan: {ex.Message}")); }
         }
         UserSkillIssues = skillIssues.AsReadOnly();
+        Capabilities = AssistantCapabilityRegistry.Create(Skills, Actions, Tools);
         WorkflowRuntime =
             workflowRuntime ??
             new AssistantWorkflowRuntime();

@@ -389,4 +389,19 @@ public sealed class TrayIconService : IDisposable
 
         return true;
     }
+    public void CancelCompanionNotification()
+    {
+        if (_disposed)
+            return;
+
+
+        PruneExpiredBalloonRoute();
+
+
+        if (_balloonRoute ==
+            BalloonRoute.Companion)
+        {
+            ClearBalloonRoute();
+        }
+    }
 }

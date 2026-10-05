@@ -47,12 +47,59 @@ public sealed record ChatSettings
 }
 public sealed record WindowPlacement(double Left, double Top, double Width, double Height);
 public sealed record MascotPlacement(double Left, double MonitorLeft, double MonitorTop);
+public sealed record CompanionSettings
+{
+    // Explicit opt-in.
+    public bool Enabled
+    {
+        get;
+        init;
+    } = false;
+
+    public bool Coding
+    {
+        get;
+        init;
+    } = true;
+
+    public bool Browsing
+    {
+        get;
+        init;
+    } = true;
+
+    public bool Creative
+    {
+        get;
+        init;
+    } = true;
+
+    public bool Office
+    {
+        get;
+        init;
+    } = true;
+
+    public bool Files
+    {
+        get;
+        init;
+    } = true;
+
+    public bool Communication
+    {
+        get;
+        init;
+    } = true;
+}
+
 public sealed record AppSettings
 {
-    public int SchemaVersion { get; init; } = 1;
+    public int SchemaVersion { get; init; } = 2;
     public GeneralSettings General { get; init; } = new();
     public BehaviorOptions Behavior { get; init; } = new();
     public ChatSettings Chat { get; init; } = new();
+    public CompanionSettings Companion { get; init; } = new();
     public WindowPlacement? SettingsWindow { get; init; }
     public MascotPlacement? Mascot { get; init; }
     public DateTimeOffset? LastUpdateCheck { get; init; }

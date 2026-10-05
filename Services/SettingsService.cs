@@ -30,7 +30,7 @@ public sealed class SettingsService
             if (new FileInfo(_path).Length > 1_048_576) throw new JsonException("Configuration too large.");
             using var doc = JsonDocument.Parse(File.ReadAllText(_path));
             int schema = doc.RootElement.TryGetProperty("schemaVersion", out var v) ? v.GetInt32() : 0;
-            if (schema > 1)
+            if (schema > 2)
             {
                 _readOnly = true; Status = "Konfigurasi berasal dari versi lebih baru; file dipertahankan, memakai default sementara."; return;
             }
@@ -47,14 +47,29 @@ public sealed class SettingsService
         { _readOnly = true; Status = "Konfigurasi tidak dapat dibaca; memakai default sementara."; }
     }
 
-    public static AppSettings Migrate(AppSettings settings, int schema)
+    public static AppSettings Migrate(
+        AppSettings settings,
+        int schema)
     {
-        if (schema is < 0 or > 1) throw new ArgumentOutOfRangeException(nameof(schema));
-        return settings with { SchemaVersion = 1 }; // v0 used the same sections without a schema marker.
+        if (schema is < 0 or > 2)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(schema));
+        }
+
+        return settings with
+        {
+            SchemaVersion =
+                2,
+
+            Companion =
+                settings.Companion ??
+                new CompanionSettings()
+        };
     }
     public static AppSettings Validate(AppSettings value)
     {
-        if (value.General is null || value.Behavior is null || value.Chat is null) throw new ArgumentException("Missing settings section.");
+        if (value.General is null || value.Behavior is null || value.Chat is null || value.Companion is null) throw new ArgumentException("Missing settings section.");
         var b = value.Behavior; var c = value.Chat;
         if (!Enum.IsDefined(b.Activity) || !Enum.IsDefined(b.Speed) || !Enum.IsDefined(b.SleepAfter) || !Enum.IsDefined(b.Nap) ||
             !Enum.IsDefined(c.DesktopPermission) || !Enum.IsDefined(c.Provider) || !Enum.IsDefined(c.Language) || !Enum.IsDefined(c.ResponseLength) || !Enum.IsDefined(c.Style) ||
@@ -69,7 +84,7 @@ public sealed class SettingsService
         if (m is not null && !Finite(m.Left, m.MonitorLeft, m.MonitorTop)) m = null;
         var last = value.LastUpdateCheck;
         if (last > DateTimeOffset.UtcNow.AddMinutes(5)) last = null;
-        return value with { SchemaVersion = 1, SettingsWindow = w, Mascot = m, LastUpdateCheck = last };
+        return value with { SchemaVersion = 2, SettingsWindow = w, Mascot = m, LastUpdateCheck = last };
     }
 
     public bool Update(AppSettings settings)

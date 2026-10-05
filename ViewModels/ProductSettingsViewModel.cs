@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Windows.Input;
 using LuKnight.Models;
+using LuKnight.Assistant;
 using LuKnight.Services;
 using System.Diagnostics;
 
@@ -396,6 +397,266 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
         TextToSpeechOptions options = new(voice, TextToSpeechRate, TextToSpeechVolume);
         await _services.TextToSpeech.SpeakAsync("Halo, saya Lu-Knight.", options, _lifetime.Token);
     }
+    private void ChangeCompanion(
+        CompanionSettings preferences)
+    {
+        if (preferences ==
+            _services.Settings.Current.Companion)
+        {
+            return;
+        }
+
+
+        Run(
+            () =>
+            {
+                AppSettings config =
+                    SettingsService.Validate(
+                        _services.Settings.Current with
+                        {
+                            Companion =
+                                preferences
+                        });
+
+                _services.Settings.Update(
+                    config);
+            });
+    }
+
+    public bool ProactiveSuggestions
+    {
+        get =>
+            _services.Settings
+                .Current
+                .Companion
+                .Enabled;
+
+        set
+        {
+            CompanionSettings current =
+                _services.Settings
+                    .Current
+                    .Companion;
+
+            if (current.Enabled == value)
+                return;
+
+            ChangeCompanion(
+                current with
+                {
+                    Enabled =
+                        value
+                });
+        }
+    }
+
+
+    public bool ProactiveSuggestionsAvailable =>
+        CanEditChat &&
+        UseApplicationContext;
+
+
+    public bool ProactiveCategoryControlsEnabled =>
+        ProactiveSuggestionsAvailable &&
+        ProactiveSuggestions;
+
+    public bool SuggestCoding
+    {
+        get =>
+            _services.Settings
+                .Current
+                .Companion
+                .Coding;
+
+        set
+        {
+            CompanionSettings current =
+                _services.Settings
+                    .Current
+                    .Companion;
+
+            if (current.Coding == value)
+                return;
+
+            ChangeCompanion(
+                current with
+                {
+                    Coding =
+                        value
+                });
+        }
+    }
+
+    public bool SuggestBrowsing
+    {
+        get =>
+            _services.Settings
+                .Current
+                .Companion
+                .Browsing;
+
+        set
+        {
+            CompanionSettings current =
+                _services.Settings
+                    .Current
+                    .Companion;
+
+            if (current.Browsing == value)
+                return;
+
+            ChangeCompanion(
+                current with
+                {
+                    Browsing =
+                        value
+                });
+        }
+    }
+
+    public bool SuggestCreative
+    {
+        get =>
+            _services.Settings
+                .Current
+                .Companion
+                .Creative;
+
+        set
+        {
+            CompanionSettings current =
+                _services.Settings
+                    .Current
+                    .Companion;
+
+            if (current.Creative == value)
+                return;
+
+            ChangeCompanion(
+                current with
+                {
+                    Creative =
+                        value
+                });
+        }
+    }
+
+    public bool SuggestOffice
+    {
+        get =>
+            _services.Settings
+                .Current
+                .Companion
+                .Office;
+
+        set
+        {
+            CompanionSettings current =
+                _services.Settings
+                    .Current
+                    .Companion;
+
+            if (current.Office == value)
+                return;
+
+            ChangeCompanion(
+                current with
+                {
+                    Office =
+                        value
+                });
+        }
+    }
+
+    public bool SuggestFiles
+    {
+        get =>
+            _services.Settings
+                .Current
+                .Companion
+                .Files;
+
+        set
+        {
+            CompanionSettings current =
+                _services.Settings
+                    .Current
+                    .Companion;
+
+            if (current.Files == value)
+                return;
+
+            ChangeCompanion(
+                current with
+                {
+                    Files =
+                        value
+                });
+        }
+    }
+
+    public bool SuggestCommunication
+    {
+        get =>
+            _services.Settings
+                .Current
+                .Companion
+                .Communication;
+
+        set
+        {
+            CompanionSettings current =
+                _services.Settings
+                    .Current
+                    .Companion;
+
+            if (current.Communication == value)
+                return;
+
+            ChangeCompanion(
+                current with
+                {
+                    Communication =
+                        value
+                });
+        }
+    }
+
+    public string CapabilitySummary
+    {
+        get
+        {
+            IReadOnlyList<
+                AssistantCapabilityDescriptor>
+                catalog =
+                    _services.Capabilities
+                        .Catalog;
+
+            int skills =
+                catalog.Count(
+                    x =>
+                        x.Kind ==
+                        AssistantCapabilityKind.Skill);
+
+            int actions =
+                catalog.Count(
+                    x =>
+                        x.Kind ==
+                        AssistantCapabilityKind.Action);
+
+            int tools =
+                catalog.Count(
+                    x =>
+                        x.Kind ==
+                        AssistantCapabilityKind.Tool);
+
+            return
+                $"{skills} skills · " +
+                $"{actions} actions · " +
+                $"{tools} tools registered locally.";
+        }
+    }
+
     public void Refresh()
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));

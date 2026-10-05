@@ -236,6 +236,8 @@ internal static partial class Program
                 "--companion"))
         {
             CheckCompanionFoundation();
+            CheckCapabilityRegistry();
+            CheckCompanionPreferences();
             CheckCompanionRateLimit();
             CheckCompanionSuggestionCard();
             CheckCompanionTrayRouting();

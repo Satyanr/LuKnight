@@ -220,6 +220,63 @@
                         </Border>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
+                                <TextBlock
+                                    Text="Proactive companion"
+                                    Style="{StaticResource CardTitle}"/>
+
+                                <CheckBox
+                                    Content="Allow Lu-Knight to occasionally offer contextual help"
+                                    IsEnabled="{Binding Product.ProactiveSuggestionsAvailable}"
+                                    IsChecked="{Binding Product.ProactiveSuggestions, Mode=TwoWay}"/>
+
+                                <TextBlock
+                                    Text="Requires Application awareness. Suggestions use only broad application categories, are rate-limited, and never read screen contents, window titles, files, clipboard, microphone, or location."
+                                    Style="{StaticResource Muted}"
+                                    FontSize="12"
+                                    Margin="0,8,0,12"
+                                    TextWrapping="Wrap"/>
+
+                                <StackPanel
+                                    IsEnabled="{Binding Product.ProactiveCategoryControlsEnabled}">
+
+                                    <TextBlock
+                                        Text="Suggestion categories"
+                                        Margin="0,4,0,5"/>
+
+                                    <CheckBox
+                                        Content="Coding"
+                                        IsChecked="{Binding Product.SuggestCoding, Mode=TwoWay}"/>
+
+                                    <CheckBox
+                                        Content="Web browsing"
+                                        IsChecked="{Binding Product.SuggestBrowsing, Mode=TwoWay}"/>
+
+                                    <CheckBox
+                                        Content="Creative / design"
+                                        IsChecked="{Binding Product.SuggestCreative, Mode=TwoWay}"/>
+
+                                    <CheckBox
+                                        Content="Office / documents"
+                                        IsChecked="{Binding Product.SuggestOffice, Mode=TwoWay}"/>
+
+                                    <CheckBox
+                                        Content="File management"
+                                        IsChecked="{Binding Product.SuggestFiles, Mode=TwoWay}"/>
+
+                                    <CheckBox
+                                        Content="Communication"
+                                        IsChecked="{Binding Product.SuggestCommunication, Mode=TwoWay}"/>
+                                </StackPanel>
+
+                                <TextBlock
+                                    Text="{Binding Product.CapabilitySummary}"
+                                    Style="{StaticResource Muted}"
+                                    FontSize="12"
+                                    Margin="0,12,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
                                 <TextBlock Text="File context" Style="{StaticResource CardTitle}"/>
                                 <CheckBox Content="Allow Lu-Knight to read explicitly requested text files" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseFileContext, Mode=TwoWay}"/>
                                 <TextBlock Text="Hanya file yang Anda sebutkan secara eksplisit. Lu-Knight tidak memindai folder. Isi file digunakan untuk request saat itu dan tidak disimpan ke long-term memory." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0"/>

@@ -79,7 +79,70 @@ internal static partial class Program
             File.WriteAllText(file, "{\"schemaVersion\":999,\"future\":true}"); var future = new SettingsService(file); future.Load();
             Require(!future.Save() && File.ReadAllText(file).Contains("999"), "Older app overwrites newer configuration");
             File.WriteAllText(file, "{\"general\":{\"alwaysOnTop\":false}}"); var old = new SettingsService(file); old.Load();
-            Require(old.Current.SchemaVersion == 1 && !old.Current.General.AlwaysOnTop, "Schema zero migration loses settings");
+            Require(old.Current.SchemaVersion == 2 && !old.Current.General.AlwaysOnTop, "Schema zero migration loses settings");
+            File.WriteAllText(
+                file,
+                """
+                {
+                  "schemaVersion": 1,
+                  "general": {
+                    "alwaysOnTop": false
+                  }
+                }
+                """);
+
+
+            var schemaOne =
+                new SettingsService(
+                    file);
+
+            schemaOne.Load();
+
+
+            Require(
+                schemaOne.Current.SchemaVersion ==
+                    2 &&
+                !schemaOne.Current
+                    .Companion.Enabled,
+                "Schema-1 settings did not migrate to opt-in proactive companion defaults.");
+
+            AppSettings proactive =
+                schemaOne.Current with
+                {
+                    Companion =
+                        new CompanionSettings
+                        {
+                            Enabled =
+                                true,
+
+                            Coding =
+                                true,
+
+                            Browsing =
+                                false
+                        }
+                };
+
+
+            Require(
+                schemaOne.Update(
+                    proactive),
+                "Proactive preferences could not be saved.");
+
+
+            var proactiveReload =
+                new SettingsService(
+                    file);
+
+            proactiveReload.Load();
+
+
+            Require(
+                proactiveReload.Current
+                    .Companion.Enabled &&
+                !proactiveReload.Current
+                    .Companion.Browsing,
+                "Proactive companion preferences did not survive restart.");
             File.WriteAllText(file, "{\"schemaVersion\":1,\"chat\":null}"); var missing = new SettingsService(file); missing.Load();
             Require(missing.Current.Chat is not null, "Null section crashes configuration load");
             var invalidPlacement = SettingsService.Validate(new() { SettingsWindow = new(double.NaN, 0, 900, 600), Mascot = new(double.PositiveInfinity, 0, 0) });

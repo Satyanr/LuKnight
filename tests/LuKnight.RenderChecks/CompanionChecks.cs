@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using LuKnight.Views;
 using LuKnight.Services;
+using LuKnight.Models;
 using LuKnight.Assistant;
 
 internal static partial class Program
@@ -158,8 +159,8 @@ internal static partial class Program
                 {
                     AutonomousBehaviorEnabled =
                         false
-                }) is null,
-            "Disabled autonomous behavior still produced a suggestion.");
+                }) is not null,
+            "Mascot movement preference incorrectly suppressed companion.");
 
 
         Require(
@@ -627,8 +628,189 @@ internal static partial class Program
         Require(tray.NotifyCompanion("replacement", "Message"), "Expired route blocked companion notification.");
         tray.NotifyReminder(Guid.NewGuid(), "Higher priority"); Click();
         Require(reminders == 2 && companion == 1, "Reminder did not replace a companion route.");
+        tray.NotifyCompanion("cancelled", "Message");
+        tray.CancelCompanionNotification(); Click();
+        Require(companion == 1, "Cancelled companion route dispatched a stale click.");
+        tray.NotifyUpdate("keep update"); tray.CancelCompanionNotification(); Click();
+        Require(settings == 2, "Cancelling companion notification cleared the update route.");
+        tray.NotifyReminder(Guid.NewGuid(), "Keep reminder"); tray.CancelCompanionNotification(); Click();
+        Require(reminders == 3, "Cancelling companion notification cleared the reminder route.");
         tray.NotifyCompanion("disposed", "Message"); tray.Dispose(); Click();
         Require(!tray.NotifyCompanion("key", "Message") && companion == 1,
             "Disposed tray accepted or dispatched a companion notification.");
     }
+    private static void
+        CheckCapabilityRegistry()
+    {
+        var skills =
+            new AssistantSkillRouter(
+                new IAssistantSkill[]
+                {
+                    new SearchDownloadsSkill()
+                });
+
+
+        var registry =
+            AssistantCapabilityRegistry.Create(
+                skills,
+                new AssistantActionRouter(),
+                new AssistantToolRouter());
+
+
+        Require(
+            registry.Contains(
+                "feature:chat"),
+            "Chat capability was missing.");
+
+
+        Require(
+            registry.TryResolve(
+                "search-downloads",
+                out AssistantCapabilityDescriptor
+                    canonical) &&
+            canonical.Id ==
+                "skill:search-downloads",
+            "Skill ID did not resolve through capability registry.");
+
+
+        Require(
+            registry.TryResolve(
+                "cari-unduhan",
+                out AssistantCapabilityDescriptor
+                    alias) &&
+            alias.Id ==
+                canonical.Id,
+            "Skill alias did not resolve to canonical capability.");
+
+
+        Require(
+            !registry.TryResolve(
+                "missing",
+                out _),
+            "Unknown capability unexpectedly resolved.");
+        var aliases = new[] { "short" };
+        var metadata = new AssistantCapabilityDescriptor("custom", AssistantCapabilityKind.Feature, "Custom", "Description", aliases);
+        var frozen = new AssistantCapabilityRegistry([metadata]);
+        aliases[0] = "mutated";
+        Require(frozen.TryResolve(" SHORT ", out var descriptor) && descriptor.Aliases.Single() == "short" &&
+            !frozen.TryResolve("mutated", out _), "Registry did not defensively freeze alias metadata.");
+        bool duplicateRejected = false, aliasRejected = false;
+        try { _ = new AssistantCapabilityRegistry([metadata, metadata]); }
+        catch (InvalidOperationException) { duplicateRejected = true; }
+        try { _ = new AssistantCapabilityRegistry([metadata, metadata with { Id = "other" }]); }
+        catch (InvalidOperationException) { aliasRejected = true; }
+        Require(duplicateRejected && aliasRejected, "Registry accepted duplicate IDs or ambiguous aliases.");
+        var actionRouter = new AssistantActionRouter([new PlanTestAction(BuiltInActionNames.DesktopOpenApplication)]);
+        var toolRouter = new AssistantToolRouter([new RememberMemoryTool(new MemoryService())]);
+        var populated = AssistantCapabilityRegistry.Create(skills, actionRouter, toolRouter);
+        Require(actionRouter.RegisteredActions.All(name => populated.Contains("action:" + name)) &&
+            toolRouter.RegisteredTools.All(name => populated.Contains("tool:" + name)),
+            "Registered action/tool metadata was missing from capability catalog.");
+    }
+
+    private static void
+        CheckCompanionPreferences()
+    {
+        var advisor =
+            new LocalCompanionAdvisor();
+
+
+        var registry =
+            new AssistantCapabilityRegistry(
+                [
+                    new(
+                        "feature:chat",
+                        AssistantCapabilityKind.Feature,
+                        "Chat",
+                        "Chat assistance",
+                        [])
+                ]);
+
+
+        var context =
+            CreateCompanionContext(
+                "CodeEditor");
+
+
+        CompanionSettings disabled =
+            new();
+
+
+        Require(
+            advisor.Evaluate(
+                context,
+                disabled,
+                registry) is null,
+            "Default proactive preference was not opt-in.");
+
+
+        var enabled =
+            disabled with
+            {
+                Enabled =
+                    true
+            };
+
+
+        Require(
+            advisor.Evaluate(
+                context,
+                enabled,
+                registry)?.Kind ==
+                CompanionSuggestionKind.Coding,
+            "Enabled proactive companion did not produce allowed suggestion.");
+
+
+        Require(
+            advisor.Evaluate(
+                context,
+                enabled with
+                {
+                    Coding =
+                        false
+                },
+                registry) is null,
+            "Disabled Coding category still produced a suggestion.");
+
+
+        //
+        // Mascot movement preference is independent.
+        //
+
+        Require(
+            advisor.Evaluate(
+                context with
+                {
+                    AutonomousBehaviorEnabled =
+                        false
+                },
+                enabled,
+                registry) is not null,
+            "Disabling autonomous mascot movement also disabled proactive suggestions.");
+
+
+        Require(
+            advisor.Evaluate(
+                context,
+                enabled,
+                new AssistantCapabilityRegistry())
+                is null,
+            "Advisor offered help without registered chat capability.");
+        foreach (var (kind, blocked) in new[]
+        {
+            ("Browser", enabled with { Browsing = false }),
+            ("Creative", enabled with { Creative = false }),
+            ("Office", enabled with { Office = false }),
+            ("FileManager", enabled with { Files = false }),
+            ("Communication", enabled with { Communication = false })
+        })
+            Require(advisor.Evaluate(CreateCompanionContext(kind), blocked, registry) is null,
+                "Disabled companion category produced a candidate.");
+        Require(advisor.Evaluate(context with { ApplicationContextEnabled = false }, enabled, registry) is null,
+            "Enabled companion bypassed disabled application awareness.");
+    }
+
+    private static AssistantRuntimeContext CreateCompanionContext(string kind) => new(
+        true, DateTimeOffset.UtcNow, "Asia/Makassar", true, false, "Idle", "Neutral", true, "Normal", "Normal")
+        { ApplicationContextEnabled = true, PrimaryApplicationKind = kind };
 }

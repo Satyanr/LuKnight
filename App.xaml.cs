@@ -6,6 +6,7 @@ using System.IO;
 using System.Threading;
 using System.Windows.Threading;
 using LuKnight.Assistant;
+using LuKnight.Models;
 using LuKnight.Services;
 using LuKnight.Views;
 
@@ -391,6 +392,15 @@ public partial class App : Application
         }
 
 
+        CompanionSettings preferences = _services.Settings.Current.Companion;
+        if (!preferences.Enabled || !_services.Chat.Options.UseApplicationContext)
+        {
+            _companionGate.ResetObservation();
+            _companionSuggestions.Clear();
+            _tray.CancelCompanionNotification();
+            return;
+        }
+
         DateTimeOffset now =
             DateTimeOffset.UtcNow;
 
@@ -426,7 +436,9 @@ public partial class App : Application
                 _services
                     .CompanionAdvisor
                     .Evaluate(
-                        context);
+                        context,
+                        preferences,
+                        _services.Capabilities);
 
 
         CompanionSuggestionCandidate?
@@ -498,6 +510,12 @@ public partial class App : Application
             return;
         }
 
+
+        if (_services is null ||
+            _services.CompanionAdvisor.Evaluate(_services.Context.Capture(),
+                _services.Settings.Current.Companion, _services.Capabilities) is not { } current ||
+            !string.Equals(current.Key, candidate.Key, StringComparison.OrdinalIgnoreCase))
+            return;
 
         _character
             .OpenCompanionSuggestionFromTray(

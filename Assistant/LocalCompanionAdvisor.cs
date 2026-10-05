@@ -1,4 +1,5 @@
 using LuKnight.Services;
+using LuKnight.Models;
 
 namespace LuKnight.Assistant;
 
@@ -39,7 +40,6 @@ public sealed class LocalCompanionAdvisor
         if (!context.RuntimeAvailable ||
             !context.CharacterVisible ||
             context.ChatOpen ||
-            !context.AutonomousBehaviorEnabled ||
             !context.ApplicationContextEnabled)
         {
             return null;
@@ -111,5 +111,69 @@ public sealed class LocalCompanionAdvisor
             _ =>
                 null
         };
+    }
+    public CompanionSuggestionCandidate?
+        Evaluate(
+            AssistantRuntimeContext context,
+            CompanionSettings preferences,
+            AssistantCapabilityRegistry capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(
+            context);
+
+        ArgumentNullException.ThrowIfNull(
+            preferences);
+
+        ArgumentNullException.ThrowIfNull(
+            capabilities);
+
+
+        if (!preferences.Enabled ||
+            !capabilities.Contains(
+                "feature:chat"))
+        {
+            return null;
+        }
+
+
+        CompanionSuggestionCandidate?
+            candidate =
+                Evaluate(
+                    context);
+
+
+        if (candidate is null)
+            return null;
+
+
+        bool allowed =
+            candidate.Kind switch
+            {
+                CompanionSuggestionKind.Coding =>
+                    preferences.Coding,
+
+                CompanionSuggestionKind.Browsing =>
+                    preferences.Browsing,
+
+                CompanionSuggestionKind.Creative =>
+                    preferences.Creative,
+
+                CompanionSuggestionKind.Office =>
+                    preferences.Office,
+
+                CompanionSuggestionKind.Files =>
+                    preferences.Files,
+
+                CompanionSuggestionKind.Communication =>
+                    preferences.Communication,
+
+                _ =>
+                    false
+            };
+
+
+        return allowed
+            ? candidate
+            : null;
     }
 }
