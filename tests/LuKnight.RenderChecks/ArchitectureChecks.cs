@@ -668,5 +668,45 @@ internal static partial class Program
                 "ex.Message",
                 StringComparison.Ordinal),
             "AppServices exposes raw exception diagnostics.");
+
+        string settingsRecovery =
+            Read(
+                "Services/SettingsService.cs");
+
+        string memoryRecovery =
+            Read(
+                "Services/MemoryService.cs");
+
+        string scheduleRecovery =
+            Read(
+                "Services/LocalScheduleStore.cs");
+
+
+        foreach ((string name, string source)
+                 in new[]
+                 {
+                     ("SettingsService", settingsRecovery),
+                     ("MemoryService", memoryRecovery),
+                     ("LocalScheduleStore", scheduleRecovery)
+                 })
+        {
+            Require(
+                source.Contains(
+                    "CommittedStateRecovery",
+                    StringComparison.Ordinal),
+                $"{name} does not participate in committed-state recovery.");
+        }
+
+        Require(
+            !settingsRecovery.Contains(
+                "ReadAllText(_path + \".tmp\")",
+                StringComparison.Ordinal) &&
+            !memoryRecovery.Contains(
+                "ReadAllText(_path + \".tmp\")",
+                StringComparison.Ordinal) &&
+            !scheduleRecovery.Contains(
+                "ReadAllText(_path + \".tmp\")",
+                StringComparison.Ordinal),
+            "Uncommitted temp state became a recovery source.");
     }
 }

@@ -24,27 +24,260 @@ public sealed class SettingsService
 
     public void Load()
     {
-        if (_path is null || !File.Exists(_path)) return;
+        if (_path is null)
+            return;
+
+
+        _readOnly =
+            false;
+
+
+        CommittedStateRecovery
+            .DeleteUncommittedTemporary(
+                _path);
+
+
+        CommittedStateCandidateStatus
+            primary =
+                TryReadCandidate(
+                    _path,
+                    out AppSettings primarySettings);
+
+
+        if (primary ==
+            CommittedStateCandidateStatus.Valid)
+        {
+            Current =
+                primarySettings;
+
+            Status =
+                "Pengaturan dimuat.";
+
+            return;
+        }
+
+
+        //
+        // Never downgrade a file produced by
+        // a newer application version.
+        //
+
+        if (primary ==
+            CommittedStateCandidateStatus
+                .FutureVersion)
+        {
+            _readOnly =
+                true;
+
+            Current =
+                new AppSettings();
+
+            Status =
+                "Konfigurasi berasal dari versi lebih baru; " +
+                "file dipertahankan, memakai default sementara.";
+
+            return;
+        }
+
+
+        string backupPath =
+            CommittedStateRecovery
+                .BackupPath(
+                    _path);
+
+
+        CommittedStateCandidateStatus
+            backup =
+                TryReadCandidate(
+                    backupPath,
+                    out AppSettings backupSettings);
+
+
+        if (backup ==
+            CommittedStateCandidateStatus.Valid)
+        {
+            Current =
+                backupSettings;
+
+
+            bool healed =
+                CommittedStateRecovery
+                    .TryRestoreValidatedBackup(
+                        _path);
+
+
+            if (healed)
+            {
+                Status =
+                    "Pengaturan dipulihkan dari backup terakhir.";
+            }
+            else
+            {
+                //
+                // Backup can be used in memory,
+                // but do not risk overwriting the
+                // only known-good copy.
+                //
+
+                _readOnly =
+                    true;
+
+                Status =
+                    "Pengaturan dipulihkan sementara dari backup; " +
+                    "penyimpanan tetap read-only.";
+            }
+
+
+            return;
+        }
+
+
+        if (backup ==
+            CommittedStateCandidateStatus
+                .FutureVersion)
+        {
+            _readOnly =
+                true;
+
+            Current =
+                new AppSettings();
+
+            Status =
+                "Backup konfigurasi berasal dari versi aplikasi lebih baru.";
+
+            return;
+        }
+
+
+        Current =
+            new AppSettings();
+
+
+        if (primary ==
+            CommittedStateCandidateStatus.Invalid)
+        {
+            bool preserved =
+                CommittedStateRecovery
+                    .TryPreserveInvalidPrimary(
+                        _path);
+
+
+            if (!preserved)
+            {
+                _readOnly =
+                    true;
+            }
+
+
+            Status =
+                "Konfigurasi tidak valid dan backup valid tidak tersedia; " +
+                "memakai default.";
+        }
+        else if (
+            primary ==
+            CommittedStateCandidateStatus
+                .Inaccessible)
+        {
+            _readOnly =
+                true;
+
+            Status =
+                "Konfigurasi tidak dapat dibaca; memakai default sementara.";
+        }
+    }
+
+    private static
+        CommittedStateCandidateStatus
+        TryReadCandidate(
+            string path,
+            out AppSettings settings)
+    {
+        settings =
+            new AppSettings();
+
+
+        if (!File.Exists(
+                path))
+        {
+            return
+                CommittedStateCandidateStatus
+                    .Missing;
+        }
+
+
         try
         {
-            if (new FileInfo(_path).Length > 1_048_576) throw new JsonException("Configuration too large.");
-            using var doc = JsonDocument.Parse(File.ReadAllText(_path));
-            int schema = doc.RootElement.TryGetProperty("schemaVersion", out var v) ? v.GetInt32() : 0;
+            if (new FileInfo(
+                    path)
+                .Length >
+                1_048_576)
+            {
+                return
+                    CommittedStateCandidateStatus
+                        .Invalid;
+            }
+
+
+            using JsonDocument doc =
+                JsonDocument.Parse(
+                    File.ReadAllText(
+                        path));
+
+
+            int schema = 0;
+            foreach (JsonProperty property in doc.RootElement.EnumerateObject())
+                if (property.Name.Equals("schemaVersion", StringComparison.OrdinalIgnoreCase))
+                    schema = property.Value.GetInt32();
+
             if (schema > 2)
             {
-                _readOnly = true; Status = "Konfigurasi berasal dari versi lebih baru; file dipertahankan, memakai default sementara."; return;
+                return
+                    CommittedStateCandidateStatus
+                        .FutureVersion;
             }
-            Current = Validate(Migrate(JsonSerializer.Deserialize<AppSettings>(doc.RootElement.GetRawText(), JsonOptions) ?? throw new JsonException(), schema));
-            Status = "Pengaturan dimuat.";
+
+
+            AppSettings parsed =
+                JsonSerializer
+                    .Deserialize<AppSettings>(
+                        doc.RootElement
+                            .GetRawText(),
+                        JsonOptions)
+                ?? throw new JsonException();
+
+
+            settings =
+                Validate(
+                    Migrate(
+                        parsed,
+                        schema));
+
+
+            return
+                CommittedStateCandidateStatus
+                    .Valid;
         }
-        catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException or OverflowException or FormatException)
+        catch (Exception ex)
+            when (ex is
+                JsonException or
+                ArgumentException or
+                InvalidOperationException or
+                OverflowException or
+                FormatException)
         {
-            try { File.Copy(_path, _path + ".invalid-" + DateTime.UtcNow.ToString("yyyyMMddHHmmssfff") + ".bak", false); }
-            catch (Exception backup) when (backup is IOException or UnauthorizedAccessException) { _readOnly = true; }
-            Current = new(); Status = "Konfigurasi tidak valid; memakai default. File asli dipertahankan atau dicadangkan.";
+            return
+                CommittedStateCandidateStatus
+                    .Invalid;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        { _readOnly = true; Status = "Konfigurasi tidak dapat dibaca; memakai default sementara."; }
+        catch (Exception ex)
+            when (ex is
+                IOException or
+                UnauthorizedAccessException)
+        {
+            return
+                CommittedStateCandidateStatus
+                    .Inaccessible;
+        }
     }
 
     public static AppSettings Migrate(
@@ -108,7 +341,7 @@ public sealed class SettingsService
             Status = "Pengaturan tersimpan otomatis."; return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        { Status = "Gagal menyimpan. Perubahan tetap berlaku selama sesi; coba simpan kembali."; return false; }
+        { CommittedStateRecovery.DeleteUncommittedTemporary(_path); Status = "Gagal menyimpan. Perubahan tetap berlaku selama sesi; coba simpan kembali."; return false; }
     }
 }
 

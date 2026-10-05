@@ -328,9 +328,14 @@ internal static partial class Program
         string original = File.ReadAllText(path);
         foreach (string document in new[] { "{", "{\"schemaVersion\":3}", "{\"schedules\":null}", "" })
         {
-            File.WriteAllText(path, document);
-            LocalScheduleLoadResult result = store.Load();
-            Require(result.Schedules.Count == 0 && result.Issues.Count > 0, "Invalid schedule file was accepted.");
+            string invalidPath = Path.Combine(Path.GetDirectoryName(path)!, "invalid-schedule-" + Guid.NewGuid().ToString("N") + ".json");
+            File.WriteAllText(invalidPath, document);
+            var invalidStore = new LocalScheduleStore(invalidPath);
+            LocalScheduleLoadResult result = invalidStore.Load();
+            Require(result.Schedules.Count == 0 && result.Issues.Count > 0, "Invalid schedule file without valid backup was accepted.");
+            if (document.Contains("schemaVersion", StringComparison.Ordinal))
+                Require(invalidStore.IsReadOnly && !invalidStore.Save(Array.Empty<ScheduledSkill>(), out _),
+                    "Future schedule schema did not reject writes.");
         }
         File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(new LocalScheduleFile
         {
@@ -339,8 +344,9 @@ internal static partial class Program
         LocalScheduleLoadResult partial = store.Load();
         Require(partial.Schedules.Count == 1 && partial.Issues.Count == 3,
             "Load did not isolate null, invalid and duplicate entries from valid schedules.");
-        File.WriteAllText(path, new string('x', 256 * 1024 + 1));
-        Require(store.Load().Issues.Count > 0, "Oversized schedule file was accepted.");
+        string oversizedPath = Path.Combine(Path.GetDirectoryName(path)!, "oversized-schedules.json");
+        File.WriteAllText(oversizedPath, new string('x', 256 * 1024 + 1));
+        Require(new LocalScheduleStore(oversizedPath).Load().Issues.Count > 0, "Oversized schedule file was accepted.");
         File.WriteAllText(path, original);
 
         // A locked destination must preserve both the previous file and in-memory snapshot.

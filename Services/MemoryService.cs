@@ -32,44 +32,250 @@ public sealed class MemoryService
 
     public void Load()
     {
-        if (_path is null || !File.Exists(_path))
+        if (_path is null)
             return;
+
+
+        _readOnly =
+            false;
+
+        _items.Clear();
+
+
+        CommittedStateRecovery
+            .DeleteUncommittedTemporary(
+                _path);
+
+
+        CommittedStateCandidateStatus
+            primary =
+                TryReadCandidate(
+                    _path,
+                    out List<MemoryEntry>
+                        primaryItems);
+
+
+        if (primary ==
+            CommittedStateCandidateStatus.Valid)
+        {
+            _items.AddRange(
+                primaryItems);
+
+            Status =
+                "Long-term memory dimuat.";
+
+            return;
+        }
+
+
+        if (primary ==
+            CommittedStateCandidateStatus
+                .FutureVersion)
+        {
+            _readOnly =
+                true;
+
+            Status =
+                "Memory berasal dari versi aplikasi yang lebih baru.";
+
+            return;
+        }
+
+
+        string backupPath =
+            CommittedStateRecovery
+                .BackupPath(
+                    _path);
+
+
+        CommittedStateCandidateStatus
+            backup =
+                TryReadCandidate(
+                    backupPath,
+                    out List<MemoryEntry>
+                        backupItems);
+
+
+        if (backup ==
+            CommittedStateCandidateStatus.Valid)
+        {
+            _items.AddRange(
+                backupItems);
+
+
+            if (CommittedStateRecovery
+                    .TryRestoreValidatedBackup(
+                        _path))
+            {
+                Status =
+                    "Long-term memory dipulihkan dari backup terakhir.";
+            }
+            else
+            {
+                _readOnly =
+                    true;
+
+                Status =
+                    "Long-term memory dipulihkan sementara dari backup; " +
+                    "penyimpanan tetap read-only.";
+            }
+
+
+            return;
+        }
+
+
+        if (backup ==
+            CommittedStateCandidateStatus
+                .FutureVersion)
+        {
+            _readOnly =
+                true;
+
+            Status =
+                "Backup memory berasal dari versi aplikasi lebih baru.";
+
+            return;
+        }
+
+
+        if (primary ==
+            CommittedStateCandidateStatus.Invalid)
+        {
+            if (!CommittedStateRecovery
+                    .TryPreserveInvalidPrimary(
+                        _path))
+            {
+                _readOnly =
+                    true;
+            }
+
+
+            Status =
+                "Memory tidak valid dan backup valid tidak tersedia; " +
+                "menggunakan memory kosong.";
+        }
+        else
+        {
+            _readOnly =
+                primary ==
+                CommittedStateCandidateStatus
+                    .Inaccessible;
+
+            Status =
+                _readOnly
+                    ? "Memory tidak dapat dibaca; menggunakan memory kosong sementara."
+                    : string.Empty;
+        }
+    }
+
+    private
+        CommittedStateCandidateStatus
+        TryReadCandidate(
+            string path,
+            out List<MemoryEntry> items)
+    {
+        items =
+            [];
+
+
+        if (!File.Exists(
+                path))
+        {
+            return
+                CommittedStateCandidateStatus
+                    .Missing;
+        }
+
 
         try
         {
-            if (new FileInfo(_path).Length > 1_048_576)
-                throw new JsonException("Memory file terlalu besar.");
-
-            MemoryDocument document = JsonSerializer.Deserialize<MemoryDocument>(
-                File.ReadAllText(_path), SettingsService.JsonOptions)
-                ?? throw new JsonException("Memory file kosong.");
-
-            if (document.SchemaVersion > CurrentSchemaVersion)
+            if (new FileInfo(
+                    path)
+                .Length >
+                1_048_576)
             {
-                _readOnly = true;
-                Status = "Memory berasal dari versi aplikasi yang lebih baru.";
-                return;
+                return
+                    CommittedStateCandidateStatus
+                        .Invalid;
             }
 
-            _items.Clear();
-            foreach (MemoryEntry item in (document.Items ?? []).TakeLast(MaxEntries))
+
+            using JsonDocument json = JsonDocument.Parse(File.ReadAllText(path));
+            int schema = 0;
+            foreach (JsonProperty property in json.RootElement.EnumerateObject())
+                if (property.Name.Equals("schemaVersion", StringComparison.OrdinalIgnoreCase))
+                    schema = property.Value.GetInt32();
+            if (schema > CurrentSchemaVersion)
+                return CommittedStateCandidateStatus.FutureVersion;
+            MemoryDocument document = JsonSerializer.Deserialize<MemoryDocument>(json.RootElement.GetRawText(),
+                SettingsService.JsonOptions) ?? throw new JsonException();
+
+            var loaded =
+                new List<MemoryEntry>();
+
+
+            foreach (MemoryEntry item
+                     in (document.Items ?? [])
+                         .TakeLast(
+                             MaxEntries))
             {
                 if (item is null)
-                    throw new JsonException("Memory entry tidak valid.");
-                string text = Normalize(item.Text);
-                if (_items.Any(existing => string.Equals(existing.Text, text, StringComparison.OrdinalIgnoreCase)))
-                    continue;
+                {
+                    throw new JsonException();
+                }
 
-                _items.Add(item with { Text = text });
+
+                string text =
+                    Normalize(
+                        item.Text);
+
+
+                if (loaded.Any(
+                        existing =>
+                            string.Equals(
+                                existing.Text,
+                                text,
+                                StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+
+                loaded.Add(
+                    item with
+                    {
+                        Text =
+                            text
+                    });
             }
 
-            Status = "Long-term memory dimuat.";
+
+            items =
+                loaded;
+
+
+            return
+                CommittedStateCandidateStatus
+                    .Valid;
         }
-        catch (Exception ex) when (ex is JsonException or ArgumentException or IOException or UnauthorizedAccessException)
+        catch (Exception ex)
+            when (ex is
+                JsonException or
+                ArgumentException or InvalidOperationException or OverflowException or FormatException)
         {
-            TryBackupInvalidFile();
-            _items.Clear();
-            Status = "Memory tidak valid; menggunakan memory kosong.";
+            return
+                CommittedStateCandidateStatus
+                    .Invalid;
+        }
+        catch (Exception ex)
+            when (ex is
+                IOException or
+                UnauthorizedAccessException)
+        {
+            return
+                CommittedStateCandidateStatus
+                    .Inaccessible;
         }
     }
 
@@ -178,6 +384,7 @@ public sealed class MemoryService
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            CommittedStateRecovery.DeleteUncommittedTemporary(_path);
             Status = "Memory gagal disimpan; perubahan hanya berlaku sementara.";
             return false;
         }
@@ -217,16 +424,4 @@ public sealed class MemoryService
         return queryTokens.Count(token => candidate.Contains(token, StringComparison.Ordinal));
     }
 
-    private void TryBackupInvalidFile()
-    {
-        if (_path is null || !File.Exists(_path))
-            return;
-
-        try
-        {
-            File.Copy(_path, _path + ".invalid-" + DateTime.UtcNow.ToString("yyyyMMddHHmmssfff") + ".bak", false);
-        }
-        catch (IOException) { _readOnly = true; }
-        catch (UnauthorizedAccessException) { _readOnly = true; }
-    }
 }

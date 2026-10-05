@@ -231,3 +231,23 @@ context-capture routers.
 
 Explicit context capture enters through a user request routed by
 AssistantController and is still subject to its current setting gate.
+
+## Crash recovery
+
+Persistent application state uses committed generations.
+
+A `.tmp` file is never considered committed state and must never be restored
+automatically after restart.
+
+When the primary state is unreadable, Lu-Knight may recover only from a
+validated `.bak` representing the previous committed generation.
+
+Before replacing an invalid primary with a validated backup, the invalid file
+is preserved for forensic/manual recovery when possible.
+
+Files created by a newer schema version are never downgraded or overwritten by
+an older application.
+
+Pending assistant actions, confirmation IDs, prepared actions, workflow runtime
+sessions, UIA identities, HWNDs and native execution state are session-only and
+must never be crash-restored.

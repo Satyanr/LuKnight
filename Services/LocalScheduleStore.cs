@@ -37,6 +37,13 @@ public sealed class LocalScheduleStore
     private readonly string
         _path;
 
+    private bool
+        _readOnly;
+
+
+    public bool IsReadOnly =>
+        _readOnly;
+
 
     public LocalScheduleStore(
         string? path = null)
@@ -55,86 +62,150 @@ public sealed class LocalScheduleStore
 
     public LocalScheduleLoadResult Load()
     {
-        if (!File.Exists(
-                _path))
+        _readOnly =
+            false;
+
+
+        CommittedStateRecovery
+            .DeleteUncommittedTemporary(
+                _path);
+
+
+        CommittedStateCandidateStatus
+            primary =
+                TryReadCandidate(
+                    _path,
+                    out LocalScheduleLoadResult
+                        primaryResult);
+
+
+        if (primary ==
+            CommittedStateCandidateStatus.Valid)
         {
-            return new(
-                [],
-                []);
+            return
+                primaryResult;
         }
 
 
-        var issues =
-            new List<LocalScheduleLoadIssue>();
+        if (primary ==
+            CommittedStateCandidateStatus
+                .FutureVersion)
+        {
+            _readOnly =
+                true;
+
+            return
+                primaryResult;
+        }
 
 
+        string backupPath =
+            CommittedStateRecovery
+                .BackupPath(
+                    _path);
+
+
+        CommittedStateCandidateStatus
+            backup =
+                TryReadCandidate(
+                    backupPath,
+                    out LocalScheduleLoadResult
+                        backupResult);
+
+
+        if (backup ==
+            CommittedStateCandidateStatus.Valid)
+        {
+            if (!CommittedStateRecovery
+                    .TryRestoreValidatedBackup(
+                        _path))
+            {
+                _readOnly =
+                    true;
+            }
+
+
+            return
+                backupResult;
+        }
+
+
+        if (backup ==
+            CommittedStateCandidateStatus
+                .FutureVersion)
+        {
+            _readOnly =
+                true;
+
+            return
+                backupResult;
+        }
+
+
+        if (primary ==
+            CommittedStateCandidateStatus.Invalid)
+        {
+            if (!CommittedStateRecovery
+                    .TryPreserveInvalidPrimary(
+                        _path))
+            {
+                _readOnly =
+                    true;
+            }
+        }
+        else if (
+            primary ==
+            CommittedStateCandidateStatus
+                .Inaccessible)
+        {
+            _readOnly =
+                true;
+        }
+
+
+        return
+            primaryResult;
+    }
+
+    private CommittedStateCandidateStatus TryReadCandidate(string path, out LocalScheduleLoadResult result)
+    {
+        result = new([], []);
+        if (!File.Exists(path)) return CommittedStateCandidateStatus.Missing;
         try
         {
-            var info =
-                new FileInfo(
-                    _path);
-
-            if (info.Length is <= 0 or >
-                MaxFileBytes)
+            if (new FileInfo(path).Length is <= 0 or > MaxFileBytes)
             {
-                return new(
-                    [],
-                    [
-                        new(
-                            "File jadwal kosong atau terlalu besar.")
-                    ]);
+                result = new([], [new("File jadwal kosong atau terlalu besar.")]);
+                return CommittedStateCandidateStatus.Invalid;
             }
-
-
-            string json =
-                File.ReadAllText(
-                    _path);
-
-
-            LocalScheduleFile file =
-                JsonSerializer.Deserialize<
-                    LocalScheduleFile>(
-                    json,
-                    SettingsService.JsonOptions) ??
-                throw new JsonException(
-                    "Schedule document kosong.");
-
-
-            if (file.SchemaVersion is not 1 and not 2)
+            using JsonDocument json = JsonDocument.Parse(File.ReadAllText(path));
+            int schema = 2;
+            foreach (JsonProperty property in json.RootElement.EnumerateObject())
+                if (property.Name.Equals("schemaVersion", StringComparison.OrdinalIgnoreCase))
+                    schema = property.Value.GetInt32();
+            if (schema > 2)
             {
-                return new(
-                    [],
-                    [
-                        new(
-                            "Schema jadwal tidak didukung.")
-                    ]);
+                result = new([], [new("Schema jadwal berasal dari versi aplikasi lebih baru.")]);
+                return CommittedStateCandidateStatus.FutureVersion;
             }
-
-
+            if (schema < 1)
+            {
+                result = new([], [new("Schema jadwal tidak didukung.")]);
+                return CommittedStateCandidateStatus.Invalid;
+            }
+            LocalScheduleFile file = JsonSerializer.Deserialize<LocalScheduleFile>(json.RootElement.GetRawText(),
+                SettingsService.JsonOptions) ?? throw new JsonException();
             if (file.Schedules is null)
             {
-                return new(
-                    [],
-                    [
-                        new(
-                            "Daftar jadwal tidak valid.")
-                    ]);
+                result = new([], [new("Daftar jadwal tidak valid.")]);
+                return CommittedStateCandidateStatus.Invalid;
             }
-
-
-            if (file.Schedules.Length >
-                LocalSchedulePolicy
-                    .MaxSchedules)
+            if (file.Schedules.Length > LocalSchedulePolicy.MaxSchedules)
             {
-                return new(
-                    [],
-                    [
-                        new(
-                            "Jumlah jadwal melebihi batas.")
-                    ]);
+                result = new([], [new("Jumlah jadwal melebihi batas.")]);
+                return CommittedStateCandidateStatus.Invalid;
             }
-
-
+            var issues = new List<LocalScheduleLoadIssue>();
             var schedules =
                 new List<ScheduledSkill>();
 
@@ -181,26 +252,21 @@ public sealed class LocalScheduleStore
             }
 
 
-            return new(
-                schedules.AsReadOnly(),
-                issues.AsReadOnly());
+            result = new(schedules.AsReadOnly(), issues.AsReadOnly());
+            return CommittedStateCandidateStatus.Valid;
         }
-        catch (Exception ex)
-            when (ex is
-                IOException or
-                UnauthorizedAccessException or
-                JsonException or
-                ArgumentException or
-                InvalidOperationException)
+        catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException or OverflowException or FormatException)
         {
-            return new(
-                [],
-                [
-                    new(
-                        "Jadwal tidak dapat dimuat karena file tidak valid atau tidak dapat diakses.")
-                ]);
+            result = new([], [new("Jadwal tidak dapat dimuat karena file tidak valid atau tidak dapat diakses.")]);
+            return CommittedStateCandidateStatus.Invalid;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            result = new([], [new("Jadwal tidak dapat dimuat karena file tidak valid atau tidak dapat diakses.")]);
+            return CommittedStateCandidateStatus.Inaccessible;
         }
     }
+
     public bool Save(
         IReadOnlyCollection<ScheduledSkill> schedules,
         out string error)
@@ -210,6 +276,14 @@ public sealed class LocalScheduleStore
 
         error =
             string.Empty;
+
+        if (_readOnly)
+        {
+            error =
+                "File jadwal dipertahankan karena penyimpanan sedang read-only.";
+
+            return false;
+        }
 
 
         if (schedules.Count >
@@ -345,18 +419,9 @@ public sealed class LocalScheduleStore
             error =
                 "Jadwal tidak dapat disimpan ke penyimpanan lokal.";
 
-            try
-            {
-                if (File.Exists(
-                        temporary))
-                {
-                    File.Delete(
-                        temporary);
-                }
-            }
-            catch
-            {
-            }
+            CommittedStateRecovery
+                .DeleteUncommittedTemporary(
+                    _path);
 
             return false;
         }

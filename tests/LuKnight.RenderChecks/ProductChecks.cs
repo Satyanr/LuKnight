@@ -74,8 +74,12 @@ internal static partial class Program
             Require(File.Exists(file + ".bak") && !File.Exists(file + ".tmp"), "Atomic replacement does not preserve the previous file");
             Require(JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(file + ".bak"), SettingsService.JsonOptions) == customized, "Backup is not the last valid configuration");
             File.WriteAllText(file, "{broken"); var corrupt = new SettingsService(file); corrupt.Load();
-            Require(corrupt.Current == new AppSettings() && Directory.GetFiles(directory, "settings.json.invalid-*.bak").Length == 1, "Broken config fails recovery or backup");
-            Require(corrupt.Save(), "Recovered defaults cannot be saved");
+            Require(corrupt.Current == customized && Directory.GetFiles(directory, "settings.json.invalid-*.bak").Length == 1,
+                "Corrupt settings did not recover last committed backup or preserve primary.");
+            Require(corrupt.Status.Contains("dipulihkan", StringComparison.OrdinalIgnoreCase), "Settings backup recovery was not reported.");
+            Require(JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(file), SettingsService.JsonOptions) == customized,
+                "Settings primary was not healed from validated backup.");
+            Require(corrupt.Save(), "Recovered settings cannot be saved");
             File.WriteAllText(file, "{\"schemaVersion\":999,\"future\":true}"); var future = new SettingsService(file); future.Load();
             Require(!future.Save() && File.ReadAllText(file).Contains("999"), "Older app overwrites newer configuration");
             File.WriteAllText(file, "{\"general\":{\"alwaysOnTop\":false}}"); var old = new SettingsService(file); old.Load();

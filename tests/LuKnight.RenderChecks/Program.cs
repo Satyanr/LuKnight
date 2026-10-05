@@ -39,6 +39,20 @@ internal static partial class Program
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
         if (args.Contains(
+                "--recovery"))
+        {
+            Task.Run(
+                CheckRecoveryAsync)
+                .GetAwaiter()
+                .GetResult();
+
+
+            Console.WriteLine(
+                $"PASS: {_checks} crash recovery checks.");
+
+            return;
+        }
+        if (args.Contains(
                 "--security"))
         {
             CheckArchitectureBoundaries();
