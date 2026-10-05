@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
@@ -258,6 +259,7 @@ internal static partial class Program
             CheckSchedulerReminderPresentation(directory, future, due, now);
             CheckTrayReminderRouting();
             CheckScheduledReminderCards();
+            CheckSchedulerRecovery(directory, future, due, now);
         }
         finally
         {
@@ -324,7 +326,7 @@ internal static partial class Program
         Require(File.Exists(path + ".bak") && !File.Exists(path + ".tmp"), "Atomic replacement did not keep backup or remove temporary file.");
 
         string original = File.ReadAllText(path);
-        foreach (string document in new[] { "{", "{\"schemaVersion\":2}", "{\"schedules\":null}", "" })
+        foreach (string document in new[] { "{", "{\"schemaVersion\":3}", "{\"schedules\":null}", "" })
         {
             File.WriteAllText(path, document);
             LocalScheduleLoadResult result = store.Load();
@@ -494,7 +496,7 @@ internal static partial class Program
             scheduler.MarkPresented(
                 due.Id,
                 now.AddMinutes(
-                    5),
+                    4),
                 out _),
             "Repeated presentation acknowledgement was not idempotent.");
 
@@ -549,7 +551,7 @@ internal static partial class Program
             Require(scheduler.Schedules.Single(x => x.Id == pending.Id).LastPresentedAtUtc is null &&
                 scheduler.GetUnpresentedDue(now).Any(x => x.Id == pending.Id),
                 "Failed presentation persistence changed memory or lost the pending reminder.");
-            Require(scheduler.MarkPresented(due.Id, now.AddHours(1), out _),
+            Require(scheduler.MarkPresented(due.Id, now.AddMinutes(1), out _),
                 "Idempotent presentation acknowledgement attempted to save again.");
         }
         Require(File.ReadAllText(path) == before, "Failed presentation persistence changed the store.");
@@ -870,6 +872,37 @@ internal static partial class Program
             "Scheduled execution ignored live permission downgrade.");
         Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
             "Rejected or Sensitive scheduled requests leaked into Gemini context.");
+        open.Risk = AssistantActionRisk.Navigation;
+        chat.Configure(chat.Options with { DesktopPermission = DesktopPermissionLevel.Sensitive });
+        string rollbackDirectory = Path.Combine(Path.GetTempPath(), "LuKnight-ScheduledRollback", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(rollbackDirectory);
+        try
+        {
+            string rollbackPath = Path.Combine(rollbackDirectory, "schedules.json");
+            var scheduler = new LocalSchedulerService(new LocalScheduleStore(rollbackPath));
+            Require(scheduler.Upsert(schedule, out _), "Run rollback fixture could not be saved.");
+            AssistantReply handoff = await assistant.StartScheduledSkillAsync(schedule);
+            Require(handoff.ActionProposal is not null && open.Executions == 1,
+                "Run rollback handoff executed before persistence.");
+            using (var locked = new FileStream(rollbackPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                Require(!scheduler.Acknowledge(schedule.Id, ScheduledReminderDisposition.RunRequested, now, out _),
+                    "Run acknowledgement unexpectedly persisted to a locked file.");
+                assistant.CancelAction(handoff.ActionProposal!.Id);
+                Require(!assistant.HasPendingAction && !assistant.HasPendingPlan && open.Executions == 1 &&
+                    scheduler.TryGetDue(schedule.Id, now, out _), "Acknowledgement rollback retained pending execution or consumed schedule.");
+            }
+            AssistantReply retry = await assistant.StartScheduledSkillAsync(schedule);
+            Require(scheduler.Acknowledge(schedule.Id, ScheduledReminderDisposition.RunRequested, now, out _),
+                "Run acknowledgement could not be retried after persistence recovered.");
+            assistant.CancelAction(retry.ActionProposal!.Id);
+            Require(scheduler.Schedules.Single(x => x.Id == schedule.Id).Disposition == ScheduledReminderDisposition.RunRequested &&
+                !scheduler.TryGetDue(schedule.Id, now, out _) && open.Executions == 1,
+                "Rejecting action confirmation reset RunRequested acknowledgement.");
+            AssistantReply stale = await assistant.StartScheduledSkillAsync(scheduler.Schedules.Single());
+            Require(stale.ActionProposal is null && !assistant.HasPendingPlan, "Acknowledged snapshot bypassed handoff guard.");
+        }
+        finally { Directory.Delete(rollbackDirectory, recursive: true); }
     }
     private static void CheckScheduledReminderCards()
     {
@@ -892,14 +925,414 @@ internal static partial class Program
         Require(requested == id && dismissed is null && cards.ContainsKey(id),
             "Run lost its schedule ID or consumed the card before handoff.");
         ((Button)buttons.Children[1]).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Require(dismissed == id && cards.Count == 0, "Dismiss did not remove its reminder card.");
+        Require(dismissed == id && cards.Count == 1, "Dismiss consumed the card before persistence acknowledgement.");
+        panel.RemoveScheduledReminder(id);
         panel.AddScheduledReminder(id, "New card", DateTimeOffset.UtcNow);
         panel.ClearConversation();
-        Require(cards.Count == 0, "Clearing chat retained stale reminder IDs.");
+        Require(cards.Count == 1 && cards.ContainsKey(id), "Clearing chat removed an actionable reminder.");
         panel.AddScheduledReminder(id, "After clear", DateTimeOffset.UtcNow);
         Require(cards.Count == 1, "Reminder card could not be reopened after clearing chat.");
         panel.RemoveScheduledReminder(id);
         panel.RemoveScheduledReminder(id);
         Require(cards.Count == 0, "Removing a reminder card was not idempotent.");
+    }
+    private static void CheckSchedulerRecovery(string directory, ScheduledSkill future,
+        ScheduledSkill due, DateTimeOffset now)
+    {
+        string path = Path.Combine(directory, "recovery.json");
+        var scheduler = new LocalSchedulerService(new LocalScheduleStore(path));
+        // Historical presentation must occur after the original due time.
+        due = due with { DueAtUtc = now.AddMinutes(-20) };
+        var missed =
+            due with
+            {
+                Id =
+                    Guid.NewGuid(),
+
+                DisplayName =
+                    "Missed while offline",
+
+                DueAtUtc =
+                    now.AddHours(
+                        -2),
+
+                LastPresentedAtUtc =
+                    null,
+
+                AcknowledgedAtUtc =
+                    null,
+
+                Disposition =
+                    null
+            };
+
+
+        Require(
+            scheduler.Upsert(
+                missed,
+                out _),
+            "Missed schedule could not be saved.");
+
+        var recovery =
+            new LocalSchedulerService(
+                new LocalScheduleStore(
+                    path));
+
+        recovery.Load();
+
+
+        Require(
+            recovery
+                .GetReminderCandidates(
+                    now)
+                .Any(
+                    x =>
+                        x.Id ==
+                            missed.Id),
+            "Schedule missed while application was offline was not recovered.");
+
+        var abandoned =
+            due with
+            {
+                Id =
+                    Guid.NewGuid(),
+
+                DisplayName =
+                    "Presented but unanswered",
+
+                LastPresentedAtUtc =
+                    now.AddMinutes(
+                        -10),
+
+                AcknowledgedAtUtc =
+                    null,
+
+                Disposition =
+                    null
+            };
+
+
+        Require(
+            scheduler.Upsert(
+                abandoned,
+                out _),
+            "Unacknowledged reminder fixture could not be saved.");
+
+        Require(
+            scheduler
+                .GetReminderCandidates(
+                    now)
+                .Any(
+                    x =>
+                        x.Id ==
+                            abandoned.Id),
+            "Presented but unanswered reminder was not recovered.");
+
+        var recent =
+            abandoned with
+            {
+                Id =
+                    Guid.NewGuid(),
+
+                LastPresentedAtUtc =
+                    now.AddMinutes(
+                        -1)
+            };
+
+
+        Require(
+            scheduler.Upsert(
+                recent,
+                out _),
+            "Recent reminder fixture could not be saved.");
+
+
+        Require(
+            scheduler
+                .GetReminderCandidates(
+                    now)
+                .All(
+                    x =>
+                        x.Id !=
+                            recent.Id),
+            "Recent presentation was reoffered too early.");
+
+        Require(
+            scheduler
+                .GetReminderCandidates(
+                    now +
+                    LocalSchedulerService
+                        .ReminderRecoveryDelay +
+                    TimeSpan.FromSeconds(
+                        1))
+                .Any(
+                    x =>
+                        x.Id ==
+                            recent.Id),
+            "Unacknowledged reminder was not reoffered after recovery delay.");
+
+        Require(
+            scheduler.Acknowledge(
+                abandoned.Id,
+                ScheduledReminderDisposition
+                    .RunRequested,
+                now,
+                out _),
+            "Run acknowledgement failed.");
+
+        Require(
+            scheduler
+                .GetReminderCandidates(
+                    now.AddDays(
+                        10))
+                .All(
+                    x =>
+                        x.Id !=
+                            abandoned.Id),
+            "Run-acknowledged schedule was offered again.");
+
+
+        Require(
+            !scheduler.TryGetDue(
+                abandoned.Id,
+                now,
+                out _),
+            "Run-acknowledged schedule remained executable.");
+
+        var acknowledgedReload =
+            new LocalSchedulerService(
+                new LocalScheduleStore(
+                    path));
+
+        acknowledgedReload.Load();
+
+
+        ScheduledSkill recoveredRun =
+            acknowledgedReload
+                .Schedules
+                .Single(
+                    x =>
+                        x.Id ==
+                            abandoned.Id);
+
+
+        Require(
+            recoveredRun.Disposition ==
+                ScheduledReminderDisposition
+                    .RunRequested &&
+            recoveredRun.AcknowledgedAtUtc is not null,
+            "Run acknowledgement did not survive restart.");
+
+        Require(
+            scheduler.Acknowledge(
+                missed.Id,
+                ScheduledReminderDisposition
+                    .Dismissed,
+                now,
+                out _),
+            "Dismiss acknowledgement failed.");
+
+        Require(
+            scheduler
+                .GetReminderCandidates(
+                    now.AddDays(
+                        10))
+                .All(
+                    x =>
+                        x.Id !=
+                            missed.Id),
+            "Dismissed schedule returned as a reminder.");
+
+        Require(
+            scheduler.Acknowledge(
+                missed.Id,
+                ScheduledReminderDisposition
+                    .Dismissed,
+                now.AddHours(
+                    1),
+                out _),
+            "Repeated identical acknowledgement was not idempotent.");
+
+        Require(
+            !scheduler.Acknowledge(
+                missed.Id,
+                ScheduledReminderDisposition
+                    .RunRequested,
+                now.AddHours(
+                    1),
+                out _),
+            "Acknowledged schedule changed disposition.");
+
+        Require(
+            !scheduler.Upsert(
+                future with
+                {
+                    Id =
+                        Guid.NewGuid(),
+
+                    AcknowledgedAtUtc =
+                        now,
+
+                    Disposition =
+                        null
+                },
+                out _),
+            "Schedule accepted acknowledgement without disposition.");
+
+        Require(
+            !scheduler.Upsert(
+                future with
+                {
+                    Id =
+                        Guid.NewGuid(),
+
+                    AcknowledgedAtUtc =
+                        null,
+
+                    Disposition =
+                        ScheduledReminderDisposition
+                            .RunRequested
+                },
+                out _),
+            "Schedule accepted disposition without acknowledgement.");
+        string legacyPath = Path.Combine(directory, "legacy.json");
+        var legacyStore = new LocalScheduleStore(legacyPath);
+        var legacyDocument =
+            new
+            {
+                schemaVersion =
+                    1,
+
+                schedules =
+                    new[]
+                    {
+                        new ScheduledSkill
+                        {
+                            Id =
+                                Guid.NewGuid(),
+
+                            DisplayName =
+                                "Legacy",
+
+                            CreatedAtUtc =
+                                now.AddDays(
+                                    -1),
+
+                            DueAtUtc =
+                                now.AddHours(
+                                    -1),
+
+                            LastPresentedAtUtc =
+                                now.AddMinutes(
+                                    -10),
+
+                            Invocation =
+                                new ScheduledSkillInvocation
+                                {
+                                    SkillId =
+                                        "search-downloads",
+
+                                    Argument =
+                                        "invoice"
+                                }
+                        }
+                    }
+            };
+        File.WriteAllText(legacyPath, JsonSerializer.Serialize(legacyDocument, SettingsService.JsonOptions));
+        LocalScheduleLoadResult legacy =
+            legacyStore.Load();
+
+
+        Require(
+            legacy.Schedules.Count ==
+                1 &&
+            legacy.Schedules[0]
+                .AcknowledgedAtUtc is null &&
+            legacy.Schedules[0]
+                .Disposition is null,
+            "Schema-1 schedule did not migrate as unacknowledged.");
+        Require(legacyStore.Save(legacy.Schedules.ToArray(), out _), "Legacy migrated schedule could not be saved.");
+        using JsonDocument migrated =
+            JsonDocument.Parse(
+                File.ReadAllText(
+                    legacyPath));
+
+
+        Require(
+            migrated.RootElement
+                .GetProperty(
+                    "schemaVersion")
+                .GetInt32() ==
+                2,
+            "Legacy schedule was not upgraded to schema 2 on save.");
+        var pending = due with { Id = Guid.NewGuid(), LastPresentedAtUtc = null };
+        Require(scheduler.Upsert(pending, out _), "Pending acknowledgement fixture could not be saved.");
+        using (var locked =
+               new FileStream(
+                   path,
+                   FileMode.Open,
+                   FileAccess.Read,
+                   FileShare.Read))
+        {
+            Require(
+                !scheduler.Acknowledge(
+                    pending.Id,
+                    ScheduledReminderDisposition
+                        .RunRequested,
+                    now,
+                    out _),
+                "Acknowledgement persisted through locked destination.");
+
+            ScheduledSkill unchanged =
+                scheduler.Schedules
+                    .Single(
+                        x =>
+                            x.Id ==
+                                pending.Id);
+
+            Require(
+                unchanged.AcknowledgedAtUtc is null &&
+                unchanged.Disposition is null,
+                "Failed acknowledgement changed in-memory lifecycle.");
+        }
+        Require(scheduler.GetReminderCandidates(now.AddMinutes(4).AddTicks(-1)).All(x => x.Id != recent.Id),
+            "Recovery cooldown boundary was applied too early.");
+        Require(scheduler.GetReminderCandidates(now.AddMinutes(4)).Any(x => x.Id == recent.Id),
+            "Reminder did not become eligible at exact cooldown boundary.");
+        Require(scheduler.MarkPresented(recent.Id, now.AddMinutes(4), out _) &&
+            scheduler.Schedules.Single(x => x.Id == recent.Id).LastPresentedAtUtc == now.AddMinutes(4),
+            "Re-presentation after cooldown did not update its timestamp.");
+        Require(!scheduler.MarkPresented(missed.Id, now.AddDays(1), out _),
+            "Acknowledged reminder was presented again.");
+        DateTimeOffset originalAck = scheduler.Schedules.Single(x => x.Id == missed.Id).AcknowledgedAtUtc!.Value;
+        Require(scheduler.Acknowledge(missed.Id, ScheduledReminderDisposition.Dismissed, now.AddHours(2), out _) &&
+            scheduler.Schedules.Single(x => x.Id == missed.Id).AcknowledgedAtUtc == originalAck,
+            "Repeated acknowledgement changed the original timestamp.");
+        var disabled = due with { Id = Guid.NewGuid(), Enabled = false, LastPresentedAtUtc = null };
+        Require(scheduler.Upsert(disabled, out _) && scheduler.Upsert(future, out _), "Acknowledgement guard fixtures failed.");
+        Require(!scheduler.Acknowledge(disabled.Id, ScheduledReminderDisposition.Dismissed, now, out _) &&
+            !scheduler.Acknowledge(future.Id, ScheduledReminderDisposition.Dismissed, now, out _) &&
+            !scheduler.Acknowledge(Guid.NewGuid(), ScheduledReminderDisposition.Dismissed, now, out _) &&
+            !scheduler.Acknowledge(pending.Id, (ScheduledReminderDisposition)999, now, out _),
+            "Invalid, future, disabled or missing acknowledgement was accepted.");
+        var invalidLifecycle = new[]
+        {
+            due with { Disposition = (ScheduledReminderDisposition)999, AcknowledgedAtUtc = now },
+            due with { LastPresentedAtUtc = due.DueAtUtc.AddTicks(-1) },
+            due with { AcknowledgedAtUtc = due.DueAtUtc.AddTicks(-1), Disposition = ScheduledReminderDisposition.Dismissed },
+            due with { LastPresentedAtUtc = now, AcknowledgedAtUtc = now.AddTicks(-1), Disposition = ScheduledReminderDisposition.Dismissed }
+        };
+        foreach (ScheduledSkill invalid in invalidLifecycle)
+            Require(!scheduler.Upsert(invalid with { Id = Guid.NewGuid() }, out _), "Inconsistent lifecycle timestamps were accepted.");
+        var offsetAck = pending with { Id = Guid.NewGuid() };
+        Require(scheduler.Upsert(offsetAck, out _) && scheduler.Acknowledge(offsetAck.Id,
+            ScheduledReminderDisposition.Dismissed, now.ToOffset(TimeSpan.FromHours(8)), out _) &&
+            scheduler.Schedules.Single(x => x.Id == offsetAck.Id).AcknowledgedAtUtc?.Offset == TimeSpan.Zero,
+            "Acknowledgement timestamp was not normalized to UTC.");
+        var finalReload = new LocalSchedulerService(new LocalScheduleStore(path));
+        finalReload.Load();
+        Require(finalReload.Schedules.Single(x => x.Id == missed.Id).Disposition == ScheduledReminderDisposition.Dismissed &&
+            !finalReload.TryGetDue(missed.Id, now.AddDays(1), out _), "Dismiss acknowledgement did not survive restart.");
+
     }
 }

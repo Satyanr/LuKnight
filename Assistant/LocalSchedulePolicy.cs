@@ -135,6 +135,76 @@ public static class LocalSchedulePolicy
                 .ToUniversalTime();
 
 
+        DateTimeOffset? presented =
+            source.LastPresentedAtUtc?
+                .ToUniversalTime();
+
+        DateTimeOffset? acknowledged =
+            source.AcknowledgedAtUtc?
+                .ToUniversalTime();
+
+
+        if (source.Disposition is not null &&
+            !Enum.IsDefined(
+                source.Disposition.Value))
+        {
+            error =
+                "Disposition reminder tidak valid.";
+
+            return false;
+        }
+
+
+        bool hasAcknowledged =
+            acknowledged is not null;
+
+        bool hasDisposition =
+            source.Disposition is not null;
+
+
+        if (hasAcknowledged !=
+            hasDisposition)
+        {
+            error =
+                "Acknowledgement reminder tidak konsisten.";
+
+            return false;
+        }
+
+
+        if (presented is not null &&
+            presented.Value <
+                due)
+        {
+            error =
+                "Reminder tidak dapat dipresentasikan sebelum jatuh tempo.";
+
+            return false;
+        }
+
+
+        if (acknowledged is not null &&
+            acknowledged.Value <
+                due)
+        {
+            error =
+                "Reminder tidak dapat diakui sebelum jatuh tempo.";
+
+            return false;
+        }
+
+
+        if (presented is not null &&
+            acknowledged is not null &&
+            acknowledged.Value <
+                presented.Value)
+        {
+            error =
+                "Acknowledgement reminder lebih awal dari presentation.";
+
+            return false;
+        }
+
         normalized =
             source with
             {
@@ -148,8 +218,10 @@ public static class LocalSchedulePolicy
                     created,
 
                 LastPresentedAtUtc =
-                    source.LastPresentedAtUtc?
-                        .ToUniversalTime(),
+                    presented,
+
+                AcknowledgedAtUtc =
+                    acknowledged,
 
                 Invocation =
                     new ScheduledSkillInvocation

@@ -1420,6 +1420,9 @@ public sealed class AssistantController
             }
 
 
+            if (normalized.AcknowledgedAtUtc is not null)
+                return RejectScheduledSkill("Reminder sudah ditanggapi.");
+
             ScheduledSkillInvocation scheduled =
                 normalized.Invocation;
 

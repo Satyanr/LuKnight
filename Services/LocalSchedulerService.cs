@@ -4,6 +4,10 @@ namespace LuKnight.Services;
 
 public sealed class LocalSchedulerService
 {
+    public static readonly TimeSpan
+        ReminderRecoveryDelay =
+            TimeSpan.FromMinutes(
+                5);
     private readonly LocalScheduleStore
         _store;
 
@@ -172,18 +176,28 @@ public sealed class LocalSchedulerService
         return true;
     }
     public IReadOnlyList<ScheduledSkill>
-        GetUnpresentedDue(
+        GetReminderCandidates(
             DateTimeOffset now)
     {
         DateTimeOffset utc =
             now.ToUniversalTime();
 
+        DateTimeOffset reofferBefore =
+            utc -
+            ReminderRecoveryDelay;
+
+
         return _schedules
             .Where(
                 item =>
                     item.Enabled &&
-                    item.LastPresentedAtUtc is null &&
-                    item.DueAtUtc <= utc)
+                    item.DueAtUtc <= utc &&
+                    item.AcknowledgedAtUtc is null &&
+                    (
+                        item.LastPresentedAtUtc is null ||
+                        item.LastPresentedAtUtc <=
+                            reofferBefore
+                    ))
             .OrderBy(
                 item =>
                     item.DueAtUtc)
@@ -192,6 +206,12 @@ public sealed class LocalSchedulerService
                     item.Id)
             .ToArray();
     }
+
+    public IReadOnlyList<ScheduledSkill>
+        GetUnpresentedDue(
+            DateTimeOffset now) =>
+        GetReminderCandidates(
+            now);
 
     public bool MarkPresented(
         Guid id,
@@ -223,10 +243,12 @@ public sealed class LocalSchedulerService
             _schedules[index];
 
 
-        // Idempotent.
-        if (current.LastPresentedAtUtc is not null)
+        if (current.AcknowledgedAtUtc is not null)
         {
-            return true;
+            error =
+                "Reminder sudah ditanggapi.";
+
+            return false;
         }
 
 
@@ -248,6 +270,14 @@ public sealed class LocalSchedulerService
             return false;
         }
 
+        if (current.LastPresentedAtUtc is
+                DateTimeOffset lastPresented &&
+            utc <
+                lastPresented +
+                ReminderRecoveryDelay)
+        {
+            return true;
+        }
 
         ScheduledSkill updated =
             current with
@@ -298,6 +328,7 @@ public sealed class LocalSchedulerService
                     item =>
                         item.Id == id &&
                         item.Enabled &&
+                        item.AcknowledgedAtUtc is null &&
                         item.DueAtUtc <=
                             utc);
 
@@ -311,6 +342,125 @@ public sealed class LocalSchedulerService
 
         schedule =
             found;
+
+        return true;
+    }
+    public bool Acknowledge(
+        Guid id,
+        ScheduledReminderDisposition disposition,
+        DateTimeOffset acknowledgedAt,
+        out string error)
+    {
+        error =
+            string.Empty;
+
+
+        if (!Enum.IsDefined(
+                disposition))
+        {
+            error =
+                "Disposition reminder tidak valid.";
+
+            return false;
+        }
+
+
+        DateTimeOffset utc =
+            acknowledgedAt
+                .ToUniversalTime();
+
+
+        int index =
+            Array.FindIndex(
+                _schedules,
+                item =>
+                    item.Id == id);
+
+
+        if (index < 0)
+        {
+            error =
+                "Jadwal tidak ditemukan.";
+
+            return false;
+        }
+
+
+        ScheduledSkill current =
+            _schedules[index];
+
+
+        if (!current.Enabled)
+        {
+            error =
+                "Jadwal tidak aktif.";
+
+            return false;
+        }
+
+
+        if (current.DueAtUtc >
+            utc)
+        {
+            error =
+                "Jadwal belum jatuh tempo.";
+
+            return false;
+        }
+
+
+        if (current.AcknowledgedAtUtc is not null)
+        {
+            if (current.Disposition ==
+                disposition)
+            {
+                // Idempotent.
+                return true;
+            }
+
+            error =
+                "Reminder sudah ditanggapi dengan aksi lain.";
+
+            return false;
+        }
+
+
+        ScheduledSkill updated =
+            current with
+            {
+                AcknowledgedAtUtc =
+                    utc,
+
+                Disposition =
+                    disposition
+            };
+
+
+        ScheduledSkill[] next =
+            _schedules.ToArray();
+
+        next[index] =
+            updated;
+
+
+        if (!_store.Save(
+                next,
+                out error))
+        {
+            return false;
+        }
+
+
+        _schedules =
+            next
+                .OrderBy(
+                    item =>
+                        item.DueAtUtc)
+                .ThenBy(
+                    item =>
+                        item.Id)
+                .ToArray();
+
 
         return true;
     }

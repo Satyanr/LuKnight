@@ -1323,9 +1323,32 @@ public partial class MainWindow : Window
                 schedule.DueAtUtc);
     }
 
-    private void ChatPanel_ScheduledReminderDismissRequested(
-        Guid scheduleId)
+    private void
+        ChatPanel_ScheduledReminderDismissRequested(
+            Guid scheduleId)
     {
+        if (!Services
+                .Scheduler
+                .Acknowledge(
+                    scheduleId,
+                    ScheduledReminderDisposition
+                        .Dismissed,
+                    DateTimeOffset.UtcNow,
+                    out string error))
+        {
+            ChatPanelControl.SetStatus(
+                $"Reminder belum dapat ditutup: {error}",
+                ChatStatus.Error);
+
+            return;
+        }
+
+
+        ChatPanelControl
+            .RemoveScheduledReminder(
+                scheduleId);
+
+
         ChatPanelControl.SetStatus(
             "Reminder ditutup tanpa menjalankan workflow.",
             ChatStatus.Local);
@@ -1403,38 +1426,58 @@ public partial class MainWindow : Window
                 reply.Emotion);
 
 
-            if (reply.ActionProposal is not null)
-            {
-                AssistantReply completed =
-                    await ResolveActionProposalChainAsync(
-                        reply,
-                        AssistantInputSource.System,
-                        requestCts.Token);
-
-                ChatPanelControl.SetStatus(
-                    completed.Text,
-                    completed.Emotion ==
-                        AssistantEmotion.Confused
-                        ? ChatStatus.Error
-                        : ChatStatus.Local);
-            }
-            else
+            if (reply.ActionProposal is null)
             {
                 ChatPanelControl.SetStatus(
                     reply.Text,
-                    reply.Emotion ==
-                        AssistantEmotion.Confused
-                        ? ChatStatus.Error
-                        : ChatStatus.Local);
+                    ChatStatus.Error);
+
+                return;
             }
 
-
-            // Card hanya dikonsumsi sesudah handoff
-            // berhasil mencapai Assistant layer.
-            if (reply.ActionProposal is not null || reply.Emotion != AssistantEmotion.Confused)
+            if (!Services
+                    .Scheduler
+                    .Acknowledge(
+                        scheduleId,
+                        ScheduledReminderDisposition
+                            .RunRequested,
+                        DateTimeOffset.UtcNow,
+                        out string acknowledgeError))
             {
-                ChatPanelControl.RemoveScheduledReminder(scheduleId);
+                // Handoff sempat membuat pending proposal.
+                // Batalkan lagi supaya persistence + runtime
+                // tidak berbeda state.
+                AssistantReply cancelled =
+                    Services.Assistant
+                        .CancelAction(
+                            reply.ActionProposal.Id);
+
+
+                ChatPanelControl
+                    .AddAssistantMessage(
+                        cancelled.Text);
+
+
+                ChatPanelControl.SetStatus(
+                    $"Scheduled workflow belum dapat dimulai: {acknowledgeError}",
+                    ChatStatus.Error);
+
+                return;
             }
+
+            ChatPanelControl
+                .RemoveScheduledReminder(
+                    scheduleId);
+
+            AssistantReply completed =
+                await ResolveActionProposalChainAsync(
+                    reply,
+                    AssistantInputSource.System,
+                    requestCts.Token);
+
+            ChatPanelControl.SetStatus(
+                completed.Text,
+                completed.Emotion == AssistantEmotion.Confused ? ChatStatus.Error : ChatStatus.Local);
         }
         catch (OperationCanceledException)
         {

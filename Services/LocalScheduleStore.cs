@@ -10,7 +10,7 @@ public sealed record LocalScheduleFile
     {
         get;
         init;
-    } = 1;
+    } = 2;
 
     public ScheduledSkill[]
         Schedules
@@ -100,8 +100,7 @@ public sealed class LocalScheduleStore
                     "Schedule document kosong.");
 
 
-            if (file.SchemaVersion !=
-                1)
+            if (file.SchemaVersion is not 1 and not 2)
             {
                 return new(
                     [],

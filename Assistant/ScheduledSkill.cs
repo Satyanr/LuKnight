@@ -1,5 +1,11 @@
 namespace LuKnight.Assistant;
 
+public enum ScheduledReminderDisposition
+{
+    RunRequested,
+    Dismissed
+}
+
 public sealed record ScheduledSkillInvocation
 {
     public string SkillId
@@ -62,6 +68,19 @@ public sealed record ScheduledSkill
     }
 
     public DateTimeOffset? LastPresentedAtUtc
+    {
+        get;
+        init;
+    }
+    public DateTimeOffset?
+        AcknowledgedAtUtc
+    {
+        get;
+        init;
+    }
+
+    public ScheduledReminderDisposition?
+        Disposition
     {
         get;
         init;

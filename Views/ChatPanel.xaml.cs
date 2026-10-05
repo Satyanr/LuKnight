@@ -89,11 +89,27 @@ public partial class ChatPanel : UserControl
 
     public void ClearConversation()
     {
+        Border[] reminders =
+            _scheduledReminderCards
+                .Values
+                .ToArray();
+
+
         MessagesPanel.Children.Clear();
 
-        _scheduledReminderCards.Clear();
+
+        foreach (Border reminder
+                 in reminders)
+        {
+            MessagesPanel.Children.Add(
+                reminder);
+        }
+
 
         MessageInput.Clear();
+
+        MessagesScrollViewer
+            .ScrollToEnd();
     }
 
     public void AddUserMessage(string message)
@@ -411,15 +427,9 @@ public partial class ChatPanel : UserControl
 
         dismiss.Click +=
             (_, _) =>
-            {
-                RemoveScheduledReminder(
-                    id);
-
                 ScheduledReminderDismissRequested?
                     .Invoke(
                         id);
-            };
-
 
         _scheduledReminderCards[id] =
             card;

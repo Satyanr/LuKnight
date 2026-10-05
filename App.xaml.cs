@@ -178,7 +178,7 @@ public partial class App : Application
         ScheduledSkill? due =
             _services
                 .Scheduler
-                .GetUnpresentedDue(
+                .GetReminderCandidates(
                     now)
                 .FirstOrDefault(
                     item =>
