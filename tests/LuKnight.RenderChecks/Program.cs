@@ -248,6 +248,50 @@ internal static partial class Program
             return;
         }
         if (args.Contains(
+                "--companion-live"))
+        {
+            var dispatcher =
+                System.Windows.Threading
+                    .Dispatcher
+                    .CurrentDispatcher;
+
+
+            var operation =
+                dispatcher.InvokeAsync(
+                    async () =>
+                    {
+                        try
+                        {
+                            await CheckCompanionLiveAsync();
+                        }
+                        finally
+                        {
+                            dispatcher
+                                .BeginInvokeShutdown(
+                                    System.Windows.Threading
+                                        .DispatcherPriority
+                                        .Background);
+                        }
+                    });
+
+
+            System.Windows.Threading
+                .Dispatcher
+                .Run();
+
+
+            operation.Task
+                .Unwrap()
+                .GetAwaiter()
+                .GetResult();
+
+
+            Console.WriteLine(
+                $"PASS: {_checks} proactive companion live checks.");
+
+            return;
+        }
+        if (args.Contains(
                 "--scheduler"))
         {
             CheckSchedulerFoundation();
