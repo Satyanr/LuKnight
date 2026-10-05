@@ -11,6 +11,14 @@ public sealed class TrayIconService : IDisposable
     private readonly Forms.NotifyIcon _icon;
     private readonly Icon _art;
     private readonly Forms.ToolStripMenuItem _visibility;
+    private readonly Action
+        _chat;
+
+    private readonly Action
+        _settings;
+
+    private Action?
+        _balloonClick;
     private bool _disposed;
     public Forms.ContextMenuStrip Menu { get; } = new();
 
@@ -22,6 +30,8 @@ public sealed class TrayIconService : IDisposable
     Action restart,
     Action exit)
     {
+        _chat = chat;
+        _settings = settings;
         _visibility =
             Add(
                 "Hide Lu-Knight",
@@ -87,7 +97,15 @@ public sealed class TrayIconService : IDisposable
                     show();
                 }
             };
-        _icon.BalloonTipClicked += (_, _) => settings();
+        _icon.BalloonTipClicked +=
+            (_, _) =>
+            {
+                if (_disposed)
+                    return;
+
+                _balloonClick?
+                    .Invoke();
+            };
 
     }
     private Forms.ToolStripMenuItem Add(string text, Action command)
@@ -99,9 +117,49 @@ public sealed class TrayIconService : IDisposable
     }
 
     public void Show() { ObjectDisposedException.ThrowIf(_disposed, this); _icon.Visible = true; }
-    public void NotifyUpdate(string version)
+    public void NotifyUpdate(
+        string version)
     {
-        if (!_disposed) _icon.ShowBalloonTip(5000, "Lu-Knight update", $"Versi {version} tersedia. Buka Settings → About untuk memperbarui.", Forms.ToolTipIcon.Info);
+        if (_disposed)
+            return;
+
+        _balloonClick =
+            _settings;
+
+        _icon.ShowBalloonTip(
+            5000,
+            "Lu-Knight update",
+            $"Versi {version} tersedia. " +
+            "Buka Settings → About untuk memperbarui.",
+            Forms.ToolTipIcon.Info);
+    }
+
+    public bool NotifyReminder(
+        string displayName)
+    {
+        if (_disposed)
+            return false;
+
+        string name =
+            displayName?.Trim() ??
+            string.Empty;
+
+        if (name.Length == 0)
+            return false;
+
+
+        _balloonClick =
+            _chat;
+
+
+        _icon.ShowBalloonTip(
+            7000,
+            "Lu-Knight reminder",
+            $"{name} sudah jatuh tempo. " +
+            "Klik untuk membuka Chat.",
+            Forms.ToolTipIcon.Info);
+
+        return true;
     }
     public void SetCharacterVisible(bool visible) => _visibility.Text = visible ? "Hide Lu-Knight" : "Show Lu-Knight";
 

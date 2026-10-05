@@ -171,4 +171,117 @@ public sealed class LocalSchedulerService
 
         return true;
     }
+    public IReadOnlyList<ScheduledSkill>
+        GetUnpresentedDue(
+            DateTimeOffset now)
+    {
+        DateTimeOffset utc =
+            now.ToUniversalTime();
+
+        return _schedules
+            .Where(
+                item =>
+                    item.Enabled &&
+                    item.LastPresentedAtUtc is null &&
+                    item.DueAtUtc <= utc)
+            .OrderBy(
+                item =>
+                    item.DueAtUtc)
+            .ThenBy(
+                item =>
+                    item.Id)
+            .ToArray();
+    }
+
+    public bool MarkPresented(
+        Guid id,
+        DateTimeOffset presentedAt,
+        out string error)
+    {
+        error =
+            string.Empty;
+
+        DateTimeOffset utc =
+            presentedAt.ToUniversalTime();
+
+        int index =
+            Array.FindIndex(
+                _schedules,
+                item =>
+                    item.Id == id);
+
+        if (index < 0)
+        {
+            error =
+                "Jadwal tidak ditemukan.";
+
+            return false;
+        }
+
+
+        ScheduledSkill current =
+            _schedules[index];
+
+
+        // Idempotent.
+        if (current.LastPresentedAtUtc is not null)
+        {
+            return true;
+        }
+
+
+        if (!current.Enabled)
+        {
+            error =
+                "Jadwal tidak aktif.";
+
+            return false;
+        }
+
+
+        if (current.DueAtUtc >
+            utc)
+        {
+            error =
+                "Jadwal belum jatuh tempo.";
+
+            return false;
+        }
+
+
+        ScheduledSkill updated =
+            current with
+            {
+                LastPresentedAtUtc =
+                    utc
+            };
+
+
+        ScheduledSkill[] next =
+            _schedules.ToArray();
+
+        next[index] =
+            updated;
+
+
+        if (!_store.Save(
+                next,
+                out error))
+        {
+            return false;
+        }
+
+
+        _schedules =
+            next
+                .OrderBy(
+                    item =>
+                        item.DueAtUtc)
+                .ThenBy(
+                    item =>
+                        item.Id)
+                .ToArray();
+
+        return true;
+    }
 }

@@ -250,6 +250,8 @@ internal static partial class Program
                     out _),
                 "Schedule accepted invalid skill identifier.");
             CheckSchedulerEdgeCases(path, future, now);
+            CheckSchedulerReminderPresentation(directory, future, due, now);
+            CheckTrayReminderRouting();
         }
         finally
         {
@@ -346,5 +348,203 @@ internal static partial class Program
             "Failed persistence damaged the previous file or left temporary data.");
         var missing = new LocalScheduleStore(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path)!, "missing.json"));
         Require(missing.Load() is { Schedules.Count: 0, Issues.Count: 0 }, "Missing schedule store was not empty.");
+    }
+    private static void CheckSchedulerReminderPresentation(string directory,
+        ScheduledSkill future, ScheduledSkill due, DateTimeOffset now)
+    {
+        string path = Path.Combine(directory, "reminders.json");
+        var scheduler = new LocalSchedulerService(new LocalScheduleStore(path));
+        Require(scheduler.Upsert(future, out _) && scheduler.Upsert(due, out _),
+            "Reminder presentation fixture could not be saved.");
+        IReadOnlyList<ScheduledSkill>
+            unpresented =
+                scheduler.GetUnpresentedDue(
+                    now);
+
+        Require(
+            unpresented.Count == 1 &&
+            unpresented[0].Id ==
+                due.Id,
+            "Due schedule was not available for presentation.");
+
+        Require(
+            scheduler.MarkPresented(
+                due.Id,
+                now,
+                out _),
+            "Due schedule could not be marked presented.");
+
+        Require(
+            scheduler.GetUnpresentedDue(
+                now)
+                .All(
+                    item =>
+                        item.Id !=
+                        due.Id),
+            "Presented schedule was offered repeatedly.");
+
+        Require(
+            scheduler.GetDue(
+                now)
+                .Any(
+                    item =>
+                        item.Id ==
+                            due.Id),
+            "Presentation incorrectly consumed the schedule.");
+
+        var presentationReload =
+            new LocalSchedulerService(
+                new LocalScheduleStore(
+                    path));
+
+        presentationReload.Load();
+
+
+        ScheduledSkill presented =
+            presentationReload
+                .Schedules
+                .Single(
+                    item =>
+                        item.Id ==
+                        due.Id);
+
+
+        Require(
+            presented.LastPresentedAtUtc ==
+                now.ToUniversalTime(),
+            "Reminder presentation state did not survive restart.");
+
+
+        Require(
+            presentationReload
+                .GetUnpresentedDue(
+                    now)
+                .All(
+                    item =>
+                        item.Id !=
+                            due.Id),
+            "Presented reminder returned after reload.");
+
+        Require(
+            !scheduler.MarkPresented(
+                future.Id,
+                now,
+                out string futureError) &&
+            futureError.Length > 0,
+            "Future schedule was marked as presented.");
+
+        ScheduledSkill disabled =
+            future with
+            {
+                Id =
+                    Guid.NewGuid(),
+
+                DisplayName =
+                    "Disabled reminder",
+
+                Enabled =
+                    false,
+
+                DueAtUtc =
+                    now.AddMinutes(
+                        -1)
+            };
+
+
+        Require(
+            scheduler.Upsert(
+                disabled,
+                out _),
+            "Disabled reminder could not be stored.");
+
+
+        Require(
+            scheduler.GetUnpresentedDue(
+                now)
+                .All(
+                    item =>
+                        item.Id !=
+                            disabled.Id),
+            "Disabled schedule produced a reminder.");
+
+        Require(
+            !scheduler.MarkPresented(
+                disabled.Id,
+                now,
+                out _),
+            "Disabled schedule was marked presented.");
+
+        DateTimeOffset originalPresentedAt =
+            scheduler.Schedules
+                .Single(
+                    item =>
+                        item.Id ==
+                            due.Id)
+                .LastPresentedAtUtc!
+                .Value;
+
+
+        Require(
+            scheduler.MarkPresented(
+                due.Id,
+                now.AddMinutes(
+                    5),
+                out _),
+            "Repeated presentation acknowledgement was not idempotent.");
+
+
+        Require(
+            scheduler.Schedules
+                .Single(
+                    item =>
+                        item.Id ==
+                            due.Id)
+                .LastPresentedAtUtc ==
+                originalPresentedAt,
+            "Repeated MarkPresented changed the original timestamp.");
+        Require(!scheduler.MarkPresented(Guid.NewGuid(), now, out string missingError) && missingError.Length > 0,
+            "Missing schedule was marked presented.");
+        ScheduledSkill pending = due with { Id = Guid.NewGuid(), LastPresentedAtUtc = null };
+        Require(scheduler.Upsert(pending, out _), "Pending reminder fixture could not be saved.");
+        string before = File.ReadAllText(path);
+        using (var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Require(!scheduler.MarkPresented(pending.Id, now, out string error) && error.Length > 0,
+                "Presentation unexpectedly persisted through a locked destination.");
+            Require(scheduler.Schedules.Single(x => x.Id == pending.Id).LastPresentedAtUtc is null &&
+                scheduler.GetUnpresentedDue(now).Any(x => x.Id == pending.Id),
+                "Failed presentation persistence changed memory or lost the pending reminder.");
+            Require(scheduler.MarkPresented(due.Id, now.AddHours(1), out _),
+                "Idempotent presentation acknowledgement attempted to save again.");
+        }
+        Require(File.ReadAllText(path) == before, "Failed presentation persistence changed the store.");
+        Require(scheduler.MarkPresented(pending.Id, now.ToOffset(TimeSpan.FromHours(8)), out _) &&
+            scheduler.Schedules.Single(x => x.Id == pending.Id).LastPresentedAtUtc?.Offset == TimeSpan.Zero,
+            "Presentation timestamp was not normalized to UTC.");
+    }
+
+    private static void CheckTrayReminderRouting()
+    {
+        int chat = 0, settings = 0;
+        using var tray = new TrayIconService(() => { }, () => { }, () => chat++, () => settings++, () => { }, () => { });
+        var icon = Get<System.Windows.Forms.NotifyIcon>(tray, "_icon");
+        var click = typeof(System.Windows.Forms.NotifyIcon).GetMethod("OnBalloonTipClicked", Private)!;
+        click.Invoke(icon, Array.Empty<object>());
+        Require(chat == 0 && settings == 0, "Balloon click without a notification opened a window.");
+        Require(!tray.NotifyReminder("   "), "Empty reminder name was accepted.");
+        tray.NotifyUpdate("test");
+        click.Invoke(icon, Array.Empty<object>());
+        Require(settings == 1 && chat == 0, "Update balloon did not open Settings only.");
+        Require(tray.NotifyReminder("Due workflow"), "Reminder notification was rejected.");
+        click.Invoke(icon, Array.Empty<object>());
+        Require(settings == 1 && chat == 1, "Reminder balloon did not open Chat only.");
+        tray.NotifyUpdate("test-again");
+        click.Invoke(icon, Array.Empty<object>());
+        Require(settings == 2 && chat == 1, "Update after reminder retained the Chat click action.");
+        tray.Dispose();
+        Require(!tray.NotifyReminder("Disposed"), "Disposed tray accepted reminder notification.");
+        tray.NotifyUpdate("disposed");
+        click.Invoke(icon, Array.Empty<object>());
+        Require(settings == 2 && chat == 1, "Disposed tray dispatched balloon clicks.");
     }
 }

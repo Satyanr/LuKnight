@@ -5,6 +5,7 @@ using System.Windows;
 using System.IO;
 using System.Threading;
 using System.Windows.Threading;
+using LuKnight.Assistant;
 using LuKnight.Services;
 using LuKnight.Views;
 
@@ -19,6 +20,12 @@ public partial class App : Application
     private Mutex? _instance;
     private EventWaitHandle? _showRequest;
     private DispatcherTimer? _instanceTimer;
+    private DispatcherTimer?
+        _scheduleTimer;
+
+    private readonly HashSet<Guid>
+        _scheduleNotifiedThisSession =
+            [];
     private readonly CancellationTokenSource _lifetime = new();
     public void ExitForUpdate() => ExitApplication();
 
@@ -132,11 +139,97 @@ public partial class App : Application
             _character.Show();
         }
         _tray?.SetCharacterVisible(_character.IsVisible);
+        _scheduleTimer =
+            new DispatcherTimer
+            {
+                Interval =
+                    TimeSpan.FromSeconds(
+                        30)
+            };
+
+        _scheduleTimer.Tick +=
+            ScheduleTimer_Tick;
+
+        _scheduleTimer.Start();
+
+
+        // Check once immediately.
+        CheckDueScheduleReminder();
         _instanceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _instanceTimer.Tick += (_, _) => { if (_showRequest.WaitOne(0)) _character.ShowFromTray(); };
         _instanceTimer.Start();
         _ = CheckUpdatesAtStartup();
     }
+    private void CheckDueScheduleReminder()
+    {
+        if (_isExiting ||
+            _services is null ||
+            _tray is null)
+        {
+            return;
+        }
+
+
+        DateTimeOffset now =
+            DateTimeOffset.UtcNow;
+
+
+        ScheduledSkill? due =
+            _services
+                .Scheduler
+                .GetUnpresentedDue(
+                    now)
+                .FirstOrDefault(
+                    item =>
+                        !_scheduleNotifiedThisSession
+                            .Contains(
+                                item.Id));
+
+
+        if (due is null)
+            return;
+
+
+        try
+        {
+            bool presented =
+                _tray.NotifyReminder(
+                    due.DisplayName);
+
+            if (!presented)
+                return;
+
+
+            _scheduleNotifiedThisSession.Add(
+                due.Id);
+
+
+            if (!_services
+                    .Scheduler
+                    .MarkPresented(
+                        due.Id,
+                        now,
+                        out string error))
+            {
+                Trace.WriteLine(
+                    $"[Lu-Knight] Reminder '{due.Id}' " +
+                    $"was shown but presentation state could not be persisted: {error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(
+                $"[Lu-Knight] Schedule reminder failed: {ex.Message}");
+        }
+    }
+
+    private void ScheduleTimer_Tick(
+        object? sender,
+        EventArgs e)
+    {
+        CheckDueScheduleReminder();
+    }
+
     private async Task CheckUpdatesAtStartup()
     {
         try
@@ -202,6 +295,16 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        if (_scheduleTimer is not null)
+        {
+            _scheduleTimer.Stop();
+
+            _scheduleTimer.Tick -=
+                ScheduleTimer_Tick;
+
+            _scheduleTimer =
+                null;
+        }
         _lifetime.Cancel(); _instanceTimer?.Stop(); _showRequest?.Dispose(); _instance?.Dispose();
         if (_settingsWindow is not null)
         {
