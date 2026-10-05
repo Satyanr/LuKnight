@@ -38,6 +38,18 @@ internal static partial class Program
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
+        if (args.Contains("--desktop-commands"))
+        {
+            Task.Run(CheckLocalDesktopCommandsAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} desktop command checks.");
+            return;
+        }
+        if (args.Contains("--startup-isolation"))
+        {
+            Task.Run(CheckStartupIsolationAsync).GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} startup isolation checks.");
+            return;
+        }
         if (args.Contains("--shutdown"))
         {
             var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.IO;
 
 namespace LuKnight.Services;
 
@@ -32,13 +33,23 @@ public interface IDesktopAppCatalog
     void Refresh();
 }
 
-public sealed class DesktopAppCatalogService : IDesktopAppCatalog
+public interface IDesktopAppCatalogHealth
+{
+    bool LastRefreshSucceeded { get; }
+    string RefreshStatus { get; }
+}
+
+public sealed class DesktopAppCatalogService : IDesktopAppCatalog, IDesktopAppCatalogHealth
 {
     public static IDesktopAppCatalog Shared { get; } = new DesktopAppCatalogService();
     private readonly object _sync = new();
     private readonly Func<IEnumerable<DesktopAppTarget>> _discover;
     private readonly Func<DateTimeOffset> _clock;
     private IReadOnlyList<DesktopAppTarget> _applications = Array.Empty<DesktopAppTarget>();
+    private bool _lastRefreshSucceeded = true;
+    private string _refreshStatus = string.Empty;
+    public bool LastRefreshSucceeded { get { lock (_sync) return _lastRefreshSucceeded; } }
+    public string RefreshStatus { get { lock (_sync) return _refreshStatus; } }
     private DateTimeOffset _lastRefresh = DateTimeOffset.MinValue;
 
     public DesktopAppCatalogService(Func<IEnumerable<DesktopAppTarget>>? discover = null,
@@ -64,39 +75,67 @@ public sealed class DesktopAppCatalogService : IDesktopAppCatalog
     {
         lock (_sync)
         {
-            var discovered = _discover().Where(DesktopAppPolicy.IsAllowed).ToList();
-            // Merge duplicate registrations of the same executable/arguments, not different versions.
-            var apps = discovered.Where(a => a.Source is not (DesktopAppSource.BuiltIn or DesktopAppSource.AppsFolder))
-                .GroupBy(a => a.RegistrationIdentity ?? $"{a.ResolvedExecutable ?? a.LaunchTarget}|{a.Arguments}", StringComparer.OrdinalIgnoreCase)
-                .Select(group => Merge(group.OrderByDescending(a => a.RegistrationIdentity is not null && a.Arguments.Length > 0)
-                    .ThenBy(a => a.Source).ToArray())).ToList();
-            foreach (var builtin in discovered.Where(a => a.Source == DesktopAppSource.BuiltIn))
+            DateTimeOffset now = _clock();
+            try
             {
-                var matches = apps.Where(a => a.ProcessNames.Intersect(builtin.ProcessNames, StringComparer.OrdinalIgnoreCase).Any()).ToArray();
-                if (matches.Length == 0) apps.Add(builtin);
-                else foreach (var match in matches)
-                    apps[apps.IndexOf(match)] = match with
-                    {
-                        Id = matches.Length == 1 ? builtin.Id : match.Id,
-                        Aliases = Array.AsReadOnly(match.Aliases.Concat(builtin.Aliases).Distinct(StringComparer.OrdinalIgnoreCase).ToArray())
-                    };
-            }
-            foreach (var packaged in discovered.Where(a => a.Source == DesktopAppSource.AppsFolder))
-            {
-                var existing = apps.FirstOrDefault(a =>
-                    DesktopNameNormalizer.Normalize(a.DisplayName) == DesktopNameNormalizer.Normalize(packaged.DisplayName));
-                if (existing is null) apps.Add(packaged);
-                else apps[apps.IndexOf(existing)] = existing with
+                var discovered = _discover().Where(DesktopAppPolicy.IsAllowed).ToList();
+                // Merge duplicate registrations of the same executable/arguments, not different versions.
+                var apps = discovered.Where(a => a.Source is not (DesktopAppSource.BuiltIn or DesktopAppSource.AppsFolder))
+                    .GroupBy(a => a.RegistrationIdentity ?? $"{a.ResolvedExecutable ?? a.LaunchTarget}|{a.Arguments}", StringComparer.OrdinalIgnoreCase)
+                    .Select(group => Merge(group.OrderByDescending(a => a.RegistrationIdentity is not null && a.Arguments.Length > 0)
+                        .ThenBy(a => a.Source).ToArray())).ToList();
+                foreach (var builtin in discovered.Where(a => a.Source == DesktopAppSource.BuiltIn))
                 {
-                    Aliases = Array.AsReadOnly(existing.Aliases.Concat(packaged.Aliases)
-                        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray())
-                };
+                    var matches = apps.Where(a => a.ProcessNames.Intersect(builtin.ProcessNames, StringComparer.OrdinalIgnoreCase).Any()).ToArray();
+                    if (matches.Length == 0) apps.Add(builtin);
+                    else foreach (var match in matches)
+                        apps[apps.IndexOf(match)] = match with
+                        {
+                            Id = matches.Length == 1 ? builtin.Id : match.Id,
+                            Aliases = Array.AsReadOnly(match.Aliases.Concat(builtin.Aliases).Distinct(StringComparer.OrdinalIgnoreCase).ToArray())
+                        };
+                }
+                foreach (var packaged in discovered.Where(a => a.Source == DesktopAppSource.AppsFolder))
+                {
+                    var existing = apps.FirstOrDefault(a =>
+                        DesktopNameNormalizer.Normalize(a.DisplayName) == DesktopNameNormalizer.Normalize(packaged.DisplayName));
+                    if (existing is null) apps.Add(packaged);
+                    else apps[apps.IndexOf(existing)] = existing with
+                    {
+                        Aliases = Array.AsReadOnly(existing.Aliases.Concat(packaged.Aliases)
+                            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray())
+                    };
+                }
+                IReadOnlyList<DesktopAppTarget> next = Array.AsReadOnly(apps.GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.First()).OrderBy(a => a.DisplayName, StringComparer.OrdinalIgnoreCase).ToArray());
+                // Publish only a completely discovered and merged snapshot.
+                _applications = next;
+                _lastRefreshSucceeded = true;
+                _refreshStatus = "Indeks aplikasi desktop siap.";
             }
-            _applications = Array.AsReadOnly(apps.GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
-                .Select(g => g.First()).OrderBy(a => a.DisplayName, StringComparer.OrdinalIgnoreCase).ToArray());
-            _lastRefresh = _clock();
+            catch (Exception ex) when (IsRecoverableDiscoveryFailure(ex))
+            {
+                if (_applications.Count == 0)
+                    _applications = Array.AsReadOnly(WindowsDesktopAppDiscovery.BuiltIns()
+                        .Where(DesktopAppPolicy.IsAllowed)
+                        .OrderBy(app => app.DisplayName, StringComparer.OrdinalIgnoreCase).ToArray());
+                _lastRefreshSucceeded = false;
+                _refreshStatus = "Indeks aplikasi desktop belum dapat diperbarui; snapshot aman sebelumnya tetap digunakan.";
+                System.Diagnostics.Debug.WriteLine(DiagnosticPrivacy.TraceFailure("Desktop application discovery", ex));
+            }
+            finally
+            {
+                // Failed scans are also rate-limited for subsequent commands.
+                _lastRefresh = now;
+            }
         }
     }
+
+    private static bool IsRecoverableDiscoveryFailure(Exception exception) => exception is
+        IOException or UnauthorizedAccessException or System.Security.SecurityException or
+        System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException or
+        PlatformNotSupportedException or InvalidOperationException or ArgumentException or
+        Microsoft.CSharp.RuntimeBinder.RuntimeBinderException;
 
     private static DesktopAppTarget Merge(DesktopAppTarget[] group) => group[0] with
     {

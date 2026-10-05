@@ -165,8 +165,7 @@ public partial class App : Application
         // Immediate poll:
         // reminder can surface immediately,
         // companion only seeds its dwell period.
-        _services.Notifications.Poll(
-            DateTimeOffset.UtcNow);
+        PollAssistantNotifications();
         _instanceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _instanceTimer.Tick += InstanceTimer_Tick;
         _instanceTimer.Start();
@@ -176,15 +175,17 @@ public partial class App : Application
         object? sender,
         EventArgs e)
     {
-        if (_isExiting ||
-            _services is null)
+        PollAssistantNotifications();
+    }
+
+    private void PollAssistantNotifications()
+    {
+        if (_isExiting || _services is null) return;
+        try { _services.Notifications.Poll(DateTimeOffset.UtcNow); }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            return;
+            Trace.WriteLine(DiagnosticPrivacy.TraceFailure("Assistant notification polling", ex));
         }
-
-
-        _services.Notifications.Poll(
-            DateTimeOffset.UtcNow);
     }
 
     private void Notifications_ReminderDue(
@@ -281,6 +282,10 @@ public partial class App : Application
                 _tray?.NotifyUpdate(update.Version);
         }
         catch (OperationCanceledException) { }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Trace.WriteLine(DiagnosticPrivacy.TraceFailure("Automatic update check", ex));
+        }
     }
 
     private void ToggleCharacterVisibility()

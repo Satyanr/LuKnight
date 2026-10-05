@@ -4,6 +4,22 @@ namespace LuKnight.Services;
 
 public sealed class AppServices
 {
+    private readonly object _startupIssueSync = new();
+    private readonly List<AppStartupIssue> _startupIssues = [];
+    public IReadOnlyList<AppStartupIssue> StartupIssues
+    {
+        get { lock (_startupIssueSync) return _startupIssues.ToArray(); }
+    }
+
+    private void RecordStartupIssue(AppStartupModule module, string message)
+    {
+        lock (_startupIssueSync)
+        {
+            if (_startupIssues.Any(issue => issue.Module == module)) return;
+            _startupIssues.Add(new(module, message));
+        }
+    }
+
     public SettingsService Settings { get; }
     public ChatCoordinator Chat { get; }
     public MemoryService Memory { get; }
@@ -77,7 +93,8 @@ public sealed class AppServices
             uiAssistedResolver ??
             new DesktopUiAssistedResolver(
                 uiScreenEvidence);
-        DesktopAppIndexWarmup.Start(DesktopApps);
+        DesktopAppIndexWarmup.Start(DesktopApps, () => RecordStartupIssue(AppStartupModule.DesktopAppIndex,
+            "Indeks aplikasi desktop dimulai dalam mode terbatas; snapshot aman tetap digunakan."));
         DesktopCommands = new LocalDesktopCommandRouter(DesktopApps, DesktopWindows);
         IntentRouter = new AssistantIntentRouter(DesktopCommands);
         IExplorerActionExecutor explorerActions = explorerExecutor ?? new WindowsExplorerActionExecutor();
@@ -144,6 +161,9 @@ public sealed class AppServices
             }
         }
         UserSkillIssues = skillIssues.AsReadOnly();
+        if (UserSkillIssues.Count > 0)
+            RecordStartupIssue(AppStartupModule.UserSkills,
+                "Satu atau lebih user skill tidak dapat dimuat; skill valid tetap tersedia.");
         Capabilities = AssistantCapabilityRegistry.Create(Skills, actions, tools);
         WorkflowRuntime =
             workflowRuntime ??
@@ -161,6 +181,9 @@ public sealed class AppServices
         LocalScheduleStore schedulerStore = scheduleStore ?? new LocalScheduleStore();
         Scheduler = new LocalSchedulerService(schedulerStore);
         Scheduler.Load();
+        if (Scheduler.LoadIssues.Count > 0)
+            RecordStartupIssue(AppStartupModule.Scheduler,
+                "Satu atau lebih jadwal lokal tidak dapat dimuat; jadwal valid tetap tersedia.");
         CompanionAdvisor = companionAdvisor ?? new LocalCompanionAdvisor();
         Notifications =
             new AssistantNotificationCoordinator(

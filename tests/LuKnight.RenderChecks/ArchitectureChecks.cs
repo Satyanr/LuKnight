@@ -567,6 +567,19 @@ internal static partial class Program
             Compact(appSource).Contains("_character?.BeginShutdown(", StringComparison.Ordinal),
             "Application exit does not cross MainWindow shutdown barrier.");
 
+        string catalogSource = Read("Services/DesktopAppCatalog.cs");
+        string warmupSource = Read("Services/DesktopAppIndexWarmup.cs");
+        Require(catalogSource.Contains("LastRefreshSucceeded", StringComparison.Ordinal) &&
+            catalogSource.Contains("_applications =", StringComparison.Ordinal),
+            "Desktop app catalog lacks last-known-good refresh state.");
+        Require(warmupSource.Contains("Action? degraded", StringComparison.Ordinal),
+            "Desktop app warm-up cannot report isolated failure.");
+        Require(typeof(AppServices).GetProperty("StartupIssues") is not null,
+            "AppServices has no local degraded-startup diagnostics.");
+        Require(Compact(appSource).Contains("PollAssistantNotifications()", StringComparison.Ordinal) &&
+            appSource.Contains("Automatic update check", StringComparison.Ordinal),
+            "Optional notification polling or updater lacks a startup isolation boundary.");
+
         string scheduleStoreSource =
             Read(
                 "Services/LocalScheduleStore.cs");

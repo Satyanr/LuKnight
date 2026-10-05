@@ -269,3 +269,24 @@ finishing before the WPF dispatcher exits. Async operations retain ownership of
 their local cancellation sources until completion.
 
 No pending authorization may survive shutdown or be replayed after restart.
+
+## Startup module isolation
+
+Optional local modules must not prevent the core mascot and local assistant from
+starting. Recoverable failures in desktop application discovery, individual user
+skills, local schedule entries, startup registration repair, tray integration,
+automatic update checks, and reminder or companion notification polling must
+degrade only the affected feature.
+
+Desktop application discovery commits a new catalog snapshot only after a full
+successful refresh. A failed refresh retains the previous known-good snapshot;
+if no snapshot exists, only the built-in safe application catalog is used.
+Failed refreshes are rate-limited along with successful refreshes.
+
+Optional startup diagnostics remain local and are never added to Gemini context,
+conversation history or long-term memory. AppServices exposes at most one issue
+per module without raw exception messages or filenames. Background discovery has
+no execution authority and does not delay shutdown.
+
+Programming errors in core composition are not silently converted into degraded
+startup state.
