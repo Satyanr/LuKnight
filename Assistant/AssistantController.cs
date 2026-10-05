@@ -731,28 +731,12 @@ public sealed class AssistantController
         int nextIndex =
             stepIndex + 1;
 
-        if (nextIndex >=
-            plan.Plan.Count)
-        {
-            _pendingPlan =
-                null;
+        bool hasNextStep =
+            nextIndex <
+            plan.Plan.Count;
 
-            string completed =
-                $"Langkah {stepIndex + 1}/{plan.Plan.Count} selesai. Semua langkah rencana selesai.";
-
-            Conversation.AddAssistant(
-                completed,
-                includeInContext:
-                    false);
-
-            return new AssistantReply(
-                completed,
-                AssistantBackend.Local,
-                DateTimeOffset.UtcNow,
-                AssistantEmotion.Happy);
-        }
-
-        if (NeedsUiSettle(pending.Action))
+        if (hasNextStep &&
+            NeedsUiSettle(pending.Action))
         {
             await Task.Delay(UiMutationSettleDelay, cancellationToken);
             if (_clock() >= plan.ExpiresAt)
@@ -779,6 +763,27 @@ public sealed class AssistantController
                 Risk: pending.Action.Risk,
                 CompletedAt: _clock(),
                 Outputs: outputs));
+        }
+
+        if (!hasNextStep)
+        {
+            _pendingPlan =
+                null;
+
+            string completed =
+                $"Langkah {stepIndex + 1}/{plan.Plan.Count} selesai. " +
+                "Semua langkah rencana selesai.";
+
+            Conversation.AddAssistant(
+                completed,
+                includeInContext:
+                    false);
+
+            return new AssistantReply(
+                completed,
+                AssistantBackend.Local,
+                _clock(),
+                AssistantEmotion.Happy);
         }
 
         _pendingPlan =

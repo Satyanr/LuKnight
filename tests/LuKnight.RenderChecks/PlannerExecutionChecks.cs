@@ -189,6 +189,38 @@ internal static partial class Program
 
     private static async Task CheckWorkflowStepResultsAsync()
     {
+        var mutableOutputs = new Dictionary<string, string>
+        {
+            ["app"] = "Target"
+        };
+        WorkflowExecutionState immutable = WorkflowExecutionState.Empty.Append(
+            new WorkflowStepResult(
+                1,
+                "test",
+                AssistantActionRisk.Navigation,
+                DateTimeOffset.UtcNow,
+                mutableOutputs));
+        mutableOutputs["app"] = "Changed";
+        Require(immutable.Steps[0].Outputs["app"] == "Target",
+            "Workflow step outputs were not frozen.");
+
+        bool badSequenceRejected = false;
+        try
+        {
+            WorkflowExecutionState.Empty.Append(new WorkflowStepResult(
+                2,
+                "test",
+                AssistantActionRisk.Navigation,
+                DateTimeOffset.UtcNow,
+                new Dictionary<string, string>()));
+        }
+        catch (InvalidOperationException)
+        {
+            badSequenceRejected = true;
+        }
+        Require(badSequenceRejected,
+            "Out-of-order workflow result was accepted.");
+
         var catalog = new MutablePlanAppCatalog();
         catalog.Add(new DesktopAppTarget(
             "launcher", "Launcher", "launcher", ["launcher"], ["launcher"],

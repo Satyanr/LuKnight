@@ -32,7 +32,17 @@ public sealed class WorkflowExecutionState
         if (expected > LocalMultiStepPlanParser.MaxSteps)
             throw new InvalidOperationException(
                 "Workflow state melewati batas jumlah langkah.");
-        return new WorkflowExecutionState(_steps.Append(result));
+
+        IReadOnlyDictionary<string, string> frozenOutputs =
+            new ReadOnlyDictionary<string, string>(
+                new Dictionary<string, string>(
+                    result.Outputs,
+                    StringComparer.OrdinalIgnoreCase));
+        WorkflowStepResult frozen = result with
+        {
+            Outputs = frozenOutputs
+        };
+        return new WorkflowExecutionState(_steps.Append(frozen));
     }
 
     public IReadOnlyDictionary<string, string> BuildRuntimeVariables()
