@@ -28,6 +28,15 @@ public partial class ChatPanel : UserControl
 {
     public event Action<string>? MessageSubmitted;
     public event Action? VoiceToggleRequested;
+    public event Action<Guid>?
+        ScheduledReminderRunRequested;
+
+    public event Action<Guid>?
+        ScheduledReminderDismissRequested;
+
+    private readonly Dictionary<Guid, Border>
+        _scheduledReminderCards =
+            [];
     public ChatStatus CurrentStatus { get; private set; } = ChatStatus.Local;
     public VoiceInteractionState CurrentVoiceState { get; private set; } = VoiceInteractionState.Idle;
     public bool HasDraftMessage => !string.IsNullOrWhiteSpace(MessageInput.Text);
@@ -78,7 +87,14 @@ public partial class ChatPanel : UserControl
         MessageSubmitted?.Invoke(message);
     }
 
-    public void ClearConversation() { MessagesPanel.Children.Clear(); MessageInput.Clear(); }
+    public void ClearConversation()
+    {
+        MessagesPanel.Children.Clear();
+
+        _scheduledReminderCards.Clear();
+
+        MessageInput.Clear();
+    }
 
     public void AddUserMessage(string message)
     {
@@ -219,5 +235,213 @@ public partial class ChatPanel : UserControl
 
         MessageInput.Focus();
         Keyboard.Focus(MessageInput);
+    }
+    public void AddScheduledReminder(
+        Guid id,
+        string displayName,
+        DateTimeOffset dueAtUtc)
+    {
+        if (id ==
+                Guid.Empty ||
+            _scheduledReminderCards
+                .ContainsKey(
+                    id))
+        {
+            return;
+        }
+
+
+        string name =
+            displayName?.Trim() ??
+            string.Empty;
+
+        if (name.Length == 0)
+            return;
+
+
+        var title =
+            new TextBlock
+            {
+                Text =
+                    $"⏰ {name}",
+
+                FontWeight =
+                    FontWeights.SemiBold,
+
+                TextWrapping =
+                    TextWrapping.Wrap,
+
+                Foreground =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            64,
+                            58,
+                            52))
+            };
+
+
+        var description =
+            new TextBlock
+            {
+                Text =
+                    $"Jadwal sudah jatuh tempo " +
+                    $"({dueAtUtc.ToLocalTime():g}). " +
+                    "Workflow belum dijalankan.",
+
+                Margin =
+                    new Thickness(
+                        0,
+                        5,
+                        0,
+                        8),
+
+                TextWrapping =
+                    TextWrapping.Wrap,
+
+                FontSize =
+                    12,
+
+                Foreground =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            90,
+                            84,
+                            78))
+            };
+
+
+        var run =
+            new Button
+            {
+                Content =
+                    "Run",
+
+                MinWidth =
+                    64,
+
+                Margin =
+                    new Thickness(
+                        0,
+                        0,
+                        6,
+                        0)
+            };
+
+
+        var dismiss =
+            new Button
+            {
+                Content =
+                    "Dismiss",
+
+                MinWidth =
+                    64
+            };
+
+
+        var buttons =
+            new StackPanel
+            {
+                Orientation =
+                    Orientation.Horizontal
+            };
+
+        buttons.Children.Add(
+            run);
+
+        buttons.Children.Add(
+            dismiss);
+
+
+        var content =
+            new StackPanel();
+
+        content.Children.Add(
+            title);
+
+        content.Children.Add(
+            description);
+
+        content.Children.Add(
+            buttons);
+
+
+        var card =
+            new Border
+            {
+                Child =
+                    content,
+
+                Background =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            244,
+                            239,
+                            218)),
+
+                CornerRadius =
+                    new CornerRadius(
+                        10),
+
+                Padding =
+                    new Thickness(
+                        10),
+
+                Margin =
+                    new Thickness(
+                        2,
+                        4,
+                        2,
+                        4),
+
+                MaxWidth =
+                    230,
+
+                HorizontalAlignment =
+                    HorizontalAlignment.Left
+            };
+
+
+        run.Click +=
+            (_, _) =>
+                ScheduledReminderRunRequested?
+                    .Invoke(
+                        id);
+
+
+        dismiss.Click +=
+            (_, _) =>
+            {
+                RemoveScheduledReminder(
+                    id);
+
+                ScheduledReminderDismissRequested?
+                    .Invoke(
+                        id);
+            };
+
+
+        _scheduledReminderCards[id] =
+            card;
+
+        MessagesPanel.Children.Add(
+            card);
+
+        MessagesScrollViewer.ScrollToEnd();
+    }
+
+    public void RemoveScheduledReminder(
+        Guid id)
+    {
+        if (!_scheduledReminderCards
+                .Remove(
+                    id,
+                    out Border? card))
+        {
+            return;
+        }
+
+        MessagesPanel.Children.Remove(
+            card);
     }
 }

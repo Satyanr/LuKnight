@@ -237,6 +237,13 @@ public partial class MainWindow : Window
 
         ChatPanelControl.MessageSubmitted += ChatPanel_MessageSubmitted;
         ChatPanelControl.VoiceToggleRequested += ChatPanel_VoiceToggleRequested;
+        ChatPanelControl
+            .ScheduledReminderRunRequested +=
+                ChatPanel_ScheduledReminderRunRequested;
+
+        ChatPanelControl
+            .ScheduledReminderDismissRequested +=
+                ChatPanel_ScheduledReminderDismissRequested;
         Services.Chat.OptionsChanged += Chat_OptionsChanged;
         RefreshVoiceAvailability();
 
@@ -1246,6 +1253,13 @@ public partial class MainWindow : Window
     protected override void OnClosed(
     EventArgs e)
     {
+        ChatPanelControl
+            .ScheduledReminderRunRequested -=
+                ChatPanel_ScheduledReminderRunRequested;
+
+        ChatPanelControl
+            .ScheduledReminderDismissRequested -=
+                ChatPanel_ScheduledReminderDismissRequested;
         Services.Context.Detach();
         Services.Chat.OptionsChanged -= Chat_OptionsChanged;
         _requestCts?.Cancel();
@@ -1280,5 +1294,184 @@ public partial class MainWindow : Window
         _behaviorController?.Dispose();
 
         base.OnClosed(e);
+    }
+    public void OpenScheduledReminderFromTray(
+        Guid scheduleId)
+    {
+        OpenChatFromTray();
+
+
+        if (!Services
+                .Scheduler
+                .TryGetDue(
+                    scheduleId,
+                    DateTimeOffset.UtcNow,
+                    out ScheduledSkill schedule))
+        {
+            ChatPanelControl
+                .AddAssistantMessage(
+                    "Reminder ini tidak lagi tersedia atau belum jatuh tempo.");
+
+            return;
+        }
+
+
+        ChatPanelControl
+            .AddScheduledReminder(
+                schedule.Id,
+                schedule.DisplayName,
+                schedule.DueAtUtc);
+    }
+
+    private void ChatPanel_ScheduledReminderDismissRequested(
+        Guid scheduleId)
+    {
+        ChatPanelControl.SetStatus(
+            "Reminder ditutup tanpa menjalankan workflow.",
+            ChatStatus.Local);
+    }
+
+    private async void
+        ChatPanel_ScheduledReminderRunRequested(
+            Guid scheduleId)
+    {
+        if (_isSending ||
+            _isTranscribing ||
+            _isVoiceRecording ||
+            _isSpeaking ||
+            Services.Assistant.IsBusy)
+        {
+            ChatPanelControl.SetStatus(
+                "Selesaikan aktivitas Lu-Knight yang sedang berjalan terlebih dahulu.",
+                ChatStatus.Ready);
+
+            return;
+        }
+
+
+        if (!Services
+                .Scheduler
+                .TryGetDue(
+                    scheduleId,
+                    DateTimeOffset.UtcNow,
+                    out ScheduledSkill schedule))
+        {
+            ChatPanelControl.RemoveScheduledReminder(
+                scheduleId);
+
+            ChatPanelControl.AddAssistantMessage(
+                "Reminder ini tidak lagi tersedia atau sudah dinonaktifkan.");
+
+            return;
+        }
+
+
+        _isSending =
+            true;
+
+        ChatPanelControl.SetBusy(
+            true);
+
+        _behaviorController?
+            .SetThinking(
+                true);
+
+
+        using var requestCts =
+            new CancellationTokenSource();
+
+        _requestCts =
+            requestCts;
+
+
+        try
+        {
+            AssistantReply reply =
+                await Services
+                    .Assistant
+                    .StartScheduledSkillAsync(
+                        schedule,
+                        requestCts.Token);
+
+
+            ChatPanelControl
+                .AddAssistantMessage(
+                    reply.Text);
+
+
+            ReactToAssistantEmotion(
+                reply.Emotion);
+
+
+            if (reply.ActionProposal is not null)
+            {
+                AssistantReply completed =
+                    await ResolveActionProposalChainAsync(
+                        reply,
+                        AssistantInputSource.System,
+                        requestCts.Token);
+
+                ChatPanelControl.SetStatus(
+                    completed.Text,
+                    completed.Emotion ==
+                        AssistantEmotion.Confused
+                        ? ChatStatus.Error
+                        : ChatStatus.Local);
+            }
+            else
+            {
+                ChatPanelControl.SetStatus(
+                    reply.Text,
+                    reply.Emotion ==
+                        AssistantEmotion.Confused
+                        ? ChatStatus.Error
+                        : ChatStatus.Local);
+            }
+
+
+            // Card hanya dikonsumsi sesudah handoff
+            // berhasil mencapai Assistant layer.
+            if (reply.ActionProposal is not null || reply.Emotion != AssistantEmotion.Confused)
+            {
+                ChatPanelControl.RemoveScheduledReminder(scheduleId);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            ChatPanelControl.SetStatus(
+                "Scheduled workflow dibatalkan.",
+                ChatStatus.Ready);
+        }
+        catch (Exception ex)
+        {
+            ChatPanelControl.AddAssistantMessage(
+                $"Scheduled workflow gagal dimulai: {ex.Message}");
+
+            ChatPanelControl.SetStatus(
+                "Scheduled workflow gagal.",
+                ChatStatus.Error);
+        }
+        finally
+        {
+            _behaviorController?
+                .SetThinking(
+                    false);
+
+            ChatPanelControl.SetBusy(
+                false);
+
+            if (ReferenceEquals(
+                    _requestCts,
+                    requestCts))
+            {
+                _requestCts =
+                    null;
+            }
+
+            _isSending =
+                false;
+
+            RefreshVoiceAvailability();
+        }
     }
 }

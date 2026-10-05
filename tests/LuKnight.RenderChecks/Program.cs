@@ -236,6 +236,10 @@ internal static partial class Program
                 "--scheduler"))
         {
             CheckSchedulerFoundation();
+            Task.Run(
+                CheckScheduledWorkflowHandoffAsync)
+                .GetAwaiter()
+                .GetResult();
 
             Console.WriteLine(
                 $"PASS: {_checks} scheduler foundation checks.");

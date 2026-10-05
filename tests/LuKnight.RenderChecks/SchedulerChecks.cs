@@ -1,3 +1,8 @@
+using System.Net.Http;
+using System.Windows;
+using System.Windows.Controls;
+using LuKnight.Models;
+using LuKnight.Views;
 using System.IO;
 using LuKnight.Assistant;
 using LuKnight.Services;
@@ -252,6 +257,7 @@ internal static partial class Program
             CheckSchedulerEdgeCases(path, future, now);
             CheckSchedulerReminderPresentation(directory, future, due, now);
             CheckTrayReminderRouting();
+            CheckScheduledReminderCards();
         }
         finally
         {
@@ -502,6 +508,35 @@ internal static partial class Program
                 .LastPresentedAtUtc ==
                 originalPresentedAt,
             "Repeated MarkPresented changed the original timestamp.");
+        Require(
+            scheduler.TryGetDue(
+                due.Id,
+                now,
+                out ScheduledSkill resolvedDue) &&
+            resolvedDue.Id ==
+                due.Id,
+            "Due schedule could not be resolved for handoff.");
+
+        Require(
+            !scheduler.TryGetDue(
+                future.Id,
+                now,
+                out _),
+            "Future schedule was exposed for handoff.");
+
+        Require(
+            !scheduler.TryGetDue(
+                disabled.Id,
+                now,
+                out _),
+            "Disabled schedule was exposed for handoff.");
+
+        Require(
+            scheduler.TryGetDue(
+                due.Id,
+                now,
+                out _),
+            "Presented schedule could not be launched by the user.");
         Require(!scheduler.MarkPresented(Guid.NewGuid(), now, out string missingError) && missingError.Length > 0,
             "Missing schedule was marked presented.");
         ScheduledSkill pending = due with { Id = Guid.NewGuid(), LastPresentedAtUtc = null };
@@ -525,26 +560,346 @@ internal static partial class Program
 
     private static void CheckTrayReminderRouting()
     {
-        int chat = 0, settings = 0;
-        using var tray = new TrayIconService(() => { }, () => { }, () => chat++, () => settings++, () => { }, () => { });
+        Guid reminderId = Guid.NewGuid();
+        Guid? openedReminder = null;
+        int settings = 0, chat = 0, reminders = 0;
+        using var tray = new TrayIconService(() => { }, () => { }, () => chat++, () => settings++,
+            () => { }, () => { }, id => { openedReminder = id; reminders++; });
         var icon = Get<System.Windows.Forms.NotifyIcon>(tray, "_icon");
         var click = typeof(System.Windows.Forms.NotifyIcon).GetMethod("OnBalloonTipClicked", Private)!;
         click.Invoke(icon, Array.Empty<object>());
-        Require(chat == 0 && settings == 0, "Balloon click without a notification opened a window.");
-        Require(!tray.NotifyReminder("   "), "Empty reminder name was accepted.");
+        Require(settings == 0 && reminders == 0, "Empty balloon route dispatched a callback.");
+        Require(!tray.NotifyReminder(Guid.Empty, "Invalid") && !tray.NotifyReminder(reminderId, "   "),
+            "Invalid reminder notification was accepted.");
+        Require(tray.NotifyReminder(reminderId, "Due workflow"), "Reminder notification was rejected.");
+        click.Invoke(icon, Array.Empty<object>());
+        Require(openedReminder == reminderId && settings == 0 && chat == 0 && reminders == 1,
+            "Reminder balloon lost its schedule ID or opened the generic chat callback.");
+        openedReminder = null;
+        click.Invoke(icon, Array.Empty<object>());
+        Require(openedReminder is null && reminders == 1, "Consumed reminder balloon dispatched twice.");
+        tray.NotifyReminder(reminderId, "Replaced reminder");
         tray.NotifyUpdate("test");
         click.Invoke(icon, Array.Empty<object>());
-        Require(settings == 1 && chat == 0, "Update balloon did not open Settings only.");
-        Require(tray.NotifyReminder("Due workflow"), "Reminder notification was rejected.");
+        Require(settings == 1 && openedReminder is null, "Update balloon retained an old reminder route.");
         click.Invoke(icon, Array.Empty<object>());
-        Require(settings == 1 && chat == 1, "Reminder balloon did not open Chat only.");
-        tray.NotifyUpdate("test-again");
+        Require(settings == 1, "Consumed update balloon dispatched twice.");
+        tray.NotifyUpdate("replaced update");
+        tray.NotifyReminder(reminderId, "New reminder");
         click.Invoke(icon, Array.Empty<object>());
-        Require(settings == 2 && chat == 1, "Update after reminder retained the Chat click action.");
+        Require(openedReminder == reminderId && settings == 1, "Reminder after update retained Settings route.");
+        tray.NotifyReminder(reminderId, "Disposed reminder");
         tray.Dispose();
-        Require(!tray.NotifyReminder("Disposed"), "Disposed tray accepted reminder notification.");
+        Require(!tray.NotifyReminder(reminderId, "Disposed"), "Disposed tray accepted reminder notification.");
         tray.NotifyUpdate("disposed");
         click.Invoke(icon, Array.Empty<object>());
-        Require(settings == 2 && chat == 1, "Disposed tray dispatched balloon clicks.");
+        Require(settings == 1 && reminders == 2, "Disposed tray dispatched a balloon click.");
+    }
+    private static async Task
+        CheckScheduledWorkflowHandoffAsync()
+    {
+        DateTimeOffset now =
+            DateTimeOffset.UtcNow;
+
+
+        var catalog =
+            new MutablePlanAppCatalog();
+
+        catalog.Add(
+            new DesktopAppTarget(
+                "launcher",
+                "Launcher",
+                "launcher",
+                ["launcher"],
+                ["launcher"],
+                DesktopAppSource.BuiltIn));
+
+
+        var open =
+            new PlanTestAction(
+                BuiltInActionNames
+                    .DesktopOpenApplication);
+
+
+        var skill =
+            new UserDefinedAssistantSkill(
+                new UserSkillDefinition
+                {
+                    SchemaVersion =
+                        2,
+
+                    Id =
+                        "scheduled-open",
+
+                    DisplayName =
+                        "Scheduled Open",
+
+                    Description =
+                        "Scheduled handoff test.",
+
+                    Parameters =
+                    [
+                        new()
+                        {
+                            Name =
+                                "app",
+
+                            Required =
+                                true,
+
+                            MaxLength =
+                                100
+                        }
+                    ],
+
+                    Steps =
+                    [
+                        "buka {app}"
+                    ]
+                });
+
+
+        using var handler =
+            new FakeHttp(
+                (_, _) =>
+                    throw new InvalidOperationException(
+                        "Scheduled handoff called Gemini."));
+
+        using var client =
+            new HttpClient(
+                handler);
+
+
+        var chat =
+            new ChatCoordinator(
+                new FakeCredentials
+                {
+                    Key =
+                        "unused-scheduler-handoff-key"
+                },
+                new ChatSettings
+                {
+                    Provider =
+                        ChatProvider.Gemini,
+
+                    UseDesktopActions =
+                        true,
+
+                    DesktopPermission =
+                        DesktopPermissionLevel.Sensitive
+                },
+                () => null,
+                client);
+
+
+        var assistant =
+            new AssistantController(
+                chat,
+                intentRouter:
+                    new AssistantIntentRouter(
+                        new LocalDesktopCommandRouter(
+                            catalog)),
+                actions:
+                    new AssistantActionRouter(
+                        new IAssistantAction[]
+                        {
+                            open
+                        },
+                        () => chat.Options.DesktopPermission),
+                skills:
+                    new AssistantSkillRouter(
+                        new[]
+                        {
+                            skill
+                        }),
+                clock:
+                    () => now);
+
+
+        var schedule =
+            new ScheduledSkill
+            {
+                Id =
+                    Guid.NewGuid(),
+
+                Enabled =
+                    true,
+
+                DisplayName =
+                    "Open Launcher",
+
+                CreatedAtUtc =
+                    now.AddMinutes(
+                        -5),
+
+                DueAtUtc =
+                    now.AddMinutes(
+                        -1),
+
+                LastPresentedAtUtc =
+                    now,
+
+                Invocation =
+                    new ScheduledSkillInvocation
+                    {
+                        SkillId =
+                            "scheduled-open",
+
+                        Parameters =
+                            new Dictionary<string, string>
+                            {
+                                ["app"] =
+                                    "Launcher"
+                            }
+                    }
+            };
+
+
+        AssistantReply proposed =
+            await assistant
+                .StartScheduledSkillAsync(
+                    schedule);
+
+
+        Require(
+            proposed.ActionProposal is
+            {
+                PlanStepNumber:
+                    1,
+
+                PlanStepCount:
+                    1
+            },
+            "Scheduled workflow did not reach normal planner confirmation.");
+
+
+        Require(
+            open.Preparations == 1 &&
+            open.Executions == 0,
+            "Scheduled workflow executed before confirmation.");
+
+
+        bool pendingRejected = false;
+        try { await assistant.StartScheduledSkillAsync(schedule); }
+        catch (InvalidOperationException) { pendingRejected = true; }
+        Require(pendingRejected && open.Preparations == 1 && open.Executions == 0 && assistant.HasPendingAction,
+            "Scheduled handoff replaced a pending manual confirmation.");
+
+        AssistantReply completed =
+            await assistant
+                .ConfirmActionAsync(
+                    proposed.ActionProposal!.Id);
+
+
+        Require(
+            completed.ActionProposal is null &&
+            open.Executions == 1,
+            "Scheduled workflow did not use normal action execution path.");
+
+
+        Require(
+            handler.Calls == 0 &&
+            assistant.Conversation
+                .GetRecentContext()
+                .Count == 0,
+            "Scheduled workflow leaked Gemini/context.");
+        AssistantReply futureReply =
+            await assistant.StartScheduledSkillAsync(
+                schedule with
+                {
+                    Id =
+                        Guid.NewGuid(),
+
+                    DueAtUtc =
+                        now.AddMinutes(
+                            10)
+                });
+
+        Require(
+            futureReply.ActionProposal is null &&
+            !assistant.HasPendingPlan &&
+            !assistant.HasPendingAction,
+            "Future schedule entered executable state.");
+
+        AssistantReply disabledReply =
+            await assistant.StartScheduledSkillAsync(
+                schedule with
+                {
+                    Id =
+                        Guid.NewGuid(),
+
+                    Enabled =
+                        false
+                });
+
+        Require(
+            disabledReply.ActionProposal is null &&
+            !assistant.HasPendingPlan,
+            "Disabled schedule entered executable state.");
+        AssistantReply unknown = await assistant.StartScheduledSkillAsync(schedule with
+        {
+            Invocation = new() { SkillId = "missing-scheduled-skill" }
+        });
+        Require(unknown.ActionProposal is null && !assistant.HasPendingPlan && !assistant.HasPendingAction,
+            "Unknown scheduled skill entered executable state.");
+        AssistantReply invalid = await assistant.StartScheduledSkillAsync(schedule with
+        {
+            Invocation = new() { SkillId = "scheduled-open", Argument = "legacy", Parameters = schedule.Invocation.Parameters }
+        });
+        Require(invalid.ActionProposal is null && !assistant.HasPendingPlan,
+            "Invalid structured scheduled invocation entered executable state.");
+        using (var cancelled = new CancellationTokenSource())
+        {
+            cancelled.Cancel();
+            bool rejected = false;
+            try { await assistant.StartScheduledSkillAsync(schedule, cancelled.Token); }
+            catch (OperationCanceledException) { rejected = true; }
+            Require(rejected && !assistant.IsBusy, "Cancelled scheduled admission retained the request gate.");
+        }
+        open.Risk = AssistantActionRisk.Sensitive;
+        AssistantReply review = await assistant.StartScheduledSkillAsync(schedule);
+        Require(review.ActionProposal?.ConfirmationStage == AssistantConfirmationStage.SensitiveReview && open.Executions == 1,
+            "Scheduled Sensitive step bypassed review.");
+        AssistantReply final = await assistant.ConfirmActionAsync(review.ActionProposal!.Id);
+        Require(final.ActionProposal?.ConfirmationStage == AssistantConfirmationStage.SensitiveFinal &&
+            final.ActionProposal.Id != review.ActionProposal.Id && open.Executions == 1,
+            "Scheduled Sensitive review executed or reused the confirmation ID.");
+        chat.Configure(chat.Options with { DesktopPermission = DesktopPermissionLevel.Interaction });
+        AssistantReply blocked = await assistant.ConfirmActionAsync(final.ActionProposal!.Id);
+        Require(blocked.ActionProposal is null && open.Executions == 1 && !assistant.HasPendingPlan,
+            "Scheduled execution ignored live permission downgrade.");
+        Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
+            "Rejected or Sensitive scheduled requests leaked into Gemini context.");
+    }
+    private static void CheckScheduledReminderCards()
+    {
+        var panel = new ChatPanel();
+        Guid id = Guid.NewGuid();
+        Guid? requested = null, dismissed = null;
+        panel.ScheduledReminderRunRequested += value => requested = value;
+        panel.ScheduledReminderDismissRequested += value => dismissed = value;
+        panel.AddScheduledReminder(Guid.Empty, "Invalid", DateTimeOffset.UtcNow);
+        panel.AddScheduledReminder(id, "   ", DateTimeOffset.UtcNow);
+        var cards = Get<Dictionary<Guid, Border>>(panel, "_scheduledReminderCards");
+        Require(cards.Count == 0, "Invalid reminder card was added.");
+        panel.AddScheduledReminder(id, "Due workflow", DateTimeOffset.UtcNow);
+        panel.AddScheduledReminder(id, "Duplicate", DateTimeOffset.UtcNow);
+        Require(cards.Count == 1 && requested is null && dismissed is null,
+            "Opening reminder card dispatched Run or added a duplicate.");
+        var content = (StackPanel)cards[id].Child;
+        var buttons = (StackPanel)content.Children[2];
+        ((Button)buttons.Children[0]).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Require(requested == id && dismissed is null && cards.ContainsKey(id),
+            "Run lost its schedule ID or consumed the card before handoff.");
+        ((Button)buttons.Children[1]).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Require(dismissed == id && cards.Count == 0, "Dismiss did not remove its reminder card.");
+        panel.AddScheduledReminder(id, "New card", DateTimeOffset.UtcNow);
+        panel.ClearConversation();
+        Require(cards.Count == 0, "Clearing chat retained stale reminder IDs.");
+        panel.AddScheduledReminder(id, "After clear", DateTimeOffset.UtcNow);
+        Require(cards.Count == 1, "Reminder card could not be reopened after clearing chat.");
+        panel.RemoveScheduledReminder(id);
+        panel.RemoveScheduledReminder(id);
+        Require(cards.Count == 0, "Removing a reminder card was not idempotent.");
     }
 }

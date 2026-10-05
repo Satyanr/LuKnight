@@ -11,14 +11,24 @@ public sealed class TrayIconService : IDisposable
     private readonly Forms.NotifyIcon _icon;
     private readonly Icon _art;
     private readonly Forms.ToolStripMenuItem _visibility;
-    private readonly Action
-        _chat;
+    private enum BalloonRoute
+    {
+        None,
+        Settings,
+        Reminder
+    }
 
     private readonly Action
         _settings;
 
-    private Action?
-        _balloonClick;
+    private readonly Action<Guid>
+        _reminder;
+
+    private BalloonRoute
+        _balloonRoute;
+
+    private Guid?
+        _activeReminderId;
     private bool _disposed;
     public Forms.ContextMenuStrip Menu { get; } = new();
 
@@ -28,10 +38,15 @@ public sealed class TrayIconService : IDisposable
     Action chat,
     Action settings,
     Action restart,
-    Action exit)
+    Action exit,
+    Action<Guid>? reminder = null)
     {
-        _chat = chat;
-        _settings = settings;
+        _settings =
+            settings;
+
+        _reminder =
+            reminder ??
+            (_ => { });
         _visibility =
             Add(
                 "Hide Lu-Knight",
@@ -103,8 +118,32 @@ public sealed class TrayIconService : IDisposable
                 if (_disposed)
                     return;
 
-                _balloonClick?
-                    .Invoke();
+                BalloonRoute route =
+                    _balloonRoute;
+
+                Guid? reminderId =
+                    _activeReminderId;
+
+                // Consume click state first.
+                _balloonRoute =
+                    BalloonRoute.None;
+
+                _activeReminderId =
+                    null;
+
+
+                switch (route)
+                {
+                    case BalloonRoute.Settings:
+                        _settings();
+                        break;
+
+                    case BalloonRoute.Reminder
+                        when reminderId is Guid id:
+                        _reminder(
+                            id);
+                        break;
+                }
             };
 
     }
@@ -123,8 +162,11 @@ public sealed class TrayIconService : IDisposable
         if (_disposed)
             return;
 
-        _balloonClick =
-            _settings;
+        _activeReminderId =
+            null;
+
+        _balloonRoute =
+            BalloonRoute.Settings;
 
         _icon.ShowBalloonTip(
             5000,
@@ -135,10 +177,15 @@ public sealed class TrayIconService : IDisposable
     }
 
     public bool NotifyReminder(
+        Guid scheduleId,
         string displayName)
     {
-        if (_disposed)
+        if (_disposed ||
+            scheduleId ==
+                Guid.Empty)
+        {
             return false;
+        }
 
         string name =
             displayName?.Trim() ??
@@ -148,8 +195,11 @@ public sealed class TrayIconService : IDisposable
             return false;
 
 
-        _balloonClick =
-            _chat;
+        _activeReminderId =
+            scheduleId;
+
+        _balloonRoute =
+            BalloonRoute.Reminder;
 
 
         _icon.ShowBalloonTip(

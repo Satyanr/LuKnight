@@ -284,4 +284,34 @@ public sealed class LocalSchedulerService
 
         return true;
     }
+    public bool TryGetDue(
+        Guid id,
+        DateTimeOffset now,
+        out ScheduledSkill schedule)
+    {
+        DateTimeOffset utc =
+            now.ToUniversalTime();
+
+        ScheduledSkill? found =
+            _schedules
+                .FirstOrDefault(
+                    item =>
+                        item.Id == id &&
+                        item.Enabled &&
+                        item.DueAtUtc <=
+                            utc);
+
+        if (found is null)
+        {
+            schedule =
+                default!;
+
+            return false;
+        }
+
+        schedule =
+            found;
+
+        return true;
+    }
 }

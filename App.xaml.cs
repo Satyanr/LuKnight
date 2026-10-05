@@ -110,7 +110,8 @@ public partial class App : Application
                     _character.OpenChatFromTray,
                     OpenSettingsWindow,
                     RestartApplication,
-                    ExitApplication);
+                    ExitApplication,
+                    OpenScheduledReminderFromTray);
             _tray.Show();
         }
         catch (Exception ex)
@@ -194,6 +195,7 @@ public partial class App : Application
         {
             bool presented =
                 _tray.NotifyReminder(
+                    due.Id,
                     due.DisplayName);
 
             if (!presented)
@@ -319,5 +321,18 @@ public partial class App : Application
         _tray?.Dispose();
         _tray = null;
         base.OnExit(e);
+    }
+    private void OpenScheduledReminderFromTray(
+        Guid scheduleId)
+    {
+        if (_isExiting ||
+            _character is null ||
+            _services is null)
+        {
+            return;
+        }
+
+        _character.OpenScheduledReminderFromTray(
+            scheduleId);
     }
 }

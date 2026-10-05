@@ -1345,4 +1345,130 @@ public sealed class AssistantController
             _requestGate.Release();
         }
     }
+    public async Task<AssistantReply>
+        StartScheduledSkillAsync(
+            ScheduledSkill schedule,
+            CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(
+            schedule);
+
+        cancellationToken
+            .ThrowIfCancellationRequested();
+
+
+        bool entered =
+            await _requestGate.WaitAsync(
+                0,
+                cancellationToken);
+
+        if (!entered)
+        {
+            throw new InvalidOperationException(
+                "Tunggu permintaan sebelumnya selesai.");
+        }
+
+
+        try
+        {
+            if (_chat.IsBusy)
+            {
+                throw new InvalidOperationException(
+                    "Tunggu permintaan chat selesai.");
+            }
+
+
+            PruneExpiredPendingState();
+
+
+            if (_pendingAction is not null ||
+                _pendingPlan is not null)
+            {
+                throw new InvalidOperationException(
+                    "Selesaikan atau batalkan tindakan atau rencana desktop terlebih dahulu.");
+            }
+
+
+            if (!LocalSchedulePolicy
+                    .TryNormalize(
+                        schedule,
+                        out ScheduledSkill normalized,
+                        out string validationError))
+            {
+                return RejectScheduledSkill(
+                    validationError);
+            }
+
+
+            DateTimeOffset now =
+                _clock()
+                    .ToUniversalTime();
+
+
+            if (!normalized.Enabled)
+            {
+                return RejectScheduledSkill(
+                    "Jadwal sudah dinonaktifkan.");
+            }
+
+
+            if (normalized.DueAtUtc >
+                now)
+            {
+                return RejectScheduledSkill(
+                    "Jadwal belum jatuh tempo.");
+            }
+
+
+            ScheduledSkillInvocation scheduled =
+                normalized.Invocation;
+
+
+            var invocation =
+                new SkillInvocation(
+                    scheduled.SkillId,
+                    scheduled.Argument,
+                    IncludeInContext:
+                        false,
+                    Parameters:
+                        scheduled.Parameters);
+
+
+            var request =
+                new AssistantRequest(
+                    $"Jalankan reminder: {normalized.DisplayName}",
+                    AssistantInputSource.System);
+
+
+            return await ExecuteSkillAsync(
+                request,
+                invocation,
+                cancellationToken);
+        }
+        finally
+        {
+            _requestGate.Release();
+        }
+    }
+
+    private AssistantReply RejectScheduledSkill(
+        string message)
+    {
+        string text =
+            string.IsNullOrWhiteSpace(
+                message)
+                ? "Scheduled workflow tidak dapat dijalankan."
+                : message;
+
+        Conversation.AddAssistant(
+            text,
+            includeInContext:
+                false);
+
+        return new AssistantReply(
+            text,
+            AssistantBackend.Local,
+            _clock(),
+            AssistantEmotion.Confused);
+    }
 }
