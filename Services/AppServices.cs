@@ -17,7 +17,6 @@ public sealed class AppServices
     public AssistantActionRouter Actions { get; }
     public AssistantSkillRouter Skills { get; }
     public AssistantWorkflowRuntime WorkflowRuntime { get; }
-    public LocalScheduleStore ScheduleStore { get; }
     public LocalSchedulerService Scheduler { get; }
     public LocalCompanionAdvisor CompanionAdvisor { get; }
     public AssistantNotificationCoordinator
@@ -150,8 +149,8 @@ public sealed class AppServices
             actions: Actions,
             skills: Skills,
             workflowRuntime: WorkflowRuntime);
-        ScheduleStore = scheduleStore ?? new LocalScheduleStore();
-        Scheduler = new LocalSchedulerService(ScheduleStore);
+        LocalScheduleStore schedulerStore = scheduleStore ?? new LocalScheduleStore();
+        Scheduler = new LocalSchedulerService(schedulerStore);
         Scheduler.Load();
         CompanionAdvisor = companionAdvisor ?? new LocalCompanionAdvisor();
         Notifications =

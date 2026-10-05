@@ -117,3 +117,27 @@ assistant actions.
 
 UI, scheduler, proactive companion and skill definitions must not call
 them directly.
+
+## Notification Coordinator
+
+AssistantNotificationCoordinator may coordinate local presentation state for:
+
+- due reminders
+- companion suggestion dwell/rate limiting
+- stale suggestion invalidation
+
+It is not an execution coordinator.
+
+It must not depend on:
+
+- AssistantController
+- AssistantActionRouter
+- prepared actions
+- Gemini
+- native desktop executors
+
+A presented reminder remains pending until Run or Dismiss acknowledgement.
+
+Presentation cooldown must not be treated as acknowledgement.
+
+An unacknowledged reminder has priority over proactive companion suggestions.

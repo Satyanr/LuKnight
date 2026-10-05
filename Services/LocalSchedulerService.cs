@@ -175,6 +175,20 @@ public sealed class LocalSchedulerService
 
         return true;
     }
+    public bool HasUnacknowledgedDue(
+        DateTimeOffset now)
+    {
+        DateTimeOffset utc =
+            now.ToUniversalTime();
+
+
+        return _schedules.Any(
+            item =>
+                item.Enabled &&
+                item.AcknowledgedAtUtc is null &&
+                item.DueAtUtc <= utc);
+    }
+
     public IReadOnlyList<ScheduledSkill>
         GetReminderCandidates(
             DateTimeOffset now)

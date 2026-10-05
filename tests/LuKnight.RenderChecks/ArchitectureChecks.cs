@@ -306,6 +306,39 @@ internal static partial class Program
                 "Services/AppServices.cs");
 
 
+        Require(
+            !typeof(AppServices)
+                .GetProperties()
+                .Any(
+                    property =>
+                        property.PropertyType ==
+                            typeof(
+                                LocalScheduleStore)),
+            "AppServices exposes LocalScheduleStore directly.");
+
+        Require(
+            services.Contains(
+                "LocalScheduleStore? scheduleStore",
+                StringComparison.Ordinal),
+            "Scheduler store dependency is no longer injectable.");
+
+        string notifications =
+            Read(
+                "Services/AssistantNotificationCoordinator.cs");
+
+
+        Require(
+            notifications.Contains(
+                "HasUnacknowledgedDue(",
+                StringComparison.Ordinal),
+            "Proactive coordinator does not respect unacknowledged reminder priority.");
+
+        Require(
+            !notifications.Contains(
+                "_reminderNotifiedThisSession",
+                StringComparison.Ordinal),
+            "Coordinator still suppresses successfully persisted reminders for the whole session.");
+
         foreach (string forbiddenPublicSurface
                  in new[]
                  {

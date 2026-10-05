@@ -374,6 +374,8 @@ internal static partial class Program
             unpresented[0].Id ==
                 due.Id,
             "Due schedule was not available for presentation.");
+        Require(scheduler.HasUnacknowledgedDue(now.ToOffset(TimeSpan.FromHours(8))),
+            "Due unacknowledged schedule was not detected.");
 
         Require(
             scheduler.MarkPresented(
@@ -381,6 +383,8 @@ internal static partial class Program
                 now,
                 out _),
             "Due schedule could not be marked presented.");
+        Require(scheduler.HasUnacknowledgedDue(now),
+            "Presented reminder was incorrectly treated as acknowledged.");
 
         Require(
             scheduler.GetUnpresentedDue(
@@ -558,6 +562,11 @@ internal static partial class Program
         Require(scheduler.MarkPresented(pending.Id, now.ToOffset(TimeSpan.FromHours(8)), out _) &&
             scheduler.Schedules.Single(x => x.Id == pending.Id).LastPresentedAtUtc?.Offset == TimeSpan.Zero,
             "Presentation timestamp was not normalized to UTC.");
+        Require(scheduler.Acknowledge(due.Id, ScheduledReminderDisposition.Dismissed, now.AddMinutes(1), out _),
+            "Due schedule could not be acknowledged.");
+        Require(scheduler.Acknowledge(pending.Id, ScheduledReminderDisposition.Dismissed, now.AddMinutes(1), out _),
+            "Pending schedule could not be acknowledged.");
+        Require(!scheduler.HasUnacknowledgedDue(now.AddMinutes(1)), "Acknowledged schedule remained pending.");
     }
 
     private static void CheckTrayReminderRouting()

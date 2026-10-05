@@ -402,6 +402,7 @@ public partial class App : Application
                 .Notifications
                 .TryConsumeCompanion(
                     key,
+                    DateTimeOffset.UtcNow,
                     out CompanionSuggestionCandidate
                         candidate))
         {

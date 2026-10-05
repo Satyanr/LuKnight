@@ -44,7 +44,7 @@ public sealed class AssistantNotificationCoordinator
 
 
     private readonly HashSet<Guid>
-        _reminderNotifiedThisSession =
+        _reminderPersistenceFailuresThisSession =
             [];
 
 
@@ -146,7 +146,7 @@ public sealed class AssistantNotificationCoordinator
                     utc)
                 .FirstOrDefault(
                     item =>
-                        !_reminderNotifiedThisSession
+                        !_reminderPersistenceFailuresThisSession
                             .Contains(
                                 item.Id));
 
@@ -174,44 +174,24 @@ public sealed class AssistantNotificationCoordinator
         if (!preferences.Enabled ||
             !_applicationContextEnabled())
         {
-            _companionGate
-                .ResetObservation();
-
-            _readyCompanion =
-                null;
-
-            _pendingCompanionSuggestions
-                .Clear();
-
-
-            CompanionNotificationCancellationRequested?
-                .Invoke();
+            SuppressCompanion(
+                requestUiCancellation:
+                    true);
 
             return;
         }
-
-
-        //
-        // Proactive help must stay quiet during
-        // assistant activity or actionable reminders.
-        //
 
         if (_assistantBusy() ||
             _scheduler
-                .GetReminderCandidates(
-                    utc)
-                .Count >
-            0)
+                .HasUnacknowledgedDue(
+                    utc))
         {
-            _companionGate
-                .ResetObservation();
-
-            _readyCompanion =
-                null;
+            SuppressCompanion(
+                requestUiCancellation:
+                    true);
 
             return;
         }
-
 
         CompanionSuggestionCandidate?
             candidate =
@@ -220,6 +200,15 @@ public sealed class AssistantNotificationCoordinator
                     preferences,
                     _capabilities);
 
+
+        if (candidate is null)
+        {
+            SuppressCompanion(
+                requestUiCancellation:
+                    true);
+
+            return;
+        }
 
         CompanionSuggestionCandidate?
             ready =
@@ -266,25 +255,37 @@ public sealed class AssistantNotificationCoordinator
         }
 
 
+        bool persisted =
+            _scheduler.MarkPresented(
+                scheduleId,
+                presentedAt,
+                out error);
+
+
+        if (persisted)
+        {
+            _reminderPersistenceFailuresThisSession
+                .Remove(
+                    scheduleId);
+
+            return true;
+        }
+
+
         //
-        // Preserve current anti-spam behavior:
-        // once UI presentation succeeds, do not
-        // show the same reminder again in this
-        // process even if persistence fails.
+        // Notification sudah berhasil ditampilkan,
+        // tetapi LastPresented tidak dapat disimpan.
+        //
+        // Jangan spam setiap 30 detik selama proses ini.
         //
 
-        _reminderNotifiedThisSession
+        _reminderPersistenceFailuresThisSession
             .Add(
                 scheduleId);
 
 
-        return _scheduler
-            .MarkPresented(
-                scheduleId,
-                presentedAt,
-                out error);
+        return false;
     }
-
 
     public bool MarkCompanionPresented(
         string key,
@@ -334,8 +335,33 @@ public sealed class AssistantNotificationCoordinator
 
     public bool TryConsumeCompanion(
         string key,
+        DateTimeOffset now,
         out CompanionSuggestionCandidate candidate)
     {
+        DateTimeOffset utc =
+            now.ToUniversalTime();
+
+
+        CompanionSettings preferences =
+            _preferences();
+
+
+        if (!preferences.Enabled ||
+            !_applicationContextEnabled() ||
+            _assistantBusy() ||
+            _scheduler.HasUnacknowledgedDue(
+                utc))
+        {
+            SuppressCompanion(
+                requestUiCancellation:
+                    false);
+
+            candidate =
+                default!;
+
+            return false;
+        }
+
         string normalized =
             key?.Trim() ??
             string.Empty;
@@ -364,7 +390,7 @@ public sealed class AssistantNotificationCoordinator
             current =
                 _advisor.Evaluate(
                     _captureContext(),
-                    _preferences(),
+                    preferences,
                     _capabilities);
 
 
@@ -385,5 +411,35 @@ public sealed class AssistantNotificationCoordinator
             stored;
 
         return true;
+    }
+
+    private void SuppressCompanion(
+        bool requestUiCancellation)
+    {
+        bool hadPresentationState =
+            _readyCompanion is not null ||
+            _pendingCompanionSuggestions
+                .Count >
+            0;
+
+
+        _companionGate
+            .ResetObservation();
+
+
+        _readyCompanion =
+            null;
+
+
+        _pendingCompanionSuggestions
+            .Clear();
+
+
+        if (requestUiCancellation &&
+            hadPresentationState)
+        {
+            CompanionNotificationCancellationRequested?
+                .Invoke();
+        }
     }
 }
