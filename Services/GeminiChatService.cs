@@ -274,6 +274,11 @@ public sealed class GeminiChatService : IChatService
 
         using (response)
         {
+            //
+            // Never log responseBody.
+            // Provider responses may echo user content
+            // or contain diagnostic metadata.
+            //
             string responseBody =
                 await response.Content.ReadAsStringAsync(cancellationToken);
 

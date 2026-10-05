@@ -39,6 +39,16 @@ internal static partial class Program
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
         if (args.Contains(
+                "--security-privacy"))
+        {
+            CheckSecretDiagnostics();
+
+            Console.WriteLine(
+                $"PASS: {_checks} secret/diagnostic privacy checks.");
+
+            return;
+        }
+        if (args.Contains(
                 "--privacy"))
         {
             Task.Run(

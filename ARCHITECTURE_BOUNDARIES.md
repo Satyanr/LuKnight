@@ -190,3 +190,20 @@ context.
 
 Workflow runtime outputs, including window/process metadata, remain local to the
 workflow state and must not enter Gemini conversation history.
+
+## Secrets and diagnostics
+
+API keys must not be persisted in AppSettings, schedule files, skill files,
+memory files, logs, or transcripts.
+
+Gemini credentials are stored through Windows Credential Manager, with an
+environment-variable fallback only when explicitly configured outside the app.
+
+User-facing errors and diagnostics must not expose raw exception messages,
+stack traces, local filesystem paths, provider response bodies, desktop
+metadata, or credential material.
+
+Diagnostic output may identify only a coarse operation and exception type.
+
+Schedule and skill persistence errors must use stable application-owned
+messages rather than filesystem exception text.

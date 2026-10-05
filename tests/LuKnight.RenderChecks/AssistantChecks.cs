@@ -668,8 +668,9 @@ internal static partial class Program
         var quotaAssistant = new AssistantController(quotaChat);
         AssistantReply quotaReply = await quotaAssistant.SendAsync(new("test quota"));
         Require(quotaReply.Backend == AssistantBackend.Local &&
-            quotaChat.Status.Contains("Kuota Gemini tercapai", StringComparison.OrdinalIgnoreCase),
-            "Gemini quota limit is not reported clearly");
+            quotaChat.Status.Contains("Layanan AI tidak dapat memproses permintaan saat ini.", StringComparison.Ordinal) &&
+            !quotaChat.Status.Contains("quota-test-key", StringComparison.Ordinal),
+            "Gemini quota failure did not use sanitized fallback status");
 
         var isolatedMemory = new MemoryService();
         isolatedMemory.Remember("kode rahasia TEST-742");

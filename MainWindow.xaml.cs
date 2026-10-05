@@ -761,7 +761,9 @@ public partial class MainWindow : Window
         {
             _behaviorController?.SetThinking(false);
             _behaviorController?.ReactConfused();
-            ChatPanelControl.AddAssistantMessage($"Terjadi kesalahan: {ex.Message}");
+            System.Diagnostics.Trace.WriteLine(DiagnosticPrivacy.TraceFailure("Assistant request", ex));
+            ChatPanelControl.AddAssistantMessage(
+                "Permintaan tidak dapat diselesaikan. Coba lagi atau periksa Settings jika masalah berlanjut.");
             ChatPanelControl.SetStatus("Lu-Knight • error", ChatStatus.Error);
         }
         finally
@@ -898,7 +900,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine("[Lu-Knight][TTS] " + ex);
+            System.Diagnostics.Debug.WriteLine(DiagnosticPrivacy.TraceFailure("Text-to-speech", ex));
         }
         finally
         {
@@ -1033,7 +1035,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine("[Lu-Knight][Voice] " + ex);
+            System.Diagnostics.Debug.WriteLine(DiagnosticPrivacy.TraceFailure("Voice capture", ex));
             ChatPanelControl.SetStatus("Microphone tidak dapat digunakan.", ChatStatus.Error);
             RefreshVoiceAvailability();
             return false;
@@ -1112,9 +1114,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                "[Lu-Knight][SpeechToText] " +
-                ex);
+            System.Diagnostics.Debug.WriteLine(DiagnosticPrivacy.TraceFailure("Speech transcription", ex));
 
             ChatPanelControl.SetStatus(
                 "Suara tidak dapat ditranskripsikan.",
@@ -1176,8 +1176,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                "[Lu-Knight][Voice] Discard recording: " + ex);
+            System.Diagnostics.Debug.WriteLine(DiagnosticPrivacy.TraceFailure("Voice discard", ex));
         }
         finally
         {
@@ -1508,8 +1507,14 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Trace.WriteLine(
+                DiagnosticPrivacy.TraceFailure(
+                    "Scheduled workflow handoff",
+                    ex));
+
+
             ChatPanelControl.AddAssistantMessage(
-                $"Scheduled workflow gagal dimulai: {ex.Message}");
+                "Scheduled workflow tidak dapat dimulai.");
 
             ChatPanelControl.SetStatus(
                 "Scheduled workflow gagal.",

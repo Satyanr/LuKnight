@@ -101,7 +101,7 @@ public partial class App : Application
                 Notifications_CompanionCancellationRequested;
         _startup = new StartupService(new PersistentStartupStore(config), Environment.ProcessPath ?? "", Assembly.GetExecutingAssembly().Location, File.Exists);
         try { _startup.Validate(); }
-        catch (Exception ex) { Trace.WriteLine($"[Lu-Knight] Startup registration could not be repaired: {ex.Message}"); }
+        catch (Exception ex) { Trace.WriteLine(DiagnosticPrivacy.TraceFailure("Startup registration repair", ex)); }
         _character = new MainWindow(_services);
         MainWindow = _character;
         _character.Closing += Character_Closing;
@@ -137,7 +137,7 @@ public partial class App : Application
             // A failed shell icon must never leave an unreachable application.
             _character.ShowInTaskbar = true;
             ShutdownMode = ShutdownMode.OnMainWindowClose;
-            Trace.WriteLine($"[Lu-Knight] Tray unavailable: {ex}");
+            Trace.WriteLine(DiagnosticPrivacy.TraceFailure("System tray initialization", ex));
             MessageBox.Show("System tray tidak dapat dibuat. Lu-Knight tetap tersedia di taskbar.", "Lu-Knight", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         // Do not Show/Hide: creating a hidden startup window must not flash or steal focus.
@@ -213,19 +213,20 @@ public partial class App : Application
                     .MarkReminderPresented(
                         notification.ScheduleId,
                         notification.ObservedAtUtc,
-                        out string error))
+                        out _))
             {
                 Trace.WriteLine(
                     $"[Lu-Knight] Reminder " +
                     $"'{notification.ScheduleId}' " +
-                    $"was shown but presentation state " +
-                    $"could not be persisted: {error}");
+                    "presentation state could not be persisted.");
             }
         }
         catch (Exception ex)
         {
             Trace.WriteLine(
-                $"[Lu-Knight] Schedule reminder failed: {ex.Message}");
+                DiagnosticPrivacy.TraceFailure(
+                    "Schedule reminder presentation",
+                    ex));
         }
     }
 
@@ -314,7 +315,18 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Restart gagal:\n{ex.Message}", "Lu-Knight", MessageBoxButton.OK, MessageBoxImage.Error);
+            Trace.WriteLine(
+                DiagnosticPrivacy.TraceFailure(
+                    "Application restart",
+                    ex));
+
+
+            MessageBox.Show(
+                "Restart gagal. Lu-Knight tetap berjalan. " +
+                "Coba tutup dan buka aplikasi secara manual.",
+                "Lu-Knight",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
     }
 

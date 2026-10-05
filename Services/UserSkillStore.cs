@@ -72,9 +72,41 @@ public sealed class UserSkillStore
             if (!definition.Enabled) return;
             skills.Add(new UserDefinedAssistantSkill(definition));
         }
-        catch (Exception ex) when (ex is JsonException or IOException or
-            UnauthorizedAccessException or ArgumentException or InvalidOperationException)
-        { issues.Add(new(fileName, $"Skill tidak dimuat: {ex.Message}")); }
+        catch (JsonException)
+        {
+            issues.Add(
+                new(
+                    fileName,
+                    "Skill JSON tidak valid."));
+        }
+        catch (IOException)
+        {
+            issues.Add(
+                new(
+                    fileName,
+                    "File skill tidak dapat dibaca."));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            issues.Add(
+                new(
+                    fileName,
+                    "File skill tidak dapat diakses."));
+        }
+        catch (ArgumentException)
+        {
+            issues.Add(
+                new(
+                    fileName,
+                    "Isi skill tidak valid."));
+        }
+        catch (InvalidOperationException)
+        {
+            issues.Add(
+                new(
+                    fileName,
+                    "Isi skill tidak valid."));
+        }
     }
 
     public static string? Validate(UserSkillDefinition value)

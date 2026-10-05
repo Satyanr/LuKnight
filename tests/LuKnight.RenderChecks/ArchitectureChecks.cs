@@ -544,5 +544,50 @@ internal static partial class Program
                 "IncludeInContext: false",
                 StringComparison.Ordinal),
             "Local desktop router does not mark actions private.");
+
+        string appSource =
+            Read(
+                "App.xaml.cs");
+
+        string mainWindowSource =
+            Read(
+                "MainWindow.xaml.cs");
+
+        string scheduleStoreSource =
+            Read(
+                "Services/LocalScheduleStore.cs");
+
+        string skillStoreSource =
+            Read(
+                "Services/UserSkillStore.cs");
+
+
+        foreach ((string name, string source)
+                 in new[]
+                 {
+                     ("App.xaml.cs", appSource),
+                     ("MainWindow.xaml.cs", mainWindowSource),
+                     ("LocalScheduleStore.cs", scheduleStoreSource),
+                     ("UserSkillStore.cs", skillStoreSource)
+                 })
+        {
+            Require(
+                !source.Contains(
+                    "ex.Message",
+                    StringComparison.Ordinal),
+                $"{name} exposes raw exception messages.");
+        }
+
+        Require(
+            !appSource.Contains(
+                "Trace.WriteLine($\"[Lu-Knight] Tray unavailable: {ex}\"",
+                StringComparison.Ordinal),
+            "Tray diagnostics log full exception.");
+
+        Require(
+            !mainWindowSource.Contains(
+                "\" + ex)",
+                StringComparison.Ordinal),
+            "Voice diagnostics log full exception.");
     }
 }

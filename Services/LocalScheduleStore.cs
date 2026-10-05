@@ -197,7 +197,7 @@ public sealed class LocalScheduleStore
                 [],
                 [
                     new(
-                        $"Jadwal tidak dapat dimuat: {ex.Message}")
+                        "Jadwal tidak dapat dimuat karena file tidak valid atau tidak dapat diakses.")
                 ]);
         }
     }
@@ -343,7 +343,7 @@ public sealed class LocalScheduleStore
                 UnauthorizedAccessException)
         {
             error =
-                $"Jadwal tidak dapat disimpan: {ex.Message}";
+                "Jadwal tidak dapat disimpan ke penyimpanan lokal.";
 
             try
             {
