@@ -131,7 +131,7 @@ public sealed class AssistantActionRouter
                 _permissionLevel());
     }
 
-    public Task<ActionExecutionResult>
+    internal Task<ActionExecutionResult>
         ExecuteAsync(
             PreparedAssistantAction action,
             CancellationToken cancellationToken = default)

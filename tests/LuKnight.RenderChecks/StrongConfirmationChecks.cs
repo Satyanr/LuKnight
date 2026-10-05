@@ -18,8 +18,10 @@ internal static partial class Program
         Task<AssistantReply> Propose() => assistant.SendAsync(new AssistantRequest("klik tombol Save di window Fixture"));
         async Task Replay(Guid id)
         {
-            try { await assistant.ConfirmActionAsync(id); Require(false, "Replayed confirmation accepted."); }
-            catch (InvalidOperationException) { }
+            bool rejected = false;
+            try { await assistant.ConfirmActionAsync(id); }
+            catch (InvalidOperationException) { rejected = true; }
+            Require(rejected, "Replayed confirmation accepted.");
         }
         var first = await Propose();
         Require(first.ActionProposal is { ConfirmationStage: AssistantConfirmationStage.SensitiveReview } && action.Executions == 0,
@@ -33,6 +35,79 @@ internal static partial class Program
         await assistant.ConfirmActionAsync(final.ActionProposal.Id);
         Require(action.Executions == 1 && !assistant.HasPendingAction, "Two-stage confirmation did not execute once.");
         await Replay(final.ActionProposal.Id);
+        int executionsBefore = action.Executions;
+        first =
+            await Propose();
+
+
+        Guid unrelated =
+            Guid.NewGuid();
+
+
+        bool unknownRejected = false;
+        try
+        {
+            await assistant.ConfirmActionAsync(unrelated);
+        }
+        catch (InvalidOperationException)
+        {
+            unknownRejected = true;
+        }
+        Require(unknownRejected, "Unknown confirmation ID was accepted.");
+
+        Require(
+            action.Executions ==
+                executionsBefore,
+            "Unknown confirmation ID reached executor.");
+
+        assistant.CancelAction(
+            first.ActionProposal!.Id);
+        Require(!assistant.HasPendingAction && action.Executions == executionsBefore,
+            "Unknown confirmation ID invalidated the original proposal.");
+
+        level =
+            DesktopPermissionLevel.Sensitive;
+
+
+        first =
+            await Propose();
+
+
+        final =
+            await assistant
+                .ConfirmActionAsync(
+                    first.ActionProposal!.Id);
+
+
+        Require(
+            final.ActionProposal?.ConfirmationStage ==
+                AssistantConfirmationStage.SensitiveFinal,
+            "Sensitive final fixture failed.");
+
+
+        level =
+            DesktopPermissionLevel.Interaction;
+
+
+        int beforeFinalDowngrade =
+            action.Executions;
+
+
+        AssistantReply deniedFinal =
+            await assistant
+                .ConfirmActionAsync(
+                    final.ActionProposal!.Id);
+
+
+        Require(
+            action.Executions ==
+                beforeFinalDowngrade &&
+            deniedFinal.ActionProposal is null,
+            "Sensitive permission downgrade before final execution was ignored.");
+        Require(!assistant.HasPendingAction && handler.Calls == 0,
+            "Sensitive final downgrade left authorization pending or reached Gemini.");
+        await Replay(final.ActionProposal.Id);
+
         foreach (bool downgradeBeforeReview in new[] { true, false })
         {
             level = DesktopPermissionLevel.Sensitive;
@@ -71,10 +146,16 @@ internal static partial class Program
                 AssistantActionRisk.Sensitive => confirmation == AssistantActionConfirmation.Strong,
                 _ => false
             };
-            int before = action.Executions;
-            var result = await router.ExecuteAsync(prepared);
-            Require(result.Success == expected && action.Executions == before + (expected ? 1 : 0),
-                $"Confirmation matrix failed: {risk}/{confirmation}");
+            AssistantActionConfirmationDecision decision =
+                AssistantActionConfirmationPolicy
+                    .Evaluate(
+                        prepared);
+
+
+            Require(
+                decision.Allowed ==
+                    expected,
+                $"Confirmation policy matrix failed: {risk}/{confirmation}");
         }
         Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0,
             "Strong confirmation leaked Gemini/context.");

@@ -24,6 +24,21 @@ AssistantController is the policy and execution coordinator.
 Only this layer may convert an approved prepared action into
 an AssistantActionRouter execution request.
 
+### Execution authorization
+
+AssistantActionRouter preparation may be used independently for routing and
+validation, but its execution endpoint is internal to the application assembly.
+
+AppServices and AssistantController must not publicly expose the execution router.
+
+UI receives only an opaque proposal ID.
+
+Only AssistantController may translate a valid, unexpired proposal ID into
+Standard or Strong execution authorization.
+
+The `Confirmation` value on a prepared action is not itself a user-consent token
+outside this boundary.
+
 ## Skills
 
 Skills are not executors.
@@ -117,6 +132,17 @@ assistant actions.
 
 UI, scheduler, proactive companion and skill definitions must not call
 them directly.
+
+A PreparedAssistantAction is not sufficient authority to execute.
+
+Execution requires the AssistantController confirmation lifecycle in addition to:
+
+- current desktop permission
+- current action risk
+- valid proposal identity
+- proposal expiry
+- current workflow identity, when applicable
+- strong two-stage confirmation for sensitive actions
 
 ## Notification Coordinator
 

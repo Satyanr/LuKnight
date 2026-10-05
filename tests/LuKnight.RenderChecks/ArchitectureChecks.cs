@@ -1,3 +1,5 @@
+using System.Reflection;
+using LuKnight.Assistant;
 using System.IO;
 using LuKnight.Services;
 
@@ -258,6 +260,92 @@ internal static partial class Program
         // -----------------------------------------
         //
 
+        MethodInfo? routerExecute =
+            typeof(AssistantActionRouter)
+                .GetMethod(
+                    "ExecuteAsync",
+                    BindingFlags.Instance |
+                    BindingFlags.Public |
+                    BindingFlags.NonPublic);
+
+
+        Require(
+            routerExecute is not null &&
+            !routerExecute.IsPublic &&
+            routerExecute.IsAssembly,
+            "AssistantActionRouter execution endpoint is externally callable.");
+
+        Require(
+            !typeof(AppServices)
+                .GetProperties(
+                    BindingFlags.Instance |
+                    BindingFlags.Public)
+                .Any(
+                    property =>
+                        property.PropertyType ==
+                            typeof(
+                                AssistantActionRouter)),
+            "AppServices publicly exposes AssistantActionRouter.");
+
+        Require(
+            !typeof(AssistantController)
+                .GetProperties(
+                    BindingFlags.Instance |
+                    BindingFlags.Public)
+                .Any(
+                    property =>
+                        property.PropertyType ==
+                            typeof(
+                                AssistantActionRouter)),
+            "AssistantController publicly exposes its action router.");
+
+        string[] productionSources =
+            Directory
+                .GetFiles(
+                    root,
+                    "*.cs",
+                    SearchOption.AllDirectories)
+                .Where(
+                    path =>
+                        !path.Contains(
+                            $"{Path.DirectorySeparatorChar}tests{Path.DirectorySeparatorChar}",
+                            StringComparison.OrdinalIgnoreCase) &&
+                        !path.Contains(
+                            $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                            StringComparison.OrdinalIgnoreCase) &&
+                        !path.Contains(
+                            $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                            StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+        foreach (string sourcePath
+                 in productionSources)
+        {
+            if (Path.GetFileName(
+                    sourcePath)
+                .Equals(
+                    "AssistantController.cs",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+
+            string source =
+                File.ReadAllText(
+                    sourcePath);
+
+
+            Require(
+                !source.Contains(
+                    "_actions.ExecuteAsync(",
+                    StringComparison.Ordinal) &&
+                !source.Contains(
+                    "Actions.ExecuteAsync(",
+                    StringComparison.Ordinal),
+                $"Production source bypasses AssistantController execution boundary: {sourcePath}");
+        }
+
         string controller =
             Read(
                 "Assistant/AssistantController.cs");
@@ -265,14 +353,14 @@ internal static partial class Program
 
         Require(
             controller.Contains(
-                "Actions.PrepareAsync(",
+                "_actions.PrepareAsync(",
                 StringComparison.Ordinal),
             "AssistantController no longer owns action preparation boundary.");
 
 
         Require(
             controller.Contains(
-                "Actions.ExecuteAsync(",
+                "_actions.ExecuteAsync(",
                 StringComparison.Ordinal),
             "AssistantController no longer owns action execution boundary.");
 
@@ -338,6 +426,17 @@ internal static partial class Program
                 "_reminderNotifiedThisSession",
                 StringComparison.Ordinal),
             "Coordinator still suppresses successfully persisted reminders for the whole session.");
+
+        string appServices =
+            Read(
+                "Services/AppServices.cs");
+
+
+        Require(
+            !appServices.Contains(
+                "public AssistantActionRouter Actions",
+                StringComparison.Ordinal),
+            "AppServices restored public action execution surface.");
 
         foreach (string forbiddenPublicSurface
                  in new[]

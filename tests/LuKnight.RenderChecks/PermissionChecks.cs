@@ -1,4 +1,5 @@
-﻿using System.Net.Http;
+using System.Reflection;
+using System.Net.Http;
 using System.Text.Json;
 using LuKnight.Assistant;
 using LuKnight.Models;
@@ -26,6 +27,27 @@ internal static partial class Program
 
     private static async Task CheckPermissionLevelsAsync()
     {
+        Require(
+            typeof(AssistantActionRouter)
+                .GetMethods(
+                    BindingFlags.Instance |
+                    BindingFlags.Public)
+                .All(
+                    method =>
+                        method.Name !=
+                            "ExecuteAsync"),
+            "Action router exposes public execution API.");
+
+        Require(
+            typeof(AppServices)
+                .GetProperties()
+                .All(
+                    property =>
+                        property.PropertyType !=
+                            typeof(
+                                AssistantActionRouter)),
+            "AppServices exposes action router.");
+
         static bool Expected(
             DesktopPermissionLevel level,
             AssistantActionRisk risk) =>
@@ -72,19 +94,16 @@ internal static partial class Program
             Require(prepared.Action is not null && !prepared.Action.IncludeInContext,
                 "Permission gate lost private metadata.");
             Require(!prepared.Message.Contains("private sentinel", StringComparison.Ordinal), "Permission policy leaked arguments.");
-            int before = action.Executions;
-            if (prepared.Success)
-            {
-                var unconfirmed = await router.ExecuteAsync(prepared.Action!);
-                Require(!unconfirmed.Success && action.Executions == before, "Unconfirmed action reached executor.");
-            }
-            var result = await router.ExecuteAsync(prepared.Action! with
-            {
-                Confirmation = risk == AssistantActionRisk.Sensitive
-                    ? AssistantActionConfirmation.Strong : AssistantActionConfirmation.Standard
-            });
-            Require(result.Success == expected && action.Executions == before + (expected ? 1 : 0),
-                "Execution permission gate failed.");
+            AssistantActionPermissionDecision
+                executionPermission =
+                    router.CheckPermission(
+                        prepared.Action!);
+
+
+            Require(
+                executionPermission.Allowed ==
+                    expected,
+                $"Execution permission recheck failed: {level}/{risk}");
         }
         current = (DesktopPermissionLevel)999;
         action.Risk = AssistantActionRisk.Navigation;

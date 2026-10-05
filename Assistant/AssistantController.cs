@@ -46,7 +46,7 @@ public sealed class AssistantController
     public AssistantIntentRouter IntentRouter { get; }
     public AssistantToolRouter Tools { get; }
     public AssistantContextSourceRouter ContextSources { get; }
-    public AssistantActionRouter Actions { get; }
+    private readonly AssistantActionRouter _actions;
     public AssistantSkillRouter Skills { get; }
     public AssistantWorkflowRuntime WorkflowRuntime { get; }
     public AssistantEmotionEngine Emotions { get; }
@@ -95,7 +95,7 @@ public sealed class AssistantController
             new SystemStatusContextSource(() => _chat.Options.UseSystemContext),
             new ScreenImageContextSource(() => _chat.Options.UseScreenContext, () => _chat.UsesGemini)
         });
-        Actions = actions ?? new AssistantActionRouter(new IAssistantAction[]
+        _actions = actions ?? new AssistantActionRouter(new IAssistantAction[]
         {
             new OpenDesktopApplicationAction(() => _chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor(), IntentRouter.DesktopApps),
             new FocusDesktopApplicationAction(() => _chat.Options.UseDesktopActions, new WindowsDesktopActionExecutor(), IntentRouter.DesktopApps),
@@ -529,7 +529,7 @@ public sealed class AssistantController
                 AssistantEmotion.Confused);
         }
         ActionPreparationResult prepared =
-            await Actions.PrepareAsync(
+            await _actions.PrepareAsync(
                 intent.Action,
                 cancellationToken);
 
@@ -887,7 +887,7 @@ public sealed class AssistantController
         CancellationToken cancellationToken)
     {
         ActionPreparationResult prepared =
-            await Actions.PrepareAsync(invocation, cancellationToken);
+            await _actions.PrepareAsync(invocation, cancellationToken);
         bool includeInContext = prepared.Action?.IncludeInContext ?? invocation.IncludeInContext;
         Conversation.AddUser(request, includeInContext);
         if (!prepared.Success || prepared.Action is null)
@@ -1057,7 +1057,7 @@ public sealed class AssistantController
                         .SensitiveReview)
             {
                 AssistantActionPermissionDecision permission =
-                    Actions.CheckPermission(
+                    _actions.CheckPermission(
                         pending.Action);
 
                 if (!permission.Allowed)
@@ -1179,7 +1179,7 @@ public sealed class AssistantController
                 };
 
             ActionExecutionResult result =
-                await Actions.ExecuteAsync(
+                await _actions.ExecuteAsync(
                     authorized,
                     cancellationToken);
 

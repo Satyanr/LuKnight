@@ -14,7 +14,6 @@ public sealed class AppServices
     public LocalDesktopCommandRouter DesktopCommands { get; }
     public AssistantToolRouter Tools { get; }
     public AssistantContextSourceRouter ContextSources { get; }
-    public AssistantActionRouter Actions { get; }
     public AssistantSkillRouter Skills { get; }
     public AssistantWorkflowRuntime WorkflowRuntime { get; }
     public LocalSchedulerService Scheduler { get; }
@@ -102,7 +101,7 @@ public sealed class AppServices
             new SystemStatusContextSource(() => Chat.Options.UseSystemContext),
             new ScreenImageContextSource(() => Chat.Options.UseScreenContext, () => Chat.UsesGemini)
         });
-        Actions = new AssistantActionRouter(new IAssistantAction[]
+        AssistantActionRouter actions = new AssistantActionRouter(new IAssistantAction[]
         {
             new OpenDesktopApplicationAction(() => Chat.Options.UseDesktopActions, desktopExecutor, DesktopApps),
             new FocusDesktopApplicationAction(() => Chat.Options.UseDesktopActions, desktopExecutor, DesktopApps),
@@ -135,7 +134,7 @@ public sealed class AppServices
             { skillIssues.Add(new(skill.Id, $"Skill tidak diregistrasikan: {ex.Message}")); }
         }
         UserSkillIssues = skillIssues.AsReadOnly();
-        Capabilities = AssistantCapabilityRegistry.Create(Skills, Actions, Tools);
+        Capabilities = AssistantCapabilityRegistry.Create(Skills, actions, Tools);
         WorkflowRuntime =
             workflowRuntime ??
             new AssistantWorkflowRuntime();
@@ -146,7 +145,7 @@ public sealed class AppServices
             intentRouter: IntentRouter,
             tools: Tools,
             contextSources: ContextSources,
-            actions: Actions,
+            actions: actions,
             skills: Skills,
             workflowRuntime: WorkflowRuntime);
         LocalScheduleStore schedulerStore = scheduleStore ?? new LocalScheduleStore();
