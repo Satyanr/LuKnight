@@ -232,6 +232,16 @@ internal static partial class Program
 
             return;
         }
+        if (args.Contains(
+                "--scheduler"))
+        {
+            CheckSchedulerFoundation();
+
+            Console.WriteLine(
+                $"PASS: {_checks} scheduler foundation checks.");
+
+            return;
+        }
         if (args.Contains("--permissions"))
         {
             Task.Run(CheckPermissionLevelsAsync).GetAwaiter().GetResult();
