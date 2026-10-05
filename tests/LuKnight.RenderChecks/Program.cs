@@ -42,6 +42,7 @@ internal static partial class Program
                 "--architecture"))
         {
             CheckArchitectureBoundaries();
+            CheckNotificationCoordinator();
 
             Console.WriteLine(
                 $"PASS: {_checks} architecture boundary checks.");

@@ -20,6 +20,11 @@ public sealed class AppServices
     public LocalScheduleStore ScheduleStore { get; }
     public LocalSchedulerService Scheduler { get; }
     public LocalCompanionAdvisor CompanionAdvisor { get; }
+    public AssistantNotificationCoordinator
+        Notifications
+    {
+        get;
+    }
     public AssistantCapabilityRegistry Capabilities { get; }
     public UserSkillStore UserSkills { get; }
     public IReadOnlyList<UserSkillLoadIssue> UserSkillIssues { get; private set; } = [];
@@ -149,6 +154,28 @@ public sealed class AppServices
         Scheduler = new LocalSchedulerService(ScheduleStore);
         Scheduler.Load();
         CompanionAdvisor = companionAdvisor ?? new LocalCompanionAdvisor();
+        Notifications =
+            new AssistantNotificationCoordinator(
+                Scheduler,
+                CompanionAdvisor,
+                Capabilities,
+
+                preferences:
+                    () =>
+                        Settings.Current
+                            .Companion,
+
+                applicationContextEnabled:
+                    () =>
+                        Chat.Options
+                            .UseApplicationContext,
+
+                assistantBusy:
+                    () =>
+                        Assistant.IsBusy,
+
+                captureContext:
+                    Context.Capture);
         Updates = new(Settings);
     }
 }

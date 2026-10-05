@@ -159,6 +159,51 @@ internal static partial class Program
             ".ExecuteAsync(");
 
 
+        Reject(
+            "Services/AssistantNotificationCoordinator.cs",
+            "AssistantController",
+            "AssistantActionRouter",
+            "IAssistantAction",
+            "PreparedAssistantAction",
+            "WindowsDesktop",
+            "ChatCoordinator",
+            ".PrepareAsync(",
+            ".ExecuteAsync(",
+            ".SendAsync(",
+            "StartScheduledSkillAsync(");
+
+        string app =
+            Read(
+                "App.xaml.cs");
+
+
+        foreach (string movedConcern
+                 in new[]
+                 {
+                     "CompanionSuggestionGate",
+                     "_scheduleNotifiedThisSession",
+                     "_companionSuggestions",
+                     "GetReminderCandidates(",
+                     "CompanionAdvisor.Evaluate(",
+                     "Scheduler.MarkPresented("
+                 })
+        {
+            Require(
+                !app.Contains(
+                    movedConcern,
+                    StringComparison.Ordinal),
+                $"App still owns assistant notification orchestration: {movedConcern}");
+        }
+
+        Require(
+            app.Contains(
+                "Notifications.Poll(",
+                StringComparison.Ordinal) &&
+            app.Contains(
+                "TryConsumeCompanion(",
+                StringComparison.Ordinal),
+            "App is not delegating notification orchestration.");
+
         //
         // -----------------------------------------
         // Capability registry is metadata only.

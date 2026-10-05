@@ -6,7 +6,6 @@ using System.IO;
 using System.Threading;
 using System.Windows.Threading;
 using LuKnight.Assistant;
-using LuKnight.Models;
 using LuKnight.Services;
 using LuKnight.Views;
 
@@ -22,27 +21,7 @@ public partial class App : Application
     private EventWaitHandle? _showRequest;
     private DispatcherTimer? _instanceTimer;
     private DispatcherTimer?
-        _scheduleTimer;
-
-    private readonly HashSet<Guid>
-        _scheduleNotifiedThisSession =
-            [];
-    private DispatcherTimer?
-        _companionTimer;
-
-
-    private readonly
-        CompanionSuggestionGate
-        _companionGate =
-            new();
-
-
-    private readonly Dictionary<
-        string,
-        CompanionSuggestionCandidate>
-        _companionSuggestions =
-            new(
-                StringComparer.OrdinalIgnoreCase);
+        _assistantNotificationTimer;
     private readonly CancellationTokenSource _lifetime = new();
     public void ExitForUpdate() => ExitApplication();
 
@@ -111,6 +90,15 @@ public partial class App : Application
         var memory = new MemoryService(memoryPath);
         memory.Load();
         _services = new AppServices(config, memory: memory);
+        _services.Notifications.ReminderDue +=
+            Notifications_ReminderDue;
+
+        _services.Notifications.CompanionSuggestionReady +=
+            Notifications_CompanionSuggestionReady;
+
+        _services.Notifications
+            .CompanionNotificationCancellationRequested +=
+                Notifications_CompanionCancellationRequested;
         _startup = new StartupService(new PersistentStartupStore(config), Environment.ProcessPath ?? "", Assembly.GetExecutingAssembly().Location, File.Exists);
         try { _startup.Validate(); }
         catch (Exception ex) { Trace.WriteLine($"[Lu-Knight] Startup registration could not be repaired: {ex.Message}"); }
@@ -158,7 +146,7 @@ public partial class App : Application
             _character.Show();
         }
         _tray?.SetCharacterVisible(_character.IsVisible);
-        _scheduleTimer =
+        _assistantNotificationTimer =
             new DispatcherTimer
             {
                 Interval =
@@ -166,38 +154,41 @@ public partial class App : Application
                         30)
             };
 
-        _scheduleTimer.Tick +=
-            ScheduleTimer_Tick;
 
-        _scheduleTimer.Start();
-
-
-        // Check once immediately.
-        CheckDueScheduleReminder();
-        _companionTimer =
-            new DispatcherTimer
-            {
-                Interval =
-                    TimeSpan.FromSeconds(
-                        30)
-            };
-
-        _companionTimer.Tick +=
-            CompanionTimer_Tick;
-
-        _companionTimer.Start();
+        _assistantNotificationTimer.Tick +=
+            AssistantNotificationTimer_Tick;
 
 
-        // Seed the dwell timer.
-        // This cannot present immediately because
-        // StabilityDelay has not elapsed.
-        CheckCompanionSuggestion();
+        _assistantNotificationTimer.Start();
+
+
+        // Immediate poll:
+        // reminder can surface immediately,
+        // companion only seeds its dwell period.
+        _services.Notifications.Poll(
+            DateTimeOffset.UtcNow);
         _instanceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _instanceTimer.Tick += (_, _) => { if (_showRequest.WaitOne(0)) _character.ShowFromTray(); };
         _instanceTimer.Start();
         _ = CheckUpdatesAtStartup();
     }
-    private void CheckDueScheduleReminder()
+    private void AssistantNotificationTimer_Tick(
+        object? sender,
+        EventArgs e)
+    {
+        if (_isExiting ||
+            _services is null)
+        {
+            return;
+        }
+
+
+        _services.Notifications.Poll(
+            DateTimeOffset.UtcNow);
+    }
+
+    private void Notifications_ReminderDue(
+        ScheduledReminderNotification notification)
     {
         if (_isExiting ||
             _services is null ||
@@ -207,51 +198,28 @@ public partial class App : Application
         }
 
 
-        DateTimeOffset now =
-            DateTimeOffset.UtcNow;
-
-
-        ScheduledSkill? due =
-            _services
-                .Scheduler
-                .GetReminderCandidates(
-                    now)
-                .FirstOrDefault(
-                    item =>
-                        !_scheduleNotifiedThisSession
-                            .Contains(
-                                item.Id));
-
-
-        if (due is null)
-            return;
-
-
         try
         {
-            bool presented =
-                _tray.NotifyReminder(
-                    due.Id,
-                    due.DisplayName);
-
-            if (!presented)
+            if (!_tray.NotifyReminder(
+                    notification.ScheduleId,
+                    notification.DisplayName))
+            {
                 return;
-
-
-            _scheduleNotifiedThisSession.Add(
-                due.Id);
+            }
 
 
             if (!_services
-                    .Scheduler
-                    .MarkPresented(
-                        due.Id,
-                        now,
+                    .Notifications
+                    .MarkReminderPresented(
+                        notification.ScheduleId,
+                        notification.ObservedAtUtc,
                         out string error))
             {
                 Trace.WriteLine(
-                    $"[Lu-Knight] Reminder '{due.Id}' " +
-                    $"was shown but presentation state could not be persisted: {error}");
+                    $"[Lu-Knight] Reminder " +
+                    $"'{notification.ScheduleId}' " +
+                    $"was shown but presentation state " +
+                    $"could not be persisted: {error}");
             }
         }
         catch (Exception ex)
@@ -261,11 +229,47 @@ public partial class App : Application
         }
     }
 
-    private void ScheduleTimer_Tick(
-        object? sender,
-        EventArgs e)
+    private void
+        Notifications_CompanionSuggestionReady(
+            CompanionSuggestionNotification notification)
     {
-        CheckDueScheduleReminder();
+        if (_isExiting ||
+            _services is null ||
+            _tray is null)
+        {
+            return;
+        }
+
+
+        if (!_tray.NotifyCompanion(
+                notification.Key,
+                notification.Message))
+        {
+            return;
+        }
+
+
+        if (!_services
+                .Notifications
+                .MarkCompanionPresented(
+                    notification.Key,
+                    notification.ObservedAtUtc))
+        {
+            //
+            // Balloon berhasil tampil tapi coordinator
+            // gagal commit state.
+            // Make stale click inert.
+            //
+
+            _tray.CancelCompanionNotification();
+        }
+    }
+
+    private void
+        Notifications_CompanionCancellationRequested()
+    {
+        _tray?
+            .CancelCompanionNotification();
     }
 
     private async Task CheckUpdatesAtStartup()
@@ -333,25 +337,27 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        if (_scheduleTimer is not null)
+        if (_assistantNotificationTimer is not null)
         {
-            _scheduleTimer.Stop();
+            _assistantNotificationTimer.Stop();
 
-            _scheduleTimer.Tick -=
-                ScheduleTimer_Tick;
+            _assistantNotificationTimer.Tick -=
+                AssistantNotificationTimer_Tick;
 
-            _scheduleTimer =
+            _assistantNotificationTimer =
                 null;
         }
-        if (_companionTimer is not null)
+        if (_services is not null)
         {
-            _companionTimer.Stop();
+            _services.Notifications.ReminderDue -=
+                Notifications_ReminderDue;
 
-            _companionTimer.Tick -=
-                CompanionTimer_Tick;
+            _services.Notifications.CompanionSuggestionReady -=
+                Notifications_CompanionSuggestionReady;
 
-            _companionTimer =
-                null;
+            _services.Notifications
+                .CompanionNotificationCancellationRequested -=
+                    Notifications_CompanionCancellationRequested;
         }
         _lifetime.Cancel(); _instanceTimer?.Stop(); _showRequest?.Dispose(); _instance?.Dispose();
         if (_settingsWindow is not null)
@@ -381,141 +387,27 @@ public partial class App : Application
         _character.OpenScheduledReminderFromTray(
             scheduleId);
     }
-    private void CheckCompanionSuggestion()
-    {
-        if (_isExiting ||
-            _services is null ||
-            _character is null ||
-            _tray is null)
-        {
-            return;
-        }
-
-
-        CompanionSettings preferences = _services.Settings.Current.Companion;
-        if (!preferences.Enabled || !_services.Chat.Options.UseApplicationContext)
-        {
-            _companionGate.ResetObservation();
-            _companionSuggestions.Clear();
-            _tray.CancelCompanionNotification();
-            return;
-        }
-
-        DateTimeOffset now =
-            DateTimeOffset.UtcNow;
-
-
-        //
-        // Higher-priority activity suppresses
-        // proactive suggestions.
-        //
-
-        if (_services.Assistant.IsBusy ||
-            _services
-                .Scheduler
-                .GetReminderCandidates(
-                    now)
-                .Count >
-            0)
-        {
-            _companionGate
-                .ResetObservation();
-
-            return;
-        }
-
-
-        AssistantRuntimeContext context =
-            _services
-                .Context
-                .Capture();
-
-
-        CompanionSuggestionCandidate?
-            candidate =
-                _services
-                    .CompanionAdvisor
-                    .Evaluate(
-                        context,
-                        preferences,
-                        _services.Capabilities);
-
-
-        CompanionSuggestionCandidate?
-            ready =
-                _companionGate
-                    .Observe(
-                        candidate,
-                        now);
-
-
-        if (ready is null)
-            return;
-
-
-        //
-        // Notification presentation can fail
-        // because a reminder/update balloon
-        // currently owns the tray.
-        //
-        // Do not consume rate limit unless
-        // presentation really happened.
-        //
-
-        if (!_tray.NotifyCompanion(
-                ready.Key,
-                ready.Message))
-        {
-            return;
-        }
-
-
-        if (!_companionGate
-                .MarkPresented(
-                    ready,
-                    now))
-        {
-            return;
-        }
-
-
-        _companionSuggestions[
-            ready.Key] =
-                ready;
-    }
-
-    private void CompanionTimer_Tick(
-        object? sender,
-        EventArgs e)
-    {
-        CheckCompanionSuggestion();
-    }
-
     private void OpenCompanionSuggestionFromTray(
         string key)
     {
         if (_isExiting ||
-            _character is null)
+            _character is null ||
+            _services is null)
         {
             return;
         }
 
 
-        if (!_companionSuggestions
-                .Remove(
+        if (!_services
+                .Notifications
+                .TryConsumeCompanion(
                     key,
-                    out CompanionSuggestionCandidate?
+                    out CompanionSuggestionCandidate
                         candidate))
         {
             return;
         }
 
-
-        if (_services is null ||
-            _services.CompanionAdvisor.Evaluate(_services.Context.Capture(),
-                _services.Settings.Current.Companion, _services.Capabilities) is not { } current ||
-            !string.Equals(current.Key, candidate.Key, StringComparison.OrdinalIgnoreCase))
-            return;
 
         _character
             .OpenCompanionSuggestionFromTray(
