@@ -639,15 +639,36 @@ public partial class MainWindow : Window
         }
 
         DesktopApplicationSnapshot snapshot = DesktopApplicationAwarenessService.Capture();
+        DesktopApplicationContext?
+            primary =
+                snapshot.Primary;
+
+
         return runtime with
         {
-            ApplicationContextEnabled = true,
-            PrimaryApplication = snapshot.Primary is DesktopApplicationContext primary
-                ? DesktopApplicationAwarenessService.Format(primary)
-                : null,
-            VisibleApplications = snapshot.Applications
-                .Select(DesktopApplicationAwarenessService.Format)
-                .ToArray()
+            ApplicationContextEnabled =
+                true,
+
+            PrimaryApplication =
+                primary is
+                    DesktopApplicationContext application
+                    ? DesktopApplicationAwarenessService
+                        .Format(
+                            application)
+                    : null,
+
+            PrimaryApplicationKind =
+                primary is
+                    DesktopApplicationContext primaryApplication
+                    ? primaryApplication.Kind
+                        .ToString()
+                    : null,
+
+            VisibleApplications =
+                snapshot.Applications
+                    .Select(
+                        DesktopApplicationAwarenessService.Format)
+                    .ToArray()
         };
     }
 

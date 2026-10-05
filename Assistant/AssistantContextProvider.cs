@@ -14,6 +14,7 @@ public sealed record AssistantRuntimeContext(
 {
     public bool ApplicationContextEnabled { get; init; }
     public string? PrimaryApplication { get; init; }
+    public string? PrimaryApplicationKind { get; init; }
     public IReadOnlyList<string> VisibleApplications { get; init; } = Array.Empty<string>();
 }
 

@@ -233,6 +233,16 @@ internal static partial class Program
             return;
         }
         if (args.Contains(
+                "--companion"))
+        {
+            CheckCompanionFoundation();
+
+            Console.WriteLine(
+                $"PASS: {_checks} companion foundation checks.");
+
+            return;
+        }
+        if (args.Contains(
                 "--scheduler"))
         {
             CheckSchedulerFoundation();

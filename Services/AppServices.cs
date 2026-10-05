@@ -28,6 +28,7 @@ public sealed class AppServices
     public AssistantWorkflowRuntime WorkflowRuntime { get; }
     public LocalScheduleStore ScheduleStore { get; }
     public LocalSchedulerService Scheduler { get; }
+    public LocalCompanionAdvisor CompanionAdvisor { get; }
     public UserSkillStore UserSkills { get; }
     public IReadOnlyList<UserSkillLoadIssue> UserSkillIssues { get; private set; } = [];
     public AssistantController Assistant { get; }
@@ -57,7 +58,8 @@ public sealed class AppServices
         IDesktopUiAssistedResolver? uiAssistedResolver = null,
         UserSkillStore? userSkillStore = null,
         AssistantWorkflowRuntime? workflowRuntime = null,
-        LocalScheduleStore? scheduleStore = null)
+        LocalScheduleStore? scheduleStore = null,
+        LocalCompanionAdvisor? companionAdvisor = null)
     {
         Settings = settings ?? new();
         Chat = new(credentials ?? new SecureCredentialService(), Settings.Current.Chat);
@@ -153,6 +155,7 @@ public sealed class AppServices
         ScheduleStore = scheduleStore ?? new LocalScheduleStore();
         Scheduler = new LocalSchedulerService(ScheduleStore);
         Scheduler.Load();
+        CompanionAdvisor = companionAdvisor ?? new LocalCompanionAdvisor();
         Updates = new(Settings);
     }
 }
