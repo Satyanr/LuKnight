@@ -13,7 +13,7 @@ public sealed record UserSkillLoadResult(
 public sealed class UserSkillStore
 {
     private static readonly Regex PlaceholderPattern = new(
-        @"\{([a-z][a-z0-9_-]{0,31}|argument|last\.(?:window|process))\}",
+        @"\{([a-z][a-z0-9_-]{0,31}|argument|last\.[a-z][a-z0-9_-]{0,31}|steps\.[1-4]\.[a-z][a-z0-9_-]{0,31})\}",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private readonly string _directory;
     public string DirectoryPath => _directory;
@@ -77,9 +77,9 @@ public sealed class UserSkillStore
         { issues.Add(new(fileName, $"Skill tidak dimuat: {ex.Message}")); }
     }
 
-    internal static string? Validate(UserSkillDefinition value)
+    public static string? Validate(UserSkillDefinition value)
     {
-        if (value.SchemaVersion is not 1 and not 2 and not 3)
+        if (value.SchemaVersion is not 1 and not 2 and not 3 and not 4)
             return "Schema user skill tidak didukung.";
         if (!AssistantSkillPolicy.IsValidId(value.Id)) return "ID user skill tidak valid.";
         string display = value.DisplayName?.Trim() ?? string.Empty;
@@ -96,7 +96,7 @@ public sealed class UserSkillStore
         if (value.SchemaVersion == 1 && value.Parameters.Length > 0)
             return "Schema 1 tidak mendukung named parameters.";
         HashSet<string>? declared = null;
-        if (value.SchemaVersion is 2 or 3)
+        if (value.SchemaVersion is 2 or 3 or 4)
         {
             if (value.Parameters.Length > AssistantSkillPolicy.MaxParameters ||
                 (value.SchemaVersion == 2 && value.Parameters.Length < 1))
@@ -132,7 +132,11 @@ public sealed class UserSkillStore
             {
                 string name = placeholder.Groups[1].Value;
                 bool runtimeVariable = name.StartsWith(
-                    "last.", StringComparison.OrdinalIgnoreCase);
+                    "last.", StringComparison.OrdinalIgnoreCase) ||
+                    name.StartsWith("steps.", StringComparison.OrdinalIgnoreCase);
+                bool schema3RuntimeVariable =
+                    string.Equals(name, "last.window", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(name, "last.process", StringComparison.OrdinalIgnoreCase);
                 if (value.SchemaVersion == 1 &&
                     !string.Equals(name, "argument", StringComparison.OrdinalIgnoreCase))
                     return "Schema 1 hanya mendukung placeholder {argument}.";
@@ -149,10 +153,35 @@ public sealed class UserSkillStore
                 {
                     if (string.Equals(name, "argument", StringComparison.OrdinalIgnoreCase))
                         return "Schema 3 tidak mendukung placeholder legacy {argument}.";
-                    if (runtimeVariable)
+                    if (schema3RuntimeVariable)
                     {
                         if (stepIndex == 0)
                             return "Langkah pertama tidak dapat menggunakan variable dari langkah sebelumnya.";
+                        continue;
+                    }
+                    if (runtimeVariable)
+                        return "Schema 3 hanya mendukung runtime variable {last.window} dan {last.process}.";
+                    if (!declared!.Contains(name))
+                        return $"Placeholder '{{{name}}}' tidak memiliki definisi parameter.";
+                }
+                if (value.SchemaVersion == 4)
+                {
+                    if (string.Equals(name, "argument", StringComparison.OrdinalIgnoreCase))
+                        return "Schema 4 tidak mendukung placeholder legacy {argument}.";
+                    if (name.StartsWith("last.", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (stepIndex == 0)
+                            return "Langkah pertama tidak dapat menggunakan output langkah sebelumnya.";
+                        continue;
+                    }
+                    if (name.StartsWith("steps.", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string[] segments = name.Split('.');
+                        if (segments.Length != 3 ||
+                            !int.TryParse(segments[1], out int referencedStep))
+                            return "Referensi workflow step tidak valid.";
+                        if (referencedStep < 1 || referencedStep > stepIndex)
+                            return $"Workflow tidak boleh membaca step {referencedStep} sebelum step tersebut selesai.";
                         continue;
                     }
                     if (!declared!.Contains(name))
@@ -162,7 +191,7 @@ public sealed class UserSkillStore
             total += step.Length;
             if (total > LocalMultiStepPlanParser.MaxInputLength) return "Total user skill terlalu panjang.";
         }
-        if (value.SchemaVersion is 2 or 3)
+        if (value.SchemaVersion is 2 or 3 or 4)
         {
             string combined = string.Join("\n", value.Steps);
             foreach (UserSkillParameterDefinition parameter in value.Parameters)

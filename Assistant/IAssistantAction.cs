@@ -33,7 +33,8 @@ public sealed record ActionPreparationResult(
 
 public sealed record ActionExecutionResult(
     bool Success,
-    string Message);
+    string Message,
+    IReadOnlyDictionary<string, string>? Outputs = null);
 
 public interface IAssistantAction
 {

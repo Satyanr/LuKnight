@@ -8,7 +8,7 @@ public sealed record WorkflowRuntimeResolution(
 public static class WorkflowRuntimeVariableResolver
 {
     private static readonly Regex PlaceholderPattern = new(
-        @"\{(last\.(?:window|process))\}",
+        @"\{((?:last|steps\.[1-4])\.[a-z][a-z0-9_-]{0,31})\}",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public static bool Contains(string command) =>

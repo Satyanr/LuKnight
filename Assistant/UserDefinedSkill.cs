@@ -51,7 +51,7 @@ public sealed class UserDefinedAssistantSkill : IAssistantSkill
         return _schemaVersion switch
         {
             1 => ExpandLegacy(invocation),
-            2 or 3 => ExpandNamed(invocation),
+            2 or 3 or 4 => ExpandNamed(invocation),
             _ => SkillExpansionResult.Failure("Schema skill tidak didukung.")
         };
     }
@@ -122,7 +122,7 @@ public sealed class UserDefinedAssistantSkill : IAssistantSkill
         return SkillExpansionResult.Expanded(
             new AssistantPlan(
                 Array.AsReadOnly(steps),
-                AllowRuntimeVariables: _schemaVersion == 3),
+                AllowRuntimeVariables: _schemaVersion is 3 or 4),
             $"Skill {DisplayName} siap.");
     }
 }

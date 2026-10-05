@@ -90,6 +90,7 @@ internal static partial class Program
         public AssistantActionRisk Risk = AssistantActionRisk.Navigation;
         public bool Fail, Throw, FailPrepare, ThrowPrepare;
         public bool IncludeInContext = true;
+        public IReadOnlyDictionary<string, string>? ExecutionOutputs;
         public Action? OnExecute;
         public Action? OnPrepare;
         public ActionPreparationResult Prepare(ActionInvocation invocation)
@@ -105,7 +106,10 @@ internal static partial class Program
             if (Throw) throw new OperationCanceledException("Test cancellation");
             Executions++;
             OnExecute?.Invoke();
-            return Task.FromResult(new ActionExecutionResult(!Fail, "Execution result"));
+            return Task.FromResult(new ActionExecutionResult(
+                !Fail,
+                "Execution result",
+                ExecutionOutputs));
         }
     }
 
@@ -115,6 +119,7 @@ internal static partial class Program
         await CheckPlanLifetimeAsync();
         await CheckPlannerDoesNotRetryPreparationAsync();
         await CheckRuntimeWindowVariablesAsync();
+        await CheckWorkflowStepResultsAsync();
         static DesktopAppTarget App(string id, string name) => new(id, name, id, new[] { id }, new[] { name.ToLowerInvariant() }, DesktopAppSource.BuiltIn);
         foreach (string scenario in new[] { "success", "restricted", "conversation", "cancel", "failure", "exception", "prepare-failure", "downgrade", "sensitive", "sensitive-downgrade", "cancel-token", "prepare-exception" })
         {
@@ -180,6 +185,91 @@ internal static partial class Program
             Require(!assistant.HasPendingPlan && !assistant.HasPendingAction && !assistant.IsBusy, "Plan state not cleared: " + scenario);
             Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0, "Plan leaked Gemini/context.");
         }
+    }
+
+    private static async Task CheckWorkflowStepResultsAsync()
+    {
+        var catalog = new MutablePlanAppCatalog();
+        catalog.Add(new DesktopAppTarget(
+            "launcher", "Launcher", "launcher", ["launcher"], ["launcher"],
+            DesktopAppSource.BuiltIn));
+
+        var open = new PlanTestAction(BuiltInActionNames.DesktopOpenApplication)
+        {
+            ExecutionOutputs = new Dictionary<string, string>
+            {
+                ["app"] = "Target"
+            }
+        };
+        var focus = new PlanTestAction(BuiltInActionNames.DesktopFocusApplication)
+        {
+            ExecutionOutputs = new Dictionary<string, string>
+            {
+                ["focused"] = "true"
+            }
+        };
+        open.OnExecute = () => catalog.Add(new DesktopAppTarget(
+            "target", "Target", "target", ["target"], ["target"],
+            DesktopAppSource.BuiltIn));
+
+        var skill = new UserDefinedAssistantSkill(new UserSkillDefinition
+        {
+            SchemaVersion = 4,
+            Id = "step-results",
+            DisplayName = "Step Results",
+            Description = "Structured workflow result test.",
+            Parameters = [],
+            Steps =
+            [
+                "buka launcher",
+                "fokus {last.app}",
+                "fokus {steps.1.app}"
+            ]
+        });
+
+        using var handler = new FakeHttp((_, _) =>
+            throw new InvalidOperationException("Step-result workflow called Gemini."));
+        using var client = new HttpClient(handler);
+        var chat = new ChatCoordinator(
+            new FakeCredentials { Key = "unused-step-result-key" },
+            new ChatSettings
+            {
+                Provider = ChatProvider.Gemini,
+                UseDesktopActions = true,
+                DesktopPermission = DesktopPermissionLevel.Sensitive
+            },
+            () => null,
+            client);
+        var assistant = new AssistantController(
+            chat,
+            intentRouter: new AssistantIntentRouter(
+                new LocalDesktopCommandRouter(catalog)),
+            actions: new AssistantActionRouter(
+                new IAssistantAction[] { open, focus },
+                () => DesktopPermissionLevel.Sensitive),
+            skills: new AssistantSkillRouter(new[] { skill }));
+
+        AssistantReply first = await assistant.SendAsync(
+            new AssistantRequest("jalankan skill step-results"));
+        Require(first.ActionProposal is { PlanStepNumber: 1, PlanStepCount: 3 },
+            "Structured workflow did not start.");
+
+        AssistantReply second = await assistant.ConfirmActionAsync(first.ActionProposal!.Id);
+        Require(second.ActionProposal is { PlanStepNumber: 2 } && focus.Preparations == 1,
+            "{last.app} did not resolve from step 1 output.");
+
+        AssistantReply third = await assistant.ConfirmActionAsync(second.ActionProposal!.Id);
+        Require(third.ActionProposal is { PlanStepNumber: 3 } && focus.Preparations == 2,
+            "{steps.1.app} was lost after step 2 completed.");
+
+        AssistantReply completed = await assistant.ConfirmActionAsync(third.ActionProposal!.Id);
+        Require(completed.ActionProposal is null &&
+                !assistant.HasPendingPlan &&
+                !assistant.HasPendingAction,
+            "Structured workflow did not finish.");
+        Require(handler.Calls == 0 &&
+                assistant.Conversation.GetRecentContext().Count == 0,
+            "Structured workflow leaked Gemini/context.");
     }
 
     private sealed class MutablePlanWindowCatalog(DesktopWindowTarget target)

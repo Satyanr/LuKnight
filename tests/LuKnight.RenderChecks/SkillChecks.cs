@@ -556,5 +556,30 @@ internal static partial class Program
             { ["last.window"] = "After Refresh" });
         Require(resolvedRuntime.Command == "klik tombol Save di window After Refresh",
             "Runtime variable did not resolve in one pass.");
+
+        Require(UserSkillStore.Validate(new UserSkillDefinition
+        {
+            SchemaVersion = 4,
+            Id = "valid-history",
+            DisplayName = "History",
+            Description = "History test.",
+            Parameters = [],
+            Steps = ["buka launcher", "fokus {steps.1.app}"]
+        }) is null, "Valid historical step reference was rejected.");
+
+        Require(UserSkillStore.Validate(new UserSkillDefinition
+        {
+            SchemaVersion = 4,
+            Id = "future-history",
+            DisplayName = "Future",
+            Description = "Invalid future ref.",
+            Parameters = [],
+            Steps =
+            [
+                "buka launcher",
+                "fokus {steps.3.app}",
+                "buka downloads"
+            ]
+        }) is not null, "Future workflow output reference was accepted.");
     }
 }

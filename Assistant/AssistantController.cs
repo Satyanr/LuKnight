@@ -4,9 +4,6 @@ namespace LuKnight.Assistant;
 
 public sealed class AssistantController
 {
-    private static readonly IReadOnlyDictionary<string, string> EmptyRuntimeVariables =
-        new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     private static readonly TimeSpan
         PlanLifetime =
             TimeSpan.FromMinutes(5);
@@ -36,7 +33,7 @@ public sealed class AssistantController
             AssistantPlan Plan,
             int CurrentStepIndex,
             DateTimeOffset ExpiresAt,
-            IReadOnlyDictionary<string, string> RuntimeVariables);
+            WorkflowExecutionState WorkflowState);
 
     private PendingAssistantAction? _pendingAction;
 
@@ -413,7 +410,7 @@ public sealed class AssistantController
                 0,
                 now.Add(
                     PlanLifetime),
-                EmptyRuntimeVariables);
+                WorkflowExecutionState.Empty);
 
         try
         {
@@ -482,7 +479,9 @@ public sealed class AssistantController
         if (plan.Plan.AllowRuntimeVariables && preRoutedIntent is null)
         {
             WorkflowRuntimeResolution resolution =
-                WorkflowRuntimeVariableResolver.Resolve(command, plan.RuntimeVariables);
+                WorkflowRuntimeVariableResolver.Resolve(
+                    command,
+                    plan.WorkflowState.BuildRuntimeVariables());
             if (!resolution.Success || resolution.Command is null)
             {
                 _pendingPlan = null;
@@ -769,17 +768,25 @@ public sealed class AssistantController
             }
         }
 
-        IReadOnlyDictionary<string, string> runtimeVariables =
-            plan.Plan.AllowRuntimeVariables
-                ? CaptureRuntimeVariables(pending.Action)
-                : EmptyRuntimeVariables;
+        WorkflowExecutionState nextState = plan.WorkflowState;
+        if (plan.Plan.AllowRuntimeVariables)
+        {
+            IReadOnlyDictionary<string, string> outputs =
+                CaptureStepOutputs(pending.Action, result);
+            nextState = nextState.Append(new WorkflowStepResult(
+                StepNumber: stepIndex + 1,
+                ActionName: pending.Action.Name,
+                Risk: pending.Action.Risk,
+                CompletedAt: _clock(),
+                Outputs: outputs));
+        }
 
         _pendingPlan =
             plan with
             {
                 CurrentStepIndex =
                     nextIndex,
-                RuntimeVariables = runtimeVariables
+                WorkflowState = nextState
             };
 
         return await ContinuePlanAsync(
@@ -791,19 +798,23 @@ public sealed class AssistantController
             BuiltInActionNames.DesktopInvokeUiControl or
             BuiltInActionNames.DesktopSetUiText;
 
-    private IReadOnlyDictionary<string, string> CaptureRuntimeVariables(
-        PreparedAssistantAction action)
+    private IReadOnlyDictionary<string, string> CaptureStepOutputs(
+        PreparedAssistantAction action,
+        ActionExecutionResult result)
     {
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (!action.Arguments.TryGetValue("windowId", out string? windowId) ||
-            !IntentRouter.DesktopWindows.TryResolveById(windowId, out DesktopWindowTarget window))
-            return new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(result);
-        AddRuntimeValue(result, "last.window", window.Title, 200);
-        AddRuntimeValue(result, "last.process", window.ProcessName, 100);
-        return new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(result);
+        var outputs = new Dictionary<string, string>(
+            WorkflowOutputPolicy.Normalize(result.Outputs),
+            StringComparer.OrdinalIgnoreCase);
+        if (action.Arguments.TryGetValue("windowId", out string? windowId) &&
+            IntentRouter.DesktopWindows.TryResolveById(windowId, out DesktopWindowTarget window))
+        {
+            AddWorkflowOutput(outputs, "window", window.Title, 200);
+            AddWorkflowOutput(outputs, "process", window.ProcessName, 100);
+        }
+        return new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(outputs);
     }
 
-    private static void AddRuntimeValue(
+    private static void AddWorkflowOutput(
         IDictionary<string, string> destination,
         string name,
         string? rawValue,
