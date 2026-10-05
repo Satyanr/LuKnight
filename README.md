@@ -362,45 +362,20 @@ Future destructive actions will require a higher permission level.
 
 ---
 
-# 🎙️ Voice Interaction
+## Voice Interaction
 
-Voice support is currently under active development.
+Implemented:
 
-### Available
+- Push-to-Talk capture
+- local Whisper Speech-to-Text
+- Voice → Assistant routing
+- local deterministic desktop commands through the same router
+- Windows Text-to-Speech
+- voice privacy controls
+- voice requests use the same desktop permission / confirmation model
 
-* Push-to-Talk microphone capture
-* WAV audio capture
-* 16 kHz
-* 16-bit
-* mono
-* audio held in memory
-* automatic capture timeout
-
-### In development
-
-```text
-Microphone
-   ↓
-Speech-to-Text
-   ↓
-AssistantInputSource.Voice
-   ↓
-IntentRouter
-   ├── Local Desktop Action
-   └── Gemini
-   ↓
-Assistant Response
-   ↓
-Text-to-Speech
-   ↓
-Lu-Knight Speaking Animation
-```
-
-The goal is for voice and text to share the exact same assistant and permission system.
-
-Voice commands must **not bypass desktop-action confirmation**.
-
-Continuous always-on microphone monitoring is not the current design goal.
+Voice and text share the same assistant and permission system.
+Continuous always-on microphone monitoring is not enabled.
 
 ---
 
@@ -651,83 +626,54 @@ Lu-Knight also supports single-instance behavior so multiple accidental launches
 
 ---
 
-## Phase 9 — Voice & Natural Interaction
+## Phase 9 — Voice & Natural Interaction ✅
 
-| Module                    | Status  |
-| ------------------------- | ------- |
-| Push-to-Talk Capture      | ✅       |
-| Speech-to-Text            | 🔨 Next |
-| Voice → Assistant Routing | ⬜       |
-| Text-to-Speech            | ⬜       |
-| Voice UX / Privacy        | ⬜       |
-
----
-
-## Phase 10 — Computer Interaction / UI Automation
-
-Planned capabilities include:
-
-* Window targeting
-* Windows UI Automation
-* element-based clicking
-* safe keyboard input
-* controlled scrolling
-* screen-assisted interaction
-* permission levels
-* multi-step desktop tasks
-
-The intended architecture remains:
-
-```text
-Planner
-   ↓
-Validated Steps
-   ↓
-Permission System
-   ↓
-Local Windows Executor
-```
-
-Gemini will not become an unrestricted Windows executor.
+| Module                    | Status |
+| ------------------------- | ------ |
+| Push-to-Talk Capture      | ✅ |
+| Local Whisper Speech-to-Text | ✅ |
+| Voice → Assistant Routing | ✅ |
+| Windows Text-to-Speech    | ✅ |
+| Voice UX / Privacy        | ✅ |
 
 ---
 
-## Phase 11 — Automation / Skills / Proactive Companion
+## Phase 10 — Computer Interaction / UI Automation ✅ code/native-harness side
 
-Planned:
+* ✅ Window targeting
+* ✅ Windows UI Automation
+* ✅ Safe UI control invocation
+* ✅ Safe text input
+* ✅ Mouse fallback
+* ✅ Keyboard fallback
+* ✅ Screen-assisted UIA
+* ✅ Permission levels
+* ✅ Sensitive two-stage confirmation
+* ✅ Multi-step planner
 
-* Local Skill System
-* Workflow Engine
-* User-defined commands
-* Local scheduler
-* Reminders
-* Context-aware companion behavior
-* Rate-limited proactive suggestions
-* Capability registry
-* Personalization
-* application preferences
-* custom aliases
-
-Example:
-
-```text
-"mulai kerja"
-```
-
-could become:
-
-```text
-Open VS Code
-→ Open Chrome
-→ Open Project Folder
-→ Focus VS Code
-```
-
-without requiring Gemini.
+Desktop actions continue through permission and confirmation before native execution.
 
 ---
 
-## Phase 12 — Production Hardening / v1.0
+## Phase 11 — Automation / Skills / Proactive Companion ✅ code/native-harness side
+
+* ✅ Skills and user-defined skills
+* ✅ Workflow variables and structured results
+* ✅ Reusable workflow runtime
+* ✅ Local scheduler and reminders
+* ✅ Scheduled workflow handoff and recovery
+* ✅ Proactive companion and rate limits
+* ✅ Capability registry and preferences
+
+Proactive suggestions are opt-in and only create a draft. Scheduled workflows
+retain the normal permission and confirmation requirements.
+
+Automated native harnesses verify component boundaries and native execution;
+synthetic tray/card events do not establish physical Windows shell interaction PASS.
+
+---
+
+## Phase 12 — Production Hardening / v1.0 🔨 Current
 
 Final development focuses on:
 
@@ -875,13 +821,11 @@ Some features are incomplete or may change before the final v1.0 release.
 
 In particular:
 
-* Speech-to-Text is still under development
-* Text-to-Speech is not complete
-* Windows UI Automation is planned for Phase 10
-* Workflow / Skill automation is planned for Phase 11
-* full production security/privacy audit is planned for Phase 12
-* application signing is not yet part of the current packaged build
-* physical desktop behavior still requires manual regression testing in addition to automated tests
+* production hardening is still in progress
+* application signing is not yet finalized
+* physical desktop interactions still require manual Windows regression
+* automated native harnesses do not replace physical shell/UI testing
+* installer/update end-to-end testing against a public release remains required
 
 Do not treat the current development build as a fully hardened security boundary.
 
@@ -891,6 +835,7 @@ Do not treat the current development build as a fully hardened security boundary
 
 More technical documentation is available inside this repository:
 
+* [`ARCHITECTURE_BOUNDARIES.md`](ARCHITECTURE_BOUNDARIES.md)
 * [`ASSISTANT_CORE.md`](ASSISTANT_CORE.md)
 * [`PERSONALITY_SYSTEM.md`](PERSONALITY_SYSTEM.md)
 * [`LOCAL_DESKTOP_COMMAND_ENGINE.md`](LOCAL_DESKTOP_COMMAND_ENGINE.md)

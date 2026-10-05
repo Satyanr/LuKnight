@@ -38,6 +38,16 @@ internal static partial class Program
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
+        if (args.Contains(
+                "--architecture"))
+        {
+            CheckArchitectureBoundaries();
+
+            Console.WriteLine(
+                $"PASS: {_checks} architecture boundary checks.");
+
+            return;
+        }
         if (args.Contains("--desktop-commands-live"))
         {
             Task.Run(CheckDesktopCommandsLiveAsync).GetAwaiter().GetResult();
