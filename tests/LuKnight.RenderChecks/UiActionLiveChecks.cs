@@ -16,6 +16,600 @@ using LuKnight.Services;
 
 internal static partial class Program
 {
+    private static async Task
+        CheckWorkflowLiveAsync()
+    {
+        string token =
+            Guid.NewGuid()
+                .ToString("N")[..8];
+
+        string initialTitle =
+            $"{UiFixturePrefix} {token}";
+
+        string refreshTitle =
+            $"{initialTitle} — REFRESH INVOKED";
+
+        string saveTitle =
+            $"{initialTitle} — SAVE INVOKED";
+
+        const string historyProbe =
+            "workflow-history-probe";
+
+
+        string skillDirectory =
+            Path.Combine(
+                Path.GetTempPath(),
+                "LuKnight-WorkflowLive",
+                Guid.NewGuid()
+                    .ToString("N"));
+
+        Directory.CreateDirectory(
+            skillDirectory);
+
+
+        var definition =
+            new UserSkillDefinition
+            {
+                SchemaVersion =
+                    4,
+
+                Id =
+                    "native-history-workflow",
+
+                DisplayName =
+                    "Native History Workflow",
+
+                Description =
+                    "Native reusable workflow runtime acceptance.",
+
+                Aliases =
+                [
+                    "native-history"
+                ],
+
+                Parameters =
+                [
+                    new()
+                    {
+                        Name =
+                            "window",
+
+                        Required =
+                            true,
+
+                        MaxLength =
+                            200
+                    }
+                ],
+
+                Steps =
+                [
+                    "klik tombol Refresh di window {window}",
+
+                    "isi textbox Search dengan workflow-history-probe " +
+                    "di window {last.window}",
+
+                    "klik tombol Save di window {steps.1.window}"
+                ]
+            };
+
+
+        File.WriteAllText(
+            Path.Combine(
+                skillDirectory,
+                "native-history-workflow.json"),
+            JsonSerializer.Serialize(
+                definition,
+                SettingsService.JsonOptions));
+
+
+        using Process fixture =
+            StartUiFixtureProcess(
+                token);
+
+        try
+        {
+            UserSkillLoadResult loaded =
+                new UserSkillStore(
+                    skillDirectory)
+                .Load();
+
+            Require(
+                loaded.Skills.Count == 1 &&
+                loaded.Issues.Count == 0,
+                "Schema-4 native workflow JSON was not loaded.");
+
+
+            var skills =
+                new AssistantSkillRouter(
+                    BuiltInSkillCatalog.Create());
+
+            foreach (IAssistantSkill skill
+                     in loaded.Skills)
+            {
+                skills.Register(
+                    skill);
+            }
+
+
+            var windows =
+                new DesktopWindowTargetService();
+
+            await WaitForFixtureWindowAsync(
+                windows,
+                fixture,
+                initialTitle);
+
+
+            var ui =
+                new WindowsDesktopUiAutomationReader();
+
+            var invokeSequence =
+                new List<string>();
+
+            var invoke =
+                new RecordingUiActionExecutor(
+                    new WindowsDesktopUiActionExecutor(),
+                    invokeSequence);
+
+            var mouse =
+                new RecordingMouseActionExecutor(
+                    new WindowsDesktopMouseActionExecutor(),
+                    invokeSequence);
+
+            var text =
+                new RecordingUiTextActionExecutor(
+                    new WindowsDesktopUiTextActionExecutor());
+
+
+            using var handler =
+                new FakeHttp(
+                    (_, _) =>
+                        throw new InvalidOperationException(
+                            "Native workflow called Gemini."));
+
+            using var client =
+                new HttpClient(
+                    handler);
+
+
+            var chat =
+                new ChatCoordinator(
+                    new FakeCredentials
+                    {
+                        Key =
+                            "unused-workflow-live-key"
+                    },
+                    new ChatSettings
+                    {
+                        Provider =
+                            ChatProvider.Gemini,
+
+                        UseDesktopActions =
+                            true,
+
+                        DesktopPermission =
+                            DesktopPermissionLevel
+                                .Sensitive
+                    },
+                    () => null,
+                    client);
+
+
+            var desktopRouter =
+                new LocalDesktopCommandRouter(
+                    new DesktopAppCatalogService(
+                        () =>
+                            Array.Empty<
+                                DesktopAppTarget>()),
+                    windows);
+
+            var intentRouter =
+                new AssistantIntentRouter(
+                    desktopRouter);
+
+
+            var invokeAction =
+                new InvokeDesktopUiControlAction(
+                    () =>
+                        chat.Options
+                            .UseDesktopActions,
+                    windows,
+                    ui,
+                    invoke,
+                    mouse);
+
+
+            var textAction =
+                new SetDesktopUiTextAction(
+                    () =>
+                        chat.Options
+                            .UseDesktopActions,
+                    windows,
+                    ui,
+                    text);
+
+
+            var actions =
+                new AssistantActionRouter(
+                    new IAssistantAction[]
+                    {
+                        invokeAction,
+                        textAction
+                    },
+                    () =>
+                        chat.Options
+                            .DesktopPermission);
+
+
+            var runtime =
+                new AssistantWorkflowRuntime();
+
+
+            var assistant =
+                new AssistantController(
+                    chat,
+                    intentRouter:
+                        intentRouter,
+                    actions:
+                        actions,
+                    skills:
+                        skills,
+                    workflowRuntime:
+                        runtime);
+
+
+            Require(
+                ReferenceEquals(
+                    assistant.WorkflowRuntime,
+                    runtime),
+                "Assistant did not use the injected reusable workflow runtime.");
+
+
+            AssistantReply step1 =
+                await assistant.SendAsync(
+                    new AssistantRequest(
+                        $"jalankan skill native-history " +
+                        $"dengan parameter window=\"{initialTitle}\""));
+
+
+            Require(
+                step1.ActionProposal is
+                {
+                    IsPlanStep:
+                        true,
+
+                    PlanStepNumber:
+                        1,
+
+                    PlanStepCount:
+                        3,
+
+                    Risk:
+                        AssistantActionRisk.Interaction,
+
+                    ConfirmationStage:
+                        AssistantConfirmationStage.Standard
+                },
+                "Schema-4 workflow did not enter step 1/3.");
+
+
+            Require(
+                invoke.Calls == 0 &&
+                text.Calls == 0 &&
+                mouse.Calls == 0,
+                "Native workflow executed before confirmation.");
+
+
+            Require(
+                !windows.Capture()
+                    .Any(
+                        window =>
+                            window.ProcessId ==
+                                fixture.Id &&
+                            string.Equals(
+                                window.Title,
+                                refreshTitle,
+                                StringComparison.Ordinal)),
+                "Future workflow window state existed before step 1.");
+
+
+            //
+            // STEP 1 — Refresh
+            //
+
+            AssistantReply step2 =
+                await assistant
+                    .ConfirmActionAsync(
+                        step1.ActionProposal!.Id);
+
+
+            Require(
+                invoke.Calls == 1 &&
+                text.Calls == 0 &&
+                mouse.Calls == 0,
+                "Step 1 did not execute as UIA Refresh only.");
+
+
+            await WaitForFixtureWindowAsync(
+                windows,
+                fixture,
+                refreshTitle);
+
+
+            Require(
+                step2.ActionProposal is
+                {
+                    IsPlanStep:
+                        true,
+
+                    PlanStepNumber:
+                        2,
+
+                    PlanStepCount:
+                        3,
+
+                    Risk:
+                        AssistantActionRisk.Interaction,
+
+                    ConfirmationStage:
+                        AssistantConfirmationStage.Standard
+                },
+                "Step 2 was not freshly prepared from {last.window}.");
+
+
+            //
+            // STEP 2 — native ValuePattern text
+            //
+
+            AssistantReply step3 =
+                await assistant
+                    .ConfirmActionAsync(
+                        step2.ActionProposal!.Id);
+
+
+            Require(
+                text.Calls == 1,
+                "Step 2 did not execute native text input.");
+
+
+            Require(
+                text.LastValue ==
+                    historyProbe,
+                "Step 2 did not receive the exact workflow text value.");
+
+
+            Require(
+                text.LastResult?.Success ==
+                    true,
+                text.LastResult?.Message ??
+                    "Native text workflow step returned no result.");
+
+
+            //
+            // historyProbe intentionally DOES NOT equal
+            // UiTextExpectedValue.
+            //
+            // Therefore the fixture title must remain
+            // refreshTitle after step 2.
+            //
+
+            Require(
+                windows.Capture()
+                    .Any(
+                        window =>
+                            window.ProcessId ==
+                                fixture.Id &&
+                            string.Equals(
+                                window.Title,
+                                refreshTitle,
+                                StringComparison.Ordinal)),
+                "Step 2 unexpectedly changed the fixture title.");
+
+
+            Require(
+                step3.ActionProposal is
+                {
+                    IsPlanStep:
+                        true,
+
+                    PlanStepNumber:
+                        3,
+
+                    PlanStepCount:
+                        3,
+
+                    Risk:
+                        AssistantActionRisk.Sensitive,
+
+                    ConfirmationStage:
+                        AssistantConfirmationStage.SensitiveReview
+                },
+                "Historical {steps.1.window} did not resolve into Sensitive step 3.");
+
+
+            Require(
+                invoke.Calls == 1 &&
+                mouse.Calls == 0,
+                "Step 3 executed during preparation.");
+
+
+            //
+            // STEP 3 — Sensitive review
+            //
+
+            Guid reviewId =
+                step3.ActionProposal!.Id;
+
+            AssistantReply final =
+                await assistant
+                    .ConfirmActionAsync(
+                        reviewId);
+
+
+            Require(
+                final.ActionProposal is
+                {
+                    IsPlanStep:
+                        true,
+
+                    PlanStepNumber:
+                        3,
+
+                    PlanStepCount:
+                        3,
+
+                    Risk:
+                        AssistantActionRisk.Sensitive,
+
+                    ConfirmationStage:
+                        AssistantConfirmationStage.SensitiveFinal
+                },
+                "Schema-4 workflow lost two-stage Sensitive confirmation.");
+
+
+            Require(
+                final.ActionProposal!.Id !=
+                    reviewId,
+                "Sensitive final confirmation reused review ID.");
+
+
+            Require(
+                invoke.Calls == 1 &&
+                text.Calls == 1 &&
+                mouse.Calls == 0,
+                "Sensitive review executed native Save.");
+
+
+            Require(
+                windows.Capture()
+                    .Any(
+                        window =>
+                            window.ProcessId ==
+                                fixture.Id &&
+                            string.Equals(
+                                window.Title,
+                                refreshTitle,
+                                StringComparison.Ordinal)),
+                "Sensitive review changed native state.");
+
+
+            //
+            // STEP 3 — final execution
+            //
+
+            AssistantReply completed =
+                await assistant
+                    .ConfirmActionAsync(
+                        final.ActionProposal.Id);
+
+
+            Require(
+                completed.ActionProposal is null,
+                "Completed schema-4 workflow returned another proposal.");
+
+
+            Require(
+                invoke.Calls == 2,
+                "Native workflow did not invoke exactly Refresh + Save.");
+
+
+            Require(
+                text.Calls == 1,
+                "Native workflow text step executed an unexpected number of times.");
+
+
+            Require(
+                mouse.Calls == 0,
+                "Native workflow unexpectedly used mouse fallback.");
+
+
+            Require(
+                invokeSequence.SequenceEqual(
+                    new[]
+                    {
+                        "uia",
+                        "uia"
+                    }),
+                "Native button execution sequence was not UIA → UIA.");
+
+
+            await WaitForFixtureWindowAsync(
+                windows,
+                fixture,
+                saveTitle);
+
+
+            Require(
+                !assistant.HasPendingPlan &&
+                !assistant.HasPendingAction,
+                "Schema-4 workflow remained pending after completion.");
+
+
+            Require(
+                handler.Calls == 0,
+                "Schema-4 native workflow called Gemini.");
+
+
+            Require(
+                assistant.Conversation
+                    .GetRecentContext()
+                    .Count == 0,
+                "Schema-4 workflow leaked into Gemini context.");
+
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "Schema-4 workflow loaded from JSON.");
+
+            Console.WriteLine(
+                "Step 1/3: native Refresh UIA.");
+
+            Console.WriteLine(
+                "Step 2/3: {last.window} → native Search ValuePattern.");
+
+            Console.WriteLine(
+                "Step 3/3: {steps.1.window} survived step 2.");
+
+            Console.WriteLine(
+                "Step 3 remained SensitiveReview → SensitiveFinal.");
+
+            Console.WriteLine(
+                "Native execution: UIA Refresh → UIA text → UIA Save.");
+
+            Console.WriteLine(
+                "Mouse fallback: 0.");
+
+            Console.WriteLine(
+                "Gemini calls: 0.");
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "PASS: reusable native workflow acceptance.");
+        }
+        finally
+        {
+            await StopUiFixtureAsync(
+                fixture);
+
+            try
+            {
+                Directory.Delete(
+                    skillDirectory,
+                    recursive:
+                        true);
+            }
+            catch (Exception ex)
+                when (ex is
+                    IOException or
+                    UnauthorizedAccessException)
+            {
+                Console.WriteLine(
+                    $"Warning: temporary workflow folder cleanup failed: {ex.Message}");
+            }
+        }
+    }
+
     private static async Task CheckUserSkillLiveAsync()
     {
         string token = Guid.NewGuid().ToString("N")[..8];

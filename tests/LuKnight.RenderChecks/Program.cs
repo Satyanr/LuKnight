@@ -219,6 +219,19 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} native user-skill checks.");
             return;
         }
+        if (args.Contains(
+                "--workflow-live"))
+        {
+            Task.Run(
+                CheckWorkflowLiveAsync)
+                .GetAwaiter()
+                .GetResult();
+
+            Console.WriteLine(
+                $"PASS: {_checks} native workflow checks.");
+
+            return;
+        }
         if (args.Contains("--permissions"))
         {
             Task.Run(CheckPermissionLevelsAsync).GetAwaiter().GetResult();
