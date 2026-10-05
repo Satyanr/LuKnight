@@ -246,6 +246,20 @@ internal static partial class Program
 
             return;
         }
+        if (args.Contains("--scheduler-live"))
+        {
+            // WPF reminder cards require STA and a Dispatcher across async continuations.
+            var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            var operation = dispatcher.InvokeAsync(async () =>
+            {
+                try { await CheckSchedulerLiveAsync(); }
+                finally { dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Background); }
+            });
+            System.Windows.Threading.Dispatcher.Run();
+            operation.Task.Unwrap().GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} native scheduler checks.");
+            return;
+        }
         if (args.Contains("--permissions"))
         {
             Task.Run(CheckPermissionLevelsAsync).GetAwaiter().GetResult();
