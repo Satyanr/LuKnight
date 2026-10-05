@@ -251,3 +251,21 @@ an older application.
 Pending assistant actions, confirmation IDs, prepared actions, workflow runtime
 sessions, UIA identities, HWNDs and native execution state are session-only and
 must never be crash-restored.
+
+## Shutdown lifecycle
+
+Shutdown is a security and stability boundary. Once shutdown begins:
+
+- AssistantController accepts no new requests.
+- Pending confirmations and workflow runtime state are invalidated.
+- Active controller work receives cancellation.
+- Native action execution must not begin after the shutdown barrier.
+- Voice capture stops, transcription is cancelled, and text-to-speech stops.
+- Proactive and scheduler polling stops.
+- UI event handlers no longer submit work or restart microphone capture.
+
+Shutdown must be idempotent. Resource cleanup must not depend on async work
+finishing before the WPF dispatcher exits. Async operations retain ownership of
+their local cancellation sources until completion.
+
+No pending authorization may survive shutdown or be replayed after restart.

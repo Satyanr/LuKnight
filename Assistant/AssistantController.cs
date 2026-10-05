@@ -23,6 +23,38 @@ public sealed class AssistantController
     private readonly Func<DateTimeOffset>
         _clock;
 
+    private readonly CancellationTokenSource _shutdownCts = new();
+    private int _shutdownStarted;
+    public bool IsShuttingDown => Volatile.Read(ref _shutdownStarted) != 0;
+
+    public void BeginShutdown()
+    {
+        if (Interlocked.Exchange(ref _shutdownStarted, 1) != 0) return;
+        _pendingAction = null;
+        _pendingPlan = null;
+        try { _shutdownCts.Cancel(); }
+        catch (AggregateException) { }
+    }
+
+    private CancellationTokenSource CreateOperationCancellation(CancellationToken external)
+    {
+        if (IsShuttingDown)
+            throw new OperationCanceledException("Assistant sedang ditutup.", _shutdownCts.Token);
+        return CancellationTokenSource.CreateLinkedTokenSource(external, _shutdownCts.Token);
+    }
+
+    private void SetPendingAction(PendingAssistantAction pending, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _pendingAction = pending;
+        if (cancellationToken.IsCancellationRequested || IsShuttingDown)
+        {
+            _pendingAction = null;
+            AbortPlanFor(pending);
+            throw new OperationCanceledException(cancellationToken);
+        }
+    }
+
     private readonly ChatCoordinator _chat;
     private readonly SemaphoreSlim _requestGate = new(1, 1);
     private WorkflowRuntimeSession?
@@ -130,6 +162,8 @@ public sealed class AssistantController
         if (string.IsNullOrWhiteSpace(request.Text))
             throw new ArgumentException("Pesan tidak boleh kosong.", nameof(request));
 
+        using CancellationTokenSource operationCts = CreateOperationCancellation(cancellationToken);
+        cancellationToken = operationCts.Token;
         cancellationToken.ThrowIfCancellationRequested();
         bool entered = await _requestGate.WaitAsync(0, cancellationToken);
         if (!entered)
@@ -218,6 +252,7 @@ public sealed class AssistantController
             {
                 ContextInvocation invocation = intent.Context ?? throw new InvalidOperationException("Context intent tidak memiliki invocation.");
                 ContextCaptureResult captured = await _contextSources.CaptureAsync(invocation, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 if (!captured.Success || captured.Reference is null)
                 {
                     Conversation.AddUser(request, includeInContext: false);
@@ -381,14 +416,17 @@ public sealed class AssistantController
         DateTimeOffset now =
             _clock();
 
-        _pendingPlan =
+        WorkflowRuntimeSession session =
             WorkflowRuntime.Start(
                 plan,
                 now,
                 PlanLifetime);
 
+        cancellationToken.ThrowIfCancellationRequested();
+        _pendingPlan = session;
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             return await ContinuePlanAsync(
                 cancellationToken, firstIntent);
         }
@@ -533,6 +571,7 @@ public sealed class AssistantController
             await _actions.PrepareAsync(
                 intent.Action,
                 cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (!prepared.Success ||
             prepared.Action is null)
@@ -604,7 +643,7 @@ public sealed class AssistantController
                     StandardConfirmationLifetime),
                 plan.ExpiresAt);
 
-        _pendingAction =
+        PendingAssistantAction pending =
             new PendingAssistantAction(
                 proposalId,
                 action,
@@ -615,6 +654,7 @@ public sealed class AssistantController
                 PlanStepIndex:
                     step.Index,
                 PlanStepCount: plan.Plan.Count);
+        SetPendingAction(pending, cancellationToken);
         string proposalMessage =
             $"Rencana langkah {step.Index + 1}/{plan.Plan.Count} memerlukan konfirmasi.";
 
@@ -629,7 +669,7 @@ public sealed class AssistantController
             DateTimeOffset.UtcNow,
             AssistantEmotion.Determined,
             BuildActionProposal(
-                _pendingAction));
+                pending));
     }
     private void AbortPlanFor(
         PendingAssistantAction pending)
@@ -842,11 +882,19 @@ public sealed class AssistantController
                 AssistantEmotion.Happy);
         }
 
-        _pendingPlan =
-            advanced.Session;
-
-        return await ContinuePlanAsync(
-            cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        _pendingPlan = advanced.Session;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return await ContinuePlanAsync(cancellationToken);
+        }
+        catch
+        {
+            _pendingAction = null;
+            _pendingPlan = null;
+            throw;
+        }
     }
 
     private static bool NeedsUiSettle(PreparedAssistantAction action) =>
@@ -889,6 +937,7 @@ public sealed class AssistantController
     {
         ActionPreparationResult prepared =
             await _actions.PrepareAsync(invocation, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         // Preparation must not promote a private local invocation into provider history.
         if (!invocation.IncludeInContext && prepared.Action is { } privateAction)
             prepared = prepared with { Action = privateAction with { IncludeInContext = false } };
@@ -910,17 +959,18 @@ public sealed class AssistantController
                 : AssistantConfirmationStage
                     .Standard;
 
-        _pendingAction =
+        PendingAssistantAction pending =
             new PendingAssistantAction(
                 id,
                 prepared.Action,
                 expiresAt,
                 stage);
+        SetPendingAction(pending, cancellationToken);
 
         string message = $"Tindakan desktop memerlukan konfirmasi: {prepared.Action.Title}.";
         Conversation.AddAssistant(message, prepared.Action.IncludeInContext);
         return new AssistantReply(message, AssistantBackend.Local, DateTimeOffset.UtcNow, AssistantEmotion.Determined,
-            BuildActionProposal(_pendingAction));
+            BuildActionProposal(pending));
     }
 
     private static AssistantActionProposal
@@ -999,7 +1049,28 @@ public sealed class AssistantController
 
     public async Task<AssistantReply> ConfirmActionAsync(Guid proposalId, CancellationToken cancellationToken = default)
     {
-        bool entered = await _requestGate.WaitAsync(0);
+        using CancellationTokenSource operationCts = CreateOperationCancellation(cancellationToken);
+        cancellationToken = operationCts.Token;
+        bool entered;
+        try { entered = await _requestGate.WaitAsync(0, cancellationToken); }
+        catch (OperationCanceledException)
+        {
+            // Preserve cancellation's existing authorization cleanup without
+            // changing pending state owned by another active operation.
+            if (_requestGate.Wait(0))
+            {
+                try
+                {
+                    if (_pendingAction is { } cancelled && cancelled.Id == proposalId)
+                    {
+                        _pendingAction = null;
+                        AbortPlanFor(cancelled);
+                    }
+                }
+                finally { _requestGate.Release(); }
+            }
+            throw;
+        }
         if (!entered)
             throw new InvalidOperationException("Tunggu permintaan sebelumnya selesai.");
 
@@ -1143,8 +1214,7 @@ public sealed class AssistantController
                                 .SensitiveFinal
                     };
 
-                _pendingAction =
-                    finalPending;
+                SetPendingAction(finalPending, cancellationToken);
 
                 const string message =
                     "Tindakan sensitif belum dijalankan. Konfirmasi akhir diperlukan.";
@@ -1182,10 +1252,12 @@ public sealed class AssistantController
                         authorization
                 };
 
+            cancellationToken.ThrowIfCancellationRequested();
             ActionExecutionResult result =
                 await _actions.ExecuteAsync(
                     authorized,
                     cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (pending.PlanId is
                     Guid planId)
@@ -1252,6 +1324,7 @@ public sealed class AssistantController
         try
         {
             ToolExecutionResult result = await _tools.ExecuteAsync(invocation, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             Conversation.AddAssistant(result.Message, invocation.IncludeInContext);
             AssistantEmotion emotion = Emotions.EvaluateTool(invocation, result);
             return new AssistantReply(result.Message, AssistantBackend.Local, DateTimeOffset.UtcNow, emotion);
@@ -1288,6 +1361,7 @@ public sealed class AssistantController
                 longTermMemory,
                 references,
                 cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             Conversation.AddAssistant(reply, includeInContext: retainInConversationContext);
 
@@ -1357,6 +1431,9 @@ public sealed class AssistantController
     {
         ArgumentNullException.ThrowIfNull(
             schedule);
+
+        using CancellationTokenSource operationCts = CreateOperationCancellation(cancellationToken);
+        cancellationToken = operationCts.Token;
 
         cancellationToken
             .ThrowIfCancellationRequested();

@@ -553,6 +553,20 @@ internal static partial class Program
             Read(
                 "MainWindow.xaml.cs");
 
+        string Compact(string source) => System.Text.RegularExpressions.Regex.Replace(source, @"\s+", "");
+        string controllerLifecycle = Compact(controllerSource);
+        Require(controllerLifecycle.Contains("publicvoidBeginShutdown(", StringComparison.Ordinal) &&
+            controllerLifecycle.Contains("_shutdownCts", StringComparison.Ordinal),
+            "AssistantController has no shutdown execution barrier.");
+        Require(controllerLifecycle.Contains("cancellationToken.ThrowIfCancellationRequested();", StringComparison.Ordinal),
+            "Native execution path lacks shutdown cancellation recheck.");
+        Require(Compact(mainWindowSource).Contains("publicvoidBeginShutdown(", StringComparison.Ordinal) &&
+            Compact(mainWindowSource).Contains("Services.Assistant.BeginShutdown(", StringComparison.Ordinal),
+            "MainWindow does not propagate application shutdown.");
+        Require(Compact(appSource).Contains("BeginApplicationShutdown(", StringComparison.Ordinal) &&
+            Compact(appSource).Contains("_character?.BeginShutdown(", StringComparison.Ordinal),
+            "Application exit does not cross MainWindow shutdown barrier.");
+
         string scheduleStoreSource =
             Read(
                 "Services/LocalScheduleStore.cs");

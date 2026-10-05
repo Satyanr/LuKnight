@@ -38,6 +38,19 @@ internal static partial class Program
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
+        if (args.Contains("--shutdown"))
+        {
+            var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            var operation = dispatcher.InvokeAsync(async () =>
+            {
+                try { await CheckShutdownAsync(); }
+                finally { dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Background); }
+            });
+            System.Windows.Threading.Dispatcher.Run();
+            operation.Task.Unwrap().GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} shutdown lifecycle checks.");
+            return;
+        }
         if (args.Contains(
                 "--recovery"))
         {

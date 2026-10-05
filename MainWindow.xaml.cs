@@ -674,6 +674,8 @@ public partial class MainWindow : Window
 
     private async void ChatPanel_MessageSubmitted(string message)
     {
+        if (_shutdownStarted) return;
+
         if (_isSending || _isTranscribing)
             return;
 
@@ -694,6 +696,8 @@ public partial class MainWindow : Window
         string message,
         AssistantInputSource source)
     {
+        if (_shutdownStarted) return;
+
         if (_isSending)
             return;
 
@@ -723,6 +727,7 @@ public partial class MainWindow : Window
             AssistantReply reply = await Services.Assistant.SendAsync(
                 new AssistantRequest(normalized, source),
                 requestCts.Token);
+            requestCts.Token.ThrowIfCancellationRequested();
 
             _behaviorController?.SetThinking(false);
             ReactToAssistantEmotion(reply.Emotion);
@@ -731,6 +736,7 @@ public partial class MainWindow : Window
             if (reply.ActionProposal is not null)
             {
                 AssistantReply actionReply = await ResolveActionProposalChainAsync(reply, source, requestCts.Token);
+                requestCts.Token.ThrowIfCancellationRequested();
                 ChatPanelControl.SetStatus(actionReply.Text,
                     actionReply.Emotion == AssistantEmotion.Confused ? ChatStatus.Error : ChatStatus.Local);
             }
@@ -740,6 +746,7 @@ public partial class MainWindow : Window
                     source,
                     reply.Text,
                     requestCts.Token);
+                requestCts.Token.ThrowIfCancellationRequested();
                 ChatPanelControl.SetStatus(
                     Services.Chat.Status,
                     reply.Backend == AssistantBackend.Gemini
@@ -749,6 +756,7 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
+            if (_shutdownStarted) return;
             _behaviorController?.SetThinking(false);
             ChatPanelControl.AddAssistantMessage("Permintaan dibatalkan.");
             ChatPanelControl.SetStatus(
@@ -759,6 +767,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            if (_shutdownStarted) return;
             _behaviorController?.SetThinking(false);
             _behaviorController?.ReactConfused();
             System.Diagnostics.Trace.WriteLine(DiagnosticPrivacy.TraceFailure("Assistant request", ex));
@@ -768,21 +777,19 @@ public partial class MainWindow : Window
         }
         finally
         {
-            _behaviorController?.SetThinking(false);
-            ChatPanelControl.SetBusy(false);
-
-            if (ReferenceEquals(_requestCts, requestCts))
-                _requestCts = null;
-
+            if (ReferenceEquals(_requestCts, requestCts)) _requestCts = null;
             _isSending = false;
-            if (!_isVoiceRecording && !_isTranscribing && !_isSpeaking)
-                ChatPanelControl.SetVoiceState(VoiceInteractionState.Idle);
-            RefreshVoiceAvailability();
-
-            bool resumeListening = _resumeListeningAfterSpeechStop;
-            _resumeListeningAfterSpeechStop = false;
-            if (resumeListening && Services.Chat.Options.UseVoiceInput)
-                TryStartVoiceRecording();
+            if (!_shutdownStarted)
+            {
+                _behaviorController?.SetThinking(false);
+                ChatPanelControl.SetBusy(false);
+                if (!_isVoiceRecording && !_isTranscribing && !_isSpeaking)
+                    ChatPanelControl.SetVoiceState(VoiceInteractionState.Idle);
+                RefreshVoiceAvailability();
+                bool resumeListening = _resumeListeningAfterSpeechStop;
+                _resumeListeningAfterSpeechStop = false;
+                if (resumeListening && Services.Chat.Options.UseVoiceInput) TryStartVoiceRecording();
+            }
         }
     }
 
@@ -795,9 +802,11 @@ public partial class MainWindow : Window
         AssistantReply current =
             initial;
 
+        cancellationToken.ThrowIfCancellationRequested();
         while (current.ActionProposal is
                { } proposal)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string planStatus =
                 proposal.IsPlanStep
                     ? $"Rencana {proposal.PlanStepNumber}/{proposal.PlanStepCount} • "
@@ -830,6 +839,7 @@ public partial class MainWindow : Window
                     icon,
                     MessageBoxResult.No);
 
+            cancellationToken.ThrowIfCancellationRequested();
             current =
                 confirmation ==
                     MessageBoxResult.Yes
@@ -841,6 +851,7 @@ public partial class MainWindow : Window
                         .CancelAction(
                             proposal.Id);
 
+            cancellationToken.ThrowIfCancellationRequested();
             ReactToAssistantEmotion(
                 current.Emotion);
 
@@ -867,6 +878,8 @@ public partial class MainWindow : Window
         string text,
         CancellationToken cancellationToken)
     {
+        if (_shutdownStarted) return;
+
         if (!ShouldSpeakAssistantReply(source) ||
             string.IsNullOrWhiteSpace(text))
         {
@@ -908,9 +921,12 @@ public partial class MainWindow : Window
                 _speechCts = null;
 
             _isSpeaking = false;
-            ChatPanelControl.SetVoiceState(
-                _isSending ? VoiceInteractionState.Thinking : VoiceInteractionState.Idle);
-            RefreshVoiceAvailability();
+            if (!_shutdownStarted)
+            {
+                ChatPanelControl.SetVoiceState(
+                    _isSending ? VoiceInteractionState.Thinking : VoiceInteractionState.Idle);
+                RefreshVoiceAvailability();
+            }
         }
     }
 
@@ -925,6 +941,8 @@ public partial class MainWindow : Window
 
     private void RefreshVoiceAvailability()
     {
+        if (_shutdownStarted) return;
+
         bool serviceSpeaking = Services.TextToSpeech.IsSpeaking;
         bool canInterruptReply = _isSpeaking;
         bool enabled = Services.Chat.Options.UseVoiceInput &&
@@ -938,14 +956,19 @@ public partial class MainWindow : Window
 
     private void Chat_OptionsChanged(ChatSettings options)
     {
+        if (_shutdownStarted) return;
+
         Dispatcher.BeginInvoke(() => _ = ApplyVoiceOptionsAsync(options));
     }
 
     private async Task ApplyVoiceOptionsAsync(ChatSettings options)
     {
+        if (_shutdownStarted) return;
+
         if (!options.UseVoiceInput && _isVoiceRecording)
             await StopAndDiscardVoiceRecordingAsync();
 
+        if (_shutdownStarted) return;
         if (options.TextToSpeechMode == TextToSpeechMode.Off && _isSpeaking)
             InterruptCurrentSpeech(resumeListening: false);
 
@@ -954,6 +977,8 @@ public partial class MainWindow : Window
 
     private async void ChatPanel_VoiceToggleRequested()
     {
+        if (_shutdownStarted) return;
+
         if (_isSpeaking)
         {
             ChatPanelControl.SetStatus("Menghentikan suara...", ChatStatus.Busy);
@@ -981,6 +1006,8 @@ public partial class MainWindow : Window
 
     private void InterruptCurrentSpeech(bool resumeListening)
     {
+        if (_shutdownStarted) return;
+
         if (!_isSpeaking)
             return;
 
@@ -1000,6 +1027,8 @@ public partial class MainWindow : Window
 
     private bool TryStartVoiceRecording()
     {
+        if (_shutdownStarted) return false;
+
         if (Services.Chat.Options.VoiceSubmissionMode == VoiceSubmissionMode.ReviewBeforeSending &&
             ChatPanelControl.HasDraftMessage)
         {
@@ -1044,6 +1073,8 @@ public partial class MainWindow : Window
 
     private async Task StopVoiceRecordingAsync()
     {
+        if (_shutdownStarted) return;
+
         if (!_isVoiceRecording || _isTranscribing)
             return;
 
@@ -1066,6 +1097,7 @@ public partial class MainWindow : Window
                 await Services
                     .VoiceCapture
                     .StopAsync(transcriptionCts.Token);
+            transcriptionCts.Token.ThrowIfCancellationRequested();
 
             SpeechToTextOptions speechOptions =
                 new(
@@ -1102,18 +1134,21 @@ public partial class MainWindow : Window
         }
         catch (NoSpeechDetectedException)
         {
+            if (_shutdownStarted) return;
             ChatPanelControl.SetStatus(
                 "Tidak terdengar ucapan. Coba lagi.",
                 ChatStatus.Ready);
         }
         catch (OperationCanceledException)
         {
+            if (_shutdownStarted) return;
             ChatPanelControl.SetStatus(
                 "Transkripsi dibatalkan.",
                 ChatStatus.Ready);
         }
         catch (Exception ex)
         {
+            if (_shutdownStarted) return;
             System.Diagnostics.Debug.WriteLine(DiagnosticPrivacy.TraceFailure("Speech transcription", ex));
 
             ChatPanelControl.SetStatus(
@@ -1130,15 +1165,16 @@ public partial class MainWindow : Window
             _isVoiceRecording = false;
             _isTranscribing = false;
 
-            if (string.IsNullOrWhiteSpace(voiceTranscript))
-                ChatPanelControl.SetVoiceState(VoiceInteractionState.Idle);
-
-            ChatPanelControl
-                .SetBusy(false);
-
-            RefreshVoiceAvailability();
+            if (!_shutdownStarted)
+            {
+                if (string.IsNullOrWhiteSpace(voiceTranscript))
+                    ChatPanelControl.SetVoiceState(VoiceInteractionState.Idle);
+                ChatPanelControl.SetBusy(false);
+                RefreshVoiceAvailability();
+            }
         }
 
+        if (_shutdownStarted) return;
         if (!string.IsNullOrWhiteSpace(voiceTranscript))
         {
             if (Services.Chat.Options.VoiceSubmissionMode == VoiceSubmissionMode.ReviewBeforeSending)
@@ -1161,6 +1197,8 @@ public partial class MainWindow : Window
 
     private async Task StopAndDiscardVoiceRecordingAsync()
     {
+        if (_shutdownStarted) return;
+
         if (!_isVoiceRecording)
             return;
 
@@ -1168,25 +1206,33 @@ public partial class MainWindow : Window
         _voiceLimitCts?.Dispose();
         _voiceLimitCts = null;
 
+        using var discardCts = new CancellationTokenSource();
+        _transcriptionCts = discardCts;
         try
         {
-            await Services.VoiceCapture.StopAsync();
+            await Services.VoiceCapture.StopAsync(discardCts.Token);
+            discardCts.Token.ThrowIfCancellationRequested();
             System.Diagnostics.Debug.WriteLine(
                 "[Lu-Knight][Voice] Recording discarded because voice input was disabled.");
         }
         catch (Exception ex)
         {
+            if (_shutdownStarted) return;
             System.Diagnostics.Debug.WriteLine(DiagnosticPrivacy.TraceFailure("Voice discard", ex));
         }
         finally
         {
+            if (ReferenceEquals(_transcriptionCts, discardCts)) _transcriptionCts = null;
             _isVoiceRecording = false;
             _voiceDraftPending = false;
-            ChatPanelControl.SetVoiceRecording(false);
-            ChatPanelControl.SetStatus(
-                "Voice input dimatikan · rekaman dibuang.",
-                ChatStatus.Ready);
-            RefreshVoiceAvailability();
+            if (!_shutdownStarted)
+            {
+                ChatPanelControl.SetVoiceRecording(false);
+                ChatPanelControl.SetStatus(
+                    "Voice input dimatikan · rekaman dibuang.",
+                    ChatStatus.Ready);
+                RefreshVoiceAvailability();
+            }
         }
     }
 
@@ -1195,6 +1241,7 @@ public partial class MainWindow : Window
         try
         {
             await Task.Delay(TimeSpan.FromSeconds(15), token);
+            if (_shutdownStarted) return;
             if (_isVoiceRecording)
                 await Dispatcher.InvokeAsync(async () => await StopVoiceRecordingAsync());
         }
@@ -1205,6 +1252,8 @@ public partial class MainWindow : Window
 
     public void ShowFromTray()
     {
+        if (_shutdownStarted) return;
+
         WindowState = WindowState.Normal;
         if (!IsVisible)
         {
@@ -1247,6 +1296,8 @@ public partial class MainWindow : Window
 
     public void OpenChatFromTray()
     {
+        if (_shutdownStarted) return;
+
         ShowFromTray();
 
 
@@ -1270,28 +1321,89 @@ public partial class MainWindow : Window
             ChatPanelControl.FocusInput);
     }
 
+    private bool _shutdownStarted;
+    private bool _voiceCaptureDisposed;
+    private bool _textToSpeechDisposed;
+    private bool _interactiveSubscriptionsDetached;
+    public bool IsShuttingDown => _shutdownStarted;
+
+    private static void TryCancel(CancellationTokenSource? source)
+    {
+        try { source?.Cancel(); }
+        catch (ObjectDisposedException) { }
+        catch (AggregateException) { }
+    }
+
+    private void DetachInteractiveSubscriptions()
+    {
+        if (_interactiveSubscriptionsDetached) return;
+        _interactiveSubscriptionsDetached = true;
+        Loaded -= MainWindow_Loaded;
+        ChatPanelControl.MessageSubmitted -= ChatPanel_MessageSubmitted;
+        ChatPanelControl.VoiceToggleRequested -= ChatPanel_VoiceToggleRequested;
+        ChatPanelControl.ScheduledReminderRunRequested -= ChatPanel_ScheduledReminderRunRequested;
+        ChatPanelControl.ScheduledReminderDismissRequested -= ChatPanel_ScheduledReminderDismissRequested;
+        Services.Chat.OptionsChanged -= Chat_OptionsChanged;
+    }
+
+    private void DisposeVoiceCaptureOnce()
+    {
+        if (_voiceCaptureDisposed) return;
+        _voiceCaptureDisposed = true;
+        try { Services.VoiceCapture.Dispose(); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine(DiagnosticPrivacy.TraceFailure("Voice capture disposal", ex));
+        }
+    }
+
+    private void StopTextToSpeech(string operation)
+    {
+        try { Services.TextToSpeech.Stop(); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine(DiagnosticPrivacy.TraceFailure(operation, ex));
+        }
+    }
+
+    private void DisposeTextToSpeechOnce()
+    {
+        if (_textToSpeechDisposed) return;
+        _textToSpeechDisposed = true;
+        StopTextToSpeech("Text-to-speech disposal stop");
+        try { Services.TextToSpeech.Dispose(); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine(DiagnosticPrivacy.TraceFailure("Text-to-speech disposal", ex));
+        }
+    }
+
+    public void BeginShutdown()
+    {
+        if (_shutdownStarted) return;
+        _shutdownStarted = true;
+        DetachInteractiveSubscriptions();
+        Services.Assistant.BeginShutdown();
+        Services.Context.Detach();
+        TryCancel(_requestCts);
+        TryCancel(_transcriptionCts);
+        TryCancel(_speechCts);
+        TryCancel(_voiceLimitCts);
+        _resumeListeningAfterSpeechStop = false;
+        StopTextToSpeech("Text-to-speech shutdown");
+        DisposeVoiceCaptureOnce();
+        ChatPanelControl.SetVoiceEnabled(false);
+        ChatPanelControl.SetBusy(true);
+    }
+
     protected override void OnClosed(
     EventArgs e)
     {
-        ChatPanelControl
-            .ScheduledReminderRunRequested -=
-                ChatPanel_ScheduledReminderRunRequested;
-
-        ChatPanelControl
-            .ScheduledReminderDismissRequested -=
-                ChatPanel_ScheduledReminderDismissRequested;
-        Services.Context.Detach();
-        Services.Chat.OptionsChanged -= Chat_OptionsChanged;
-        _requestCts?.Cancel();
-        _transcriptionCts?.Cancel();
-        _resumeListeningAfterSpeechStop = false;
-        _speechCts?.Cancel();
-        _voiceLimitCts?.Cancel();
+        BeginShutdown();
         _voiceLimitCts?.Dispose();
         _voiceLimitCts = null;
-        Services.VoiceCapture.Dispose();
-        Services.TextToSpeech.Stop();
-        Services.TextToSpeech.Dispose();
+        DisposeVoiceCaptureOnce();
+        DisposeTextToSpeechOnce();
 
         if (_physicsController is not null)
         {
@@ -1318,6 +1430,8 @@ public partial class MainWindow : Window
     public void OpenScheduledReminderFromTray(
         Guid scheduleId)
     {
+        if (_shutdownStarted) return;
+
         OpenChatFromTray();
 
 
@@ -1347,6 +1461,8 @@ public partial class MainWindow : Window
         ChatPanel_ScheduledReminderDismissRequested(
             Guid scheduleId)
     {
+        if (_shutdownStarted) return;
+
         if (!Services
                 .Scheduler
                 .Acknowledge(
@@ -1378,6 +1494,8 @@ public partial class MainWindow : Window
         ChatPanel_ScheduledReminderRunRequested(
             Guid scheduleId)
     {
+        if (_shutdownStarted) return;
+
         if (_isSending ||
             _isTranscribing ||
             _isVoiceRecording ||
@@ -1435,6 +1553,7 @@ public partial class MainWindow : Window
                     .StartScheduledSkillAsync(
                         schedule,
                         requestCts.Token);
+            requestCts.Token.ThrowIfCancellationRequested();
 
 
             ChatPanelControl
@@ -1494,6 +1613,7 @@ public partial class MainWindow : Window
                     reply,
                     AssistantInputSource.System,
                     requestCts.Token);
+            requestCts.Token.ThrowIfCancellationRequested();
 
             ChatPanelControl.SetStatus(
                 completed.Text,
@@ -1501,12 +1621,14 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
+            if (_shutdownStarted) return;
             ChatPanelControl.SetStatus(
                 "Scheduled workflow dibatalkan.",
                 ChatStatus.Ready);
         }
         catch (Exception ex)
         {
+            if (_shutdownStarted) return;
             System.Diagnostics.Trace.WriteLine(
                 DiagnosticPrivacy.TraceFailure(
                     "Scheduled workflow handoff",
@@ -1522,31 +1644,22 @@ public partial class MainWindow : Window
         }
         finally
         {
-            _behaviorController?
-                .SetThinking(
-                    false);
-
-            ChatPanelControl.SetBusy(
-                false);
-
-            if (ReferenceEquals(
-                    _requestCts,
-                    requestCts))
+            if (ReferenceEquals(_requestCts, requestCts)) _requestCts = null;
+            _isSending = false;
+            if (!_shutdownStarted)
             {
-                _requestCts =
-                    null;
+                _behaviorController?.SetThinking(false);
+                ChatPanelControl.SetBusy(false);
+                RefreshVoiceAvailability();
             }
-
-            _isSending =
-                false;
-
-            RefreshVoiceAvailability();
         }
     }
     public void OpenCompanionSuggestionFromTray(
         CompanionSuggestionCandidate
             candidate)
     {
+        if (_shutdownStarted) return;
+
         ArgumentNullException.ThrowIfNull(
             candidate);
 

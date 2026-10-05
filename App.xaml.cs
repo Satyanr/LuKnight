@@ -168,7 +168,7 @@ public partial class App : Application
         _services.Notifications.Poll(
             DateTimeOffset.UtcNow);
         _instanceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _instanceTimer.Tick += (_, _) => { if (_showRequest.WaitOne(0)) _character.ShowFromTray(); };
+        _instanceTimer.Tick += InstanceTimer_Tick;
         _instanceTimer.Start();
         _ = CheckUpdatesAtStartup();
     }
@@ -285,7 +285,7 @@ public partial class App : Application
 
     private void ToggleCharacterVisibility()
     {
-        if (_character is null) return;
+        if (_isExiting || _character is null) return;
         if (_character.IsVisible) _character.HideToTray();
         else _character.ShowFromTray();
     }
@@ -330,25 +330,65 @@ public partial class App : Application
         }
     }
 
-    private void ExitApplication()
+    private void InstanceTimer_Tick(object? sender, EventArgs e)
     {
-        if (_isExiting) return;
-        _settingsWindow?.SavePlacement();
-        _character?.SaveSession();
+        if (_isExiting || _showRequest is null || _character is null) return;
+        try { if (_showRequest.WaitOne(0)) _character.ShowFromTray(); }
+        catch (ObjectDisposedException) { }
+    }
+
+    private bool BeginApplicationShutdown()
+    {
+        if (_isExiting) return false;
         _isExiting = true;
+        try { _lifetime.Cancel(); }
+        catch (ObjectDisposedException) { }
+        catch (AggregateException) { }
+        _assistantNotificationTimer?.Stop();
+        _instanceTimer?.Stop();
+        _character?.BeginShutdown();
         _tray?.Dispose();
         _tray = null;
+        return true;
+    }
+
+    private void SaveShutdownState()
+    {
+        try { _settingsWindow?.SavePlacement(); }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(DiagnosticPrivacy.TraceFailure("Settings window placement save", ex));
+        }
+        try { _character?.SaveSession(); }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(DiagnosticPrivacy.TraceFailure("Session save", ex));
+        }
+    }
+
+    private void ExitApplication()
+    {
+        if (!BeginApplicationShutdown()) return;
+        SaveShutdownState();
         Shutdown();
     }
 
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
     {
         base.OnSessionEnding(e);
-        if (!e.Cancel) { _settingsWindow?.SavePlacement(); _character?.SaveSession(); _isExiting = true; }
+        if (e.Cancel || !BeginApplicationShutdown()) return;
+        SaveShutdownState();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        BeginApplicationShutdown();
+        if (_instanceTimer is not null)
+        {
+            _instanceTimer.Stop();
+            _instanceTimer.Tick -= InstanceTimer_Tick;
+            _instanceTimer = null;
+        }
         if (_assistantNotificationTimer is not null)
         {
             _assistantNotificationTimer.Stop();
@@ -371,7 +411,8 @@ public partial class App : Application
                 .CompanionNotificationCancellationRequested -=
                     Notifications_CompanionCancellationRequested;
         }
-        _lifetime.Cancel(); _instanceTimer?.Stop(); _showRequest?.Dispose(); _instance?.Dispose();
+        _showRequest?.Dispose(); _instance?.Dispose();
+        _lifetime.Dispose();
         if (_settingsWindow is not null)
         {
             _settingsWindow.Closed -= SettingsWindow_Closed;
