@@ -115,6 +115,7 @@ internal static partial class Program
 
     private static async Task CheckPlannerExecutionAsync()
     {
+        CheckReusableWorkflowRuntime();
         await CheckPlanAdmissionAndProgressAsync();
         await CheckPlanLifetimeAsync();
         await CheckPlannerDoesNotRetryPreparationAsync();
@@ -185,6 +186,104 @@ internal static partial class Program
             Require(!assistant.HasPendingPlan && !assistant.HasPendingAction && !assistant.IsBusy, "Plan state not cleared: " + scenario);
             Require(handler.Calls == 0 && assistant.Conversation.GetRecentContext().Count == 0, "Plan leaked Gemini/context.");
         }
+    }
+
+    private static void CheckReusableWorkflowRuntime()
+    {
+        var runtime = new AssistantWorkflowRuntime();
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        var sourceSteps = new List<AssistantPlanStep>
+        {
+            new(0, "buka launcher"),
+            new(1, "fokus {last.app}")
+        };
+
+        WorkflowRuntimeSession session = runtime.Start(
+            new AssistantPlan(
+                sourceSteps,
+                AllowRuntimeVariables: true),
+            now,
+            TimeSpan.FromMinutes(5));
+
+        sourceSteps[0] = new AssistantPlanStep(0, "jalankan powershell");
+        WorkflowRuntimeCommandResult first = runtime.ResolveCurrent(session, now);
+        Require(first.Status == WorkflowRuntimeStatus.Ready &&
+                first.Command == "buka launcher",
+            "Workflow runtime did not freeze its source plan.");
+
+        var outputs1 = new Dictionary<string, string>
+        {
+            ["app"] = "Target"
+        };
+        WorkflowRuntimeAdvanceResult step1 = runtime.Advance(
+            session,
+            new WorkflowStepResult(
+                1,
+                "test.open",
+                AssistantActionRisk.Navigation,
+                now,
+                outputs1),
+            now);
+        Require(step1.Success &&
+                !step1.Completed &&
+                step1.Session.CurrentStepIndex == 1,
+            "Reusable runtime did not advance step 1.");
+
+        outputs1["app"] = "Changed";
+        WorkflowRuntimeCommandResult second =
+            runtime.ResolveCurrent(step1.Session, now);
+        Require(second.Command == "fokus Target",
+            "Reusable runtime did not resolve structured output.");
+
+        WorkflowRuntimeAdvanceResult step2 = runtime.Advance(
+            step1.Session,
+            new WorkflowStepResult(
+                2,
+                "test.focus",
+                AssistantActionRisk.Navigation,
+                now,
+                new Dictionary<string, string>
+                {
+                    ["focused"] = "true"
+                }),
+            now);
+        Require(step2.Completed &&
+                step2.Session.WorkflowState.Steps.Count == 2,
+            "Reusable runtime lost final workflow state.");
+        Require(step2.Session.WorkflowState.Steps[0].Outputs["app"] == "Target",
+            "Reusable runtime state was mutable.");
+
+        WorkflowRuntimeCommandResult completed =
+            runtime.ResolveCurrent(step2.Session, now);
+        Require(completed.Status == WorkflowRuntimeStatus.Completed,
+            "Completed workflow remained runnable.");
+
+        WorkflowRuntimeCommandResult expired = runtime.ResolveCurrent(
+            runtime.Start(
+                new AssistantPlan(
+                    [new(0, "buka launcher")]),
+                now,
+                TimeSpan.FromSeconds(1)),
+            now.AddSeconds(1));
+        Require(expired.Status == WorkflowRuntimeStatus.Expired,
+            "Expired workflow remained runnable.");
+
+        WorkflowRuntimeSession invalidSession = runtime.Start(
+            new AssistantPlan(
+                [new(0, "buka launcher")]),
+            now,
+            TimeSpan.FromMinutes(1));
+        WorkflowRuntimeAdvanceResult invalidAdvance = runtime.Advance(
+            invalidSession,
+            new WorkflowStepResult(
+                2,
+                "bad",
+                AssistantActionRisk.Navigation,
+                now,
+                new Dictionary<string, string>()),
+            now);
+        Require(invalidAdvance.Status == WorkflowRuntimeStatus.Invalid,
+            "Workflow runtime accepted an out-of-order result.");
     }
 
     private static async Task CheckWorkflowStepResultsAsync()

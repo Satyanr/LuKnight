@@ -25,15 +25,8 @@ public sealed class AssistantController
 
     private readonly ChatCoordinator _chat;
     private readonly SemaphoreSlim _requestGate = new(1, 1);
-    private PendingAssistantPlan?
+    private WorkflowRuntimeSession?
         _pendingPlan;
-    private sealed record
-        PendingAssistantPlan(
-            Guid Id,
-            AssistantPlan Plan,
-            int CurrentStepIndex,
-            DateTimeOffset ExpiresAt,
-            WorkflowExecutionState WorkflowState);
 
     private PendingAssistantAction? _pendingAction;
 
@@ -55,6 +48,7 @@ public sealed class AssistantController
     public AssistantContextSourceRouter ContextSources { get; }
     public AssistantActionRouter Actions { get; }
     public AssistantSkillRouter Skills { get; }
+    public AssistantWorkflowRuntime WorkflowRuntime { get; }
     public AssistantEmotionEngine Emotions { get; }
     public bool IsBusy => _pendingPlan is not null || _pendingAction is not null || _requestGate.CurrentCount == 0 || _chat.IsBusy;
     public bool HasPendingPlan =>
@@ -73,7 +67,8 @@ public sealed class AssistantController
         AssistantContextSourceRouter? contextSources = null,
         AssistantActionRouter? actions = null,
         AssistantSkillRouter? skills = null,
-        Func<DateTimeOffset>? clock = null)
+        Func<DateTimeOffset>? clock = null,
+        AssistantWorkflowRuntime? workflowRuntime = null)
     {
         _clock =
             clock ??
@@ -123,6 +118,7 @@ public sealed class AssistantController
             new SearchExplorerAction(() => _chat.Options.UseDesktopActions, new WindowsExplorerActionExecutor())
         }, () => _chat.Options.DesktopPermission);
         Skills = skills ?? new AssistantSkillRouter();
+        WorkflowRuntime = workflowRuntime ?? new AssistantWorkflowRuntime();
         Emotions = emotions ?? new AssistantEmotionEngine();
     }
 
@@ -322,27 +318,6 @@ public sealed class AssistantController
             cancellationToken);
     }
 
-    private static AssistantPlan
-        FreezePlan(
-            AssistantPlan plan)
-    {
-        ArgumentNullException.ThrowIfNull(
-            plan);
-
-        AssistantPlanStep[] steps =
-            plan.Steps
-                .Select(
-                    (step, index) =>
-                        new AssistantPlanStep(
-                            index,
-                            step.Command))
-                .ToArray();
-
-        return new AssistantPlan(
-            Array.AsReadOnly(
-                steps),
-            plan.AllowRuntimeVariables);
-    }
     private static DateTimeOffset Min(
         DateTimeOffset first,
         DateTimeOffset second) =>
@@ -367,11 +342,13 @@ public sealed class AssistantController
                 action);
         }
 
-        PendingAssistantPlan? plan =
+        WorkflowRuntimeSession? plan =
             _pendingPlan;
 
         if (plan is not null &&
-            now >= plan.ExpiresAt)
+            WorkflowRuntime.IsExpired(
+                plan,
+                now))
         {
             _pendingPlan =
                 null;
@@ -404,13 +381,10 @@ public sealed class AssistantController
             _clock();
 
         _pendingPlan =
-            new PendingAssistantPlan(
-                Guid.NewGuid(),
-                FreezePlan(plan),
-                0,
-                now.Add(
-                    PlanLifetime),
-                WorkflowExecutionState.Empty);
+            WorkflowRuntime.Start(
+                plan,
+                now,
+                PlanLifetime);
 
         try
         {
@@ -436,13 +410,18 @@ public sealed class AssistantController
         cancellationToken
             .ThrowIfCancellationRequested();
 
-        PendingAssistantPlan plan =
+        WorkflowRuntimeSession plan =
             _pendingPlan ??
             throw new InvalidOperationException(
                 "Rencana desktop tidak lagi tersedia.");
 
-        if (plan.CurrentStepIndex >=
-            plan.Plan.Count)
+        WorkflowRuntimeCommandResult runtime =
+            WorkflowRuntime.ResolveCurrent(
+                plan,
+                _clock());
+
+        if (runtime.Status ==
+            WorkflowRuntimeStatus.Completed)
         {
             _pendingPlan =
                 null;
@@ -458,43 +437,63 @@ public sealed class AssistantController
             return new AssistantReply(
                 completed,
                 AssistantBackend.Local,
-                DateTimeOffset.UtcNow,
+                _clock(),
                 AssistantEmotion.Happy);
         }
 
-        if (_clock() >= plan.ExpiresAt)
+        if (runtime.Status ==
+            WorkflowRuntimeStatus.Expired)
         {
-            _pendingAction = null;
-            _pendingPlan = null;
-            const string expired = "Rencana desktop sudah kedaluwarsa. Tidak ada langkah lain yang dijalankan.";
-            Conversation.AddAssistant(expired, includeInContext: false);
-            return new AssistantReply(expired, AssistantBackend.Local, _clock(), AssistantEmotion.Confused);
+            _pendingAction =
+                null;
+
+            _pendingPlan =
+                null;
+
+            const string expired =
+                "Rencana desktop sudah kedaluwarsa. Tidak ada langkah lain yang dijalankan.";
+
+            Conversation.AddAssistant(
+                expired,
+                includeInContext:
+                    false);
+
+            return new AssistantReply(
+                expired,
+                AssistantBackend.Local,
+                _clock(),
+                AssistantEmotion.Confused);
+        }
+
+        if (!runtime.Success ||
+            runtime.Step is null ||
+            runtime.Command is null)
+        {
+            _pendingPlan =
+                null;
+
+            string message =
+                $"Rencana dihentikan pada langkah {plan.CurrentStepIndex + 1}: " +
+                (runtime.Error ??
+                 "Workflow tidak valid.");
+
+            Conversation.AddAssistant(
+                message,
+                includeInContext:
+                    false);
+
+            return new AssistantReply(
+                message,
+                AssistantBackend.Local,
+                _clock(),
+                AssistantEmotion.Confused);
         }
 
         AssistantPlanStep step =
-            plan.Plan.Steps[
-                plan.CurrentStepIndex];
+            runtime.Step;
 
-        string command = step.Command;
-        if (plan.Plan.AllowRuntimeVariables && preRoutedIntent is null)
-        {
-            WorkflowRuntimeResolution resolution =
-                WorkflowRuntimeVariableResolver.Resolve(
-                    command,
-                    plan.WorkflowState.BuildRuntimeVariables());
-            if (!resolution.Success || resolution.Command is null)
-            {
-                _pendingPlan = null;
-                string reason = resolution.Error ??
-                    "Variable workflow tidak dapat diselesaikan.";
-                string message =
-                    $"Rencana dihentikan pada langkah {step.Index + 1}: {reason}";
-                Conversation.AddAssistant(message, includeInContext: false);
-                return new AssistantReply(
-                    message, AssistantBackend.Local, _clock(), AssistantEmotion.Confused);
-            }
-            command = resolution.Command;
-        }
+        string command =
+            runtime.Command;
 
         // IMPORTANT:
         // route dilakukan baru sekarang.
@@ -573,8 +572,9 @@ public sealed class AssistantController
         DateTimeOffset now =
             _clock();
 
-        if (now >=
-            plan.ExpiresAt)
+        if (WorkflowRuntime.IsExpired(
+                plan,
+                now))
         {
             _pendingAction =
                 null;
@@ -658,7 +658,7 @@ public sealed class AssistantController
             includeInContext:
                 false);
 
-        PendingAssistantPlan? plan =
+        WorkflowRuntimeSession? plan =
             _pendingPlan;
 
         if (plan is null ||
@@ -706,8 +706,9 @@ public sealed class AssistantController
                 AssistantEmotion.Confused);
         }
 
-        if (_clock() >=
-            plan.ExpiresAt)
+        if (WorkflowRuntime.IsExpired(
+                plan,
+                _clock()))
         {
             _pendingPlan =
                 null;
@@ -739,7 +740,9 @@ public sealed class AssistantController
             NeedsUiSettle(pending.Action))
         {
             await Task.Delay(UiMutationSettleDelay, cancellationToken);
-            if (_clock() >= plan.ExpiresAt)
+            if (WorkflowRuntime.IsExpired(
+                    plan,
+                    _clock()))
             {
                 _pendingPlan = null;
                 string expired =
@@ -752,20 +755,72 @@ public sealed class AssistantController
             }
         }
 
-        WorkflowExecutionState nextState = plan.WorkflowState;
-        if (plan.Plan.AllowRuntimeVariables)
+        IReadOnlyDictionary<string, string> outputs =
+            plan.Plan.AllowRuntimeVariables
+                ? CaptureStepOutputs(
+                    pending.Action,
+                    result)
+                : WorkflowOutputPolicy.Normalize(
+                    null);
+
+        var stepResult = new WorkflowStepResult(
+            StepNumber: stepIndex + 1,
+            ActionName: pending.Action.Name,
+            Risk: pending.Action.Risk,
+            CompletedAt: _clock(),
+            Outputs: outputs);
+
+        WorkflowRuntimeAdvanceResult advanced =
+            WorkflowRuntime.Advance(
+                plan,
+                stepResult,
+                _clock());
+
+        if (advanced.Status ==
+            WorkflowRuntimeStatus.Expired)
         {
-            IReadOnlyDictionary<string, string> outputs =
-                CaptureStepOutputs(pending.Action, result);
-            nextState = nextState.Append(new WorkflowStepResult(
-                StepNumber: stepIndex + 1,
-                ActionName: pending.Action.Name,
-                Risk: pending.Action.Risk,
-                CompletedAt: _clock(),
-                Outputs: outputs));
+            _pendingPlan =
+                null;
+
+            string expired =
+                $"Langkah {stepIndex + 1}/{plan.Plan.Count} selesai, " +
+                "tetapi batas waktu workflow sudah habis. Sisa langkah dihentikan.";
+
+            Conversation.AddAssistant(
+                expired,
+                includeInContext:
+                    false);
+
+            return new AssistantReply(
+                expired,
+                AssistantBackend.Local,
+                _clock(),
+                AssistantEmotion.Neutral);
         }
 
-        if (!hasNextStep)
+        if (!advanced.Success)
+        {
+            _pendingPlan =
+                null;
+
+            string invalid =
+                $"Workflow dihentikan setelah langkah {stepIndex + 1}: " +
+                (advanced.Error ??
+                 "State workflow tidak valid.");
+
+            Conversation.AddAssistant(
+                invalid,
+                includeInContext:
+                    false);
+
+            return new AssistantReply(
+                invalid,
+                AssistantBackend.Local,
+                _clock(),
+                AssistantEmotion.Confused);
+        }
+
+        if (advanced.Completed)
         {
             _pendingPlan =
                 null;
@@ -787,12 +842,7 @@ public sealed class AssistantController
         }
 
         _pendingPlan =
-            plan with
-            {
-                CurrentStepIndex =
-                    nextIndex,
-                WorkflowState = nextState
-            };
+            advanced.Session;
 
         return await ContinuePlanAsync(
             cancellationToken);
@@ -977,8 +1027,9 @@ public sealed class AssistantController
                     { } expiryPlan &&
                 expiryPlan.Id ==
                     expiryPlanId &&
-                _clock() >=
-                    expiryPlan.ExpiresAt)
+                WorkflowRuntime.IsExpired(
+                    expiryPlan,
+                    _clock()))
             {
                 _pendingAction =
                     null;
@@ -1043,8 +1094,9 @@ public sealed class AssistantController
                     plan.Id ==
                         finalPlanId)
                 {
-                    if (now >=
-                        plan.ExpiresAt)
+                    if (WorkflowRuntime.IsExpired(
+                            plan,
+                            now))
                     {
                         _pendingAction =
                             null;

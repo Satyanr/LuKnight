@@ -25,6 +25,7 @@ public sealed class AppServices
     public AssistantContextSourceRouter ContextSources { get; }
     public AssistantActionRouter Actions { get; }
     public AssistantSkillRouter Skills { get; }
+    public AssistantWorkflowRuntime WorkflowRuntime { get; }
     public UserSkillStore UserSkills { get; }
     public IReadOnlyList<UserSkillLoadIssue> UserSkillIssues { get; private set; } = [];
     public AssistantController Assistant { get; }
@@ -52,7 +53,8 @@ public sealed class AppServices
         IDesktopKeyboardTextActionExecutor? keyboardTextActionExecutor = null,
         IDesktopUiScreenEvidenceService? uiScreenEvidenceService = null,
         IDesktopUiAssistedResolver? uiAssistedResolver = null,
-        UserSkillStore? userSkillStore = null)
+        UserSkillStore? userSkillStore = null,
+        AssistantWorkflowRuntime? workflowRuntime = null)
     {
         Settings = settings ?? new();
         Chat = new(credentials ?? new SecureCredentialService(), Settings.Current.Chat);
@@ -132,6 +134,9 @@ public sealed class AppServices
             { skillIssues.Add(new(skill.Id, $"Skill tidak diregistrasikan: {ex.Message}")); }
         }
         UserSkillIssues = skillIssues.AsReadOnly();
+        WorkflowRuntime =
+            workflowRuntime ??
+            new AssistantWorkflowRuntime();
         Assistant = new AssistantController(
             Chat,
             memory: Memory,
@@ -140,7 +145,8 @@ public sealed class AppServices
             tools: Tools,
             contextSources: ContextSources,
             actions: Actions,
-            skills: Skills);
+            skills: Skills,
+            workflowRuntime: WorkflowRuntime);
         Updates = new(Settings);
     }
 }
