@@ -15,7 +15,8 @@ public sealed class TrayIconService : IDisposable
     {
         None,
         Settings,
-        Reminder
+        Reminder,
+        Companion
     }
 
     private readonly Action
@@ -29,6 +30,15 @@ public sealed class TrayIconService : IDisposable
 
     private Guid?
         _activeReminderId;
+    private readonly Action<string>
+        _companion;
+
+    private string?
+        _activeCompanionKey;
+
+    private DateTimeOffset
+        _balloonRouteExpiresAt =
+            DateTimeOffset.MinValue;
     private bool _disposed;
     public Forms.ContextMenuStrip Menu { get; } = new();
 
@@ -39,13 +49,17 @@ public sealed class TrayIconService : IDisposable
     Action settings,
     Action restart,
     Action exit,
-    Action<Guid>? reminder = null)
+    Action<Guid>? reminder = null,
+    Action<string>? companion = null)
     {
         _settings =
             settings;
 
         _reminder =
             reminder ??
+            (_ => { });
+        _companion =
+            companion ??
             (_ => { });
         _visibility =
             Add(
@@ -118,18 +132,21 @@ public sealed class TrayIconService : IDisposable
                 if (_disposed)
                     return;
 
+
+                PruneExpiredBalloonRoute();
+
+
                 BalloonRoute route =
                     _balloonRoute;
 
                 Guid? reminderId =
                     _activeReminderId;
 
-                // Consume click state first.
-                _balloonRoute =
-                    BalloonRoute.None;
+                string? companionKey =
+                    _activeCompanionKey;
 
-                _activeReminderId =
-                    null;
+
+                ClearBalloonRoute();
 
 
                 switch (route)
@@ -138,10 +155,19 @@ public sealed class TrayIconService : IDisposable
                         _settings();
                         break;
 
+
                     case BalloonRoute.Reminder
                         when reminderId is Guid id:
                         _reminder(
                             id);
+                        break;
+
+
+                    case BalloonRoute.Companion
+                        when !string.IsNullOrWhiteSpace(
+                            companionKey):
+                        _companion(
+                            companionKey);
                         break;
                 }
             };
@@ -165,8 +191,16 @@ public sealed class TrayIconService : IDisposable
         _activeReminderId =
             null;
 
+        _activeCompanionKey =
+            null;
+
         _balloonRoute =
             BalloonRoute.Settings;
+
+        _balloonRouteExpiresAt =
+            DateTimeOffset.UtcNow
+                .AddSeconds(
+                    6);
 
         _icon.ShowBalloonTip(
             5000,
@@ -198,9 +232,16 @@ public sealed class TrayIconService : IDisposable
         _activeReminderId =
             scheduleId;
 
+        _activeCompanionKey =
+            null;
+
         _balloonRoute =
             BalloonRoute.Reminder;
 
+        _balloonRouteExpiresAt =
+            DateTimeOffset.UtcNow
+                .AddSeconds(
+                    8);
 
         _icon.ShowBalloonTip(
             7000,
@@ -248,9 +289,104 @@ public sealed class TrayIconService : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        ClearBalloonRoute();
         _icon.Visible = false;
         _icon.Dispose();
         Menu.Dispose();
         _art.Dispose();
+    }
+    private void ClearBalloonRoute()
+    {
+        _balloonRoute =
+            BalloonRoute.None;
+
+        _activeReminderId =
+            null;
+
+        _activeCompanionKey =
+            null;
+
+        _balloonRouteExpiresAt =
+            DateTimeOffset.MinValue;
+    }
+
+
+    private void PruneExpiredBalloonRoute()
+    {
+        if (_balloonRoute !=
+                BalloonRoute.None &&
+            DateTimeOffset.UtcNow >=
+                _balloonRouteExpiresAt)
+        {
+            ClearBalloonRoute();
+        }
+    }
+
+    public bool NotifyCompanion(
+        string key,
+        string message)
+    {
+        if (_disposed)
+            return false;
+
+
+        string normalizedKey =
+            key?.Trim() ??
+            string.Empty;
+
+        string normalizedMessage =
+            message?.Trim() ??
+            string.Empty;
+
+
+        if (normalizedKey.Length is
+                < 1 or > 80 ||
+            normalizedMessage.Length is
+                < 1 or > 240 ||
+            normalizedKey.Any(
+                char.IsControl) ||
+            normalizedMessage.Any(
+                char.IsControl))
+        {
+            return false;
+        }
+
+
+        PruneExpiredBalloonRoute();
+
+
+        // Companion suggestion has lower priority.
+        // Never replace update/reminder currently shown.
+        if (_balloonRoute !=
+            BalloonRoute.None)
+        {
+            return false;
+        }
+
+
+        _activeReminderId =
+            null;
+
+        _activeCompanionKey =
+            normalizedKey;
+
+        _balloonRoute =
+            BalloonRoute.Companion;
+
+        _balloonRouteExpiresAt =
+            DateTimeOffset.UtcNow
+                .AddSeconds(
+                    8);
+
+
+        _icon.ShowBalloonTip(
+            7000,
+            "Lu-Knight",
+            normalizedMessage +
+            " Klik jika ingin bantuan.",
+            Forms.ToolTipIcon.Info);
+
+
+        return true;
     }
 }

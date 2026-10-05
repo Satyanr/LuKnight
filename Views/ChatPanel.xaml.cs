@@ -1,4 +1,5 @@
 using System;
+using LuKnight.Assistant;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -37,6 +38,12 @@ public partial class ChatPanel : UserControl
     private readonly Dictionary<Guid, Border>
         _scheduledReminderCards =
             [];
+    private readonly Dictionary<
+        string,
+        Border>
+        _companionSuggestionCards =
+            new(
+                StringComparer.OrdinalIgnoreCase);
     public ChatStatus CurrentStatus { get; private set; } = ChatStatus.Local;
     public VoiceInteractionState CurrentVoiceState { get; private set; } = VoiceInteractionState.Idle;
     public bool HasDraftMessage => !string.IsNullOrWhiteSpace(MessageInput.Text);
@@ -96,6 +103,7 @@ public partial class ChatPanel : UserControl
 
 
         MessagesPanel.Children.Clear();
+        _companionSuggestionCards.Clear();
 
 
         foreach (Border reminder
@@ -450,6 +458,215 @@ public partial class ChatPanel : UserControl
         {
             return;
         }
+
+        MessagesPanel.Children.Remove(
+            card);
+    }
+    public void AddCompanionSuggestion(
+        CompanionSuggestionCandidate
+            candidate)
+    {
+        ArgumentNullException.ThrowIfNull(
+            candidate);
+
+
+        string key =
+            candidate.Key.Trim();
+
+
+        if (key.Length == 0 ||
+            _companionSuggestionCards
+                .ContainsKey(
+                    key))
+        {
+            return;
+        }
+
+
+        var title =
+            new TextBlock
+            {
+                Text =
+                    "💡 Lu-Knight suggestion",
+
+                FontWeight =
+                    FontWeights.SemiBold,
+
+                Foreground =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            64,
+                            58,
+                            52))
+            };
+
+
+        var message =
+            new TextBlock
+            {
+                Text =
+                    candidate.Message,
+
+                TextWrapping =
+                    TextWrapping.Wrap,
+
+                Margin =
+                    new Thickness(
+                        0,
+                        5,
+                        0,
+                        8),
+
+                FontSize =
+                    12,
+
+                Foreground =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            90,
+                            84,
+                            78))
+            };
+
+
+        var use =
+            new Button
+            {
+                Content =
+                    "Use prompt",
+
+                MinWidth =
+                    82,
+
+                Margin =
+                    new Thickness(
+                        0,
+                        0,
+                        6,
+                        0)
+            };
+
+
+        var dismiss =
+            new Button
+            {
+                Content =
+                    "Not now",
+
+                MinWidth =
+                    64
+            };
+
+
+        var buttons =
+            new StackPanel
+            {
+                Orientation =
+                    Orientation.Horizontal
+            };
+
+        buttons.Children.Add(
+            use);
+
+        buttons.Children.Add(
+            dismiss);
+
+
+        var content =
+            new StackPanel();
+
+        content.Children.Add(
+            title);
+
+        content.Children.Add(
+            message);
+
+        content.Children.Add(
+            buttons);
+
+
+        var card =
+            new Border
+            {
+                Child =
+                    content,
+
+                Background =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            232,
+                            241,
+                            230)),
+
+                CornerRadius =
+                    new CornerRadius(
+                        10),
+
+                Padding =
+                    new Thickness(
+                        10),
+
+                Margin =
+                    new Thickness(
+                        2,
+                        4,
+                        2,
+                        4),
+
+                MaxWidth =
+                    230,
+
+                HorizontalAlignment =
+                    HorizontalAlignment.Left
+            };
+
+
+        use.Click +=
+            (_, _) =>
+            {
+                //
+                // IMPORTANT:
+                // only pre-fill user draft.
+                //
+                // Do not submit automatically.
+                //
+
+                SetDraftMessage(
+                    candidate.SuggestedPrompt);
+
+                RemoveCompanionSuggestion(
+                    key);
+            };
+
+
+        dismiss.Click +=
+            (_, _) =>
+                RemoveCompanionSuggestion(
+                    key);
+
+
+        _companionSuggestionCards[
+            key] =
+                card;
+
+        MessagesPanel.Children.Add(
+            card);
+
+        MessagesScrollViewer
+            .ScrollToEnd();
+    }
+
+    public void RemoveCompanionSuggestion(
+        string key)
+    {
+        if (!_companionSuggestionCards
+                .Remove(
+                    key,
+                    out Border? card))
+        {
+            return;
+        }
+
 
         MessagesPanel.Children.Remove(
             card);

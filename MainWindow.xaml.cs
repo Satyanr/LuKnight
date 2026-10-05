@@ -1538,4 +1538,19 @@ public partial class MainWindow : Window
             RefreshVoiceAvailability();
         }
     }
+    public void OpenCompanionSuggestionFromTray(
+        CompanionSuggestionCandidate
+            candidate)
+    {
+        ArgumentNullException.ThrowIfNull(
+            candidate);
+
+
+        OpenChatFromTray();
+
+
+        ChatPanelControl
+            .AddCompanionSuggestion(
+                candidate);
+    }
 }

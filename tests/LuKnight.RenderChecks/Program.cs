@@ -236,6 +236,9 @@ internal static partial class Program
                 "--companion"))
         {
             CheckCompanionFoundation();
+            CheckCompanionRateLimit();
+            CheckCompanionSuggestionCard();
+            CheckCompanionTrayRouting();
 
             Console.WriteLine(
                 $"PASS: {_checks} companion foundation checks.");

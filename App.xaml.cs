@@ -26,6 +26,22 @@ public partial class App : Application
     private readonly HashSet<Guid>
         _scheduleNotifiedThisSession =
             [];
+    private DispatcherTimer?
+        _companionTimer;
+
+
+    private readonly
+        CompanionSuggestionGate
+        _companionGate =
+            new();
+
+
+    private readonly Dictionary<
+        string,
+        CompanionSuggestionCandidate>
+        _companionSuggestions =
+            new(
+                StringComparer.OrdinalIgnoreCase);
     private readonly CancellationTokenSource _lifetime = new();
     public void ExitForUpdate() => ExitApplication();
 
@@ -111,7 +127,8 @@ public partial class App : Application
                     OpenSettingsWindow,
                     RestartApplication,
                     ExitApplication,
-                    OpenScheduledReminderFromTray);
+                    OpenScheduledReminderFromTray,
+                    OpenCompanionSuggestionFromTray);
             _tray.Show();
         }
         catch (Exception ex)
@@ -156,6 +173,24 @@ public partial class App : Application
 
         // Check once immediately.
         CheckDueScheduleReminder();
+        _companionTimer =
+            new DispatcherTimer
+            {
+                Interval =
+                    TimeSpan.FromSeconds(
+                        30)
+            };
+
+        _companionTimer.Tick +=
+            CompanionTimer_Tick;
+
+        _companionTimer.Start();
+
+
+        // Seed the dwell timer.
+        // This cannot present immediately because
+        // StabilityDelay has not elapsed.
+        CheckCompanionSuggestion();
         _instanceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _instanceTimer.Tick += (_, _) => { if (_showRequest.WaitOne(0)) _character.ShowFromTray(); };
         _instanceTimer.Start();
@@ -307,6 +342,16 @@ public partial class App : Application
             _scheduleTimer =
                 null;
         }
+        if (_companionTimer is not null)
+        {
+            _companionTimer.Stop();
+
+            _companionTimer.Tick -=
+                CompanionTimer_Tick;
+
+            _companionTimer =
+                null;
+        }
         _lifetime.Cancel(); _instanceTimer?.Stop(); _showRequest?.Dispose(); _instance?.Dispose();
         if (_settingsWindow is not null)
         {
@@ -334,5 +379,128 @@ public partial class App : Application
 
         _character.OpenScheduledReminderFromTray(
             scheduleId);
+    }
+    private void CheckCompanionSuggestion()
+    {
+        if (_isExiting ||
+            _services is null ||
+            _character is null ||
+            _tray is null)
+        {
+            return;
+        }
+
+
+        DateTimeOffset now =
+            DateTimeOffset.UtcNow;
+
+
+        //
+        // Higher-priority activity suppresses
+        // proactive suggestions.
+        //
+
+        if (_services.Assistant.IsBusy ||
+            _services
+                .Scheduler
+                .GetReminderCandidates(
+                    now)
+                .Count >
+            0)
+        {
+            _companionGate
+                .ResetObservation();
+
+            return;
+        }
+
+
+        AssistantRuntimeContext context =
+            _services
+                .Context
+                .Capture();
+
+
+        CompanionSuggestionCandidate?
+            candidate =
+                _services
+                    .CompanionAdvisor
+                    .Evaluate(
+                        context);
+
+
+        CompanionSuggestionCandidate?
+            ready =
+                _companionGate
+                    .Observe(
+                        candidate,
+                        now);
+
+
+        if (ready is null)
+            return;
+
+
+        //
+        // Notification presentation can fail
+        // because a reminder/update balloon
+        // currently owns the tray.
+        //
+        // Do not consume rate limit unless
+        // presentation really happened.
+        //
+
+        if (!_tray.NotifyCompanion(
+                ready.Key,
+                ready.Message))
+        {
+            return;
+        }
+
+
+        if (!_companionGate
+                .MarkPresented(
+                    ready,
+                    now))
+        {
+            return;
+        }
+
+
+        _companionSuggestions[
+            ready.Key] =
+                ready;
+    }
+
+    private void CompanionTimer_Tick(
+        object? sender,
+        EventArgs e)
+    {
+        CheckCompanionSuggestion();
+    }
+
+    private void OpenCompanionSuggestionFromTray(
+        string key)
+    {
+        if (_isExiting ||
+            _character is null)
+        {
+            return;
+        }
+
+
+        if (!_companionSuggestions
+                .Remove(
+                    key,
+                    out CompanionSuggestionCandidate?
+                        candidate))
+        {
+            return;
+        }
+
+
+        _character
+            .OpenCompanionSuggestionFromTray(
+                candidate);
     }
 }
