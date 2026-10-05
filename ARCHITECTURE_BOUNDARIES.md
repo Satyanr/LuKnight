@@ -207,3 +207,27 @@ Diagnostic output may identify only a coarse operation and exception type.
 
 Schedule and skill persistence errors must use stable application-owned
 messages rather than filesystem exception text.
+
+## Ambient data access
+
+Ambient desktop data access is opt-in.
+
+Fresh installations keep the following disabled:
+
+- application awareness
+- file context
+- clipboard context
+- system context
+- screen context
+- microphone input
+- desktop actions
+- proactive companion
+
+Configured AssistantToolRouter and AssistantContextSourceRouter instances are
+private implementation details of AssistantController.
+
+AppServices and UI code must not receive direct access to live tool execution or
+context-capture routers.
+
+Explicit context capture enters through a user request routed by
+AssistantController and is still subject to its current setting gate.

@@ -589,5 +589,84 @@ internal static partial class Program
                 "\" + ex)",
                 StringComparison.Ordinal),
             "Voice diagnostics log full exception.");
+
+        Require(
+            !typeof(AppServices)
+                .GetProperties(
+                    BindingFlags.Instance |
+                    BindingFlags.Public)
+                .Any(
+                    property =>
+                        property.PropertyType ==
+                            typeof(
+                                AssistantToolRouter)),
+            "AppServices exposes live assistant tools.");
+
+
+        Require(
+            !typeof(AppServices)
+                .GetProperties(
+                    BindingFlags.Instance |
+                    BindingFlags.Public)
+                .Any(
+                    property =>
+                        property.PropertyType ==
+                            typeof(
+                                AssistantContextSourceRouter)),
+            "AppServices exposes live context capture router.");
+
+        Require(
+            !typeof(AssistantController)
+                .GetProperties(
+                    BindingFlags.Instance |
+                    BindingFlags.Public)
+                .Any(
+                    property =>
+                        property.PropertyType ==
+                            typeof(
+                                AssistantToolRouter)),
+            "AssistantController exposes tool execution router.");
+
+
+        Require(
+            !typeof(AssistantController)
+                .GetProperties(
+                    BindingFlags.Instance |
+                    BindingFlags.Public)
+                .Any(
+                    property =>
+                        property.PropertyType ==
+                            typeof(
+                                AssistantContextSourceRouter)),
+            "AssistantController exposes context capture router.");
+
+        string controllerSecurity =
+            Read(
+                "Assistant/AssistantController.cs");
+
+
+        Require(
+            controllerSecurity.Contains(
+                "_tools.ExecuteAsync(",
+                StringComparison.Ordinal),
+            "AssistantController no longer owns tool execution.");
+
+
+        Require(
+            controllerSecurity.Contains(
+                "_contextSources.CaptureAsync(",
+                StringComparison.Ordinal),
+            "AssistantController no longer owns explicit context capture.");
+
+        string servicesSecurity =
+            Read(
+                "Services/AppServices.cs");
+
+
+        Require(
+            !servicesSecurity.Contains(
+                "ex.Message",
+                StringComparison.Ordinal),
+            "AppServices exposes raw exception diagnostics.");
     }
 }

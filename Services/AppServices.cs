@@ -12,8 +12,6 @@ public sealed class AppServices
     public IDesktopAppCatalog DesktopApps { get; }
     public IDesktopWindowTargetCatalog DesktopWindows { get; }
     public LocalDesktopCommandRouter DesktopCommands { get; }
-    public AssistantToolRouter Tools { get; }
-    public AssistantContextSourceRouter ContextSources { get; }
     public AssistantSkillRouter Skills { get; }
     public AssistantWorkflowRuntime WorkflowRuntime { get; }
     public LocalSchedulerService Scheduler { get; }
@@ -84,7 +82,7 @@ public sealed class AppServices
         IntentRouter = new AssistantIntentRouter(DesktopCommands);
         IExplorerActionExecutor explorerActions = explorerExecutor ?? new WindowsExplorerActionExecutor();
         desktopExecutor ??= new WindowsDesktopActionExecutor();
-        Tools = new AssistantToolRouter(new IAssistantTool[]
+        AssistantToolRouter tools = new AssistantToolRouter(new IAssistantTool[]
         {
             new RememberMemoryTool(Memory),
             new ForgetMemoryTool(Memory),
@@ -94,7 +92,7 @@ public sealed class AppServices
                 DesktopWindows,
                 uiAutomationReader)
         });
-        ContextSources = new AssistantContextSourceRouter(new IAssistantContextSource[]
+        AssistantContextSourceRouter contextSources = new AssistantContextSourceRouter(new IAssistantContextSource[]
         {
             new LocalTextFileContextSource(() => Chat.Options.UseFileContext),
             new ClipboardTextContextSource(() => Chat.Options.UseClipboardContext),
@@ -130,11 +128,23 @@ public sealed class AppServices
         foreach (IAssistantSkill skill in userSkillResult.Skills)
         {
             try { Skills.Register(skill); }
-            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
-            { skillIssues.Add(new(skill.Id, $"Skill tidak diregistrasikan: {ex.Message}")); }
+            catch (ArgumentException)
+            {
+                skillIssues.Add(
+                    new(
+                        skill.Id,
+                        "Skill tidak dapat diregistrasikan karena metadata atau identitas skill bentrok."));
+            }
+            catch (InvalidOperationException)
+            {
+                skillIssues.Add(
+                    new(
+                        skill.Id,
+                        "Skill tidak dapat diregistrasikan karena metadata atau identitas skill bentrok."));
+            }
         }
         UserSkillIssues = skillIssues.AsReadOnly();
-        Capabilities = AssistantCapabilityRegistry.Create(Skills, actions, Tools);
+        Capabilities = AssistantCapabilityRegistry.Create(Skills, actions, tools);
         WorkflowRuntime =
             workflowRuntime ??
             new AssistantWorkflowRuntime();
@@ -143,8 +153,8 @@ public sealed class AppServices
             memory: Memory,
             context: Context,
             intentRouter: IntentRouter,
-            tools: Tools,
-            contextSources: ContextSources,
+            tools: tools,
+            contextSources: contextSources,
             actions: actions,
             skills: Skills,
             workflowRuntime: WorkflowRuntime);

@@ -39,6 +39,34 @@ internal static partial class Program
         string output = Path.Combine(root, "output", "sprites");
         Directory.CreateDirectory(output);
         if (args.Contains(
+                "--security"))
+        {
+            CheckArchitectureBoundaries();
+
+            CheckSecretDiagnostics();
+
+            Task.Run(
+                CheckPrivacyIsolationAsync)
+                .GetAwaiter()
+                .GetResult();
+
+            Task.Run(
+                CheckPermissionLevelsAsync)
+                .GetAwaiter()
+                .GetResult();
+
+            Task.Run(
+                CheckStrongConfirmationAsync)
+                .GetAwaiter()
+                .GetResult();
+
+
+            Console.WriteLine(
+                $"PASS: {_checks} consolidated security checks.");
+
+            return;
+        }
+        if (args.Contains(
                 "--security-privacy"))
         {
             CheckSecretDiagnostics();

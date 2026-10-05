@@ -44,8 +44,8 @@ public sealed class AssistantController
     public MemoryService Memory { get; }
     public AssistantContextProvider Context { get; }
     public AssistantIntentRouter IntentRouter { get; }
-    public AssistantToolRouter Tools { get; }
-    public AssistantContextSourceRouter ContextSources { get; }
+    private readonly AssistantToolRouter _tools;
+    private readonly AssistantContextSourceRouter _contextSources;
     private readonly AssistantActionRouter _actions;
     public AssistantSkillRouter Skills { get; }
     public AssistantWorkflowRuntime WorkflowRuntime { get; }
@@ -78,7 +78,7 @@ public sealed class AssistantController
         Memory = memory ?? new MemoryService();
         Context = context ?? new AssistantContextProvider();
         IntentRouter = intentRouter ?? new AssistantIntentRouter();
-        Tools = tools ?? new AssistantToolRouter(new IAssistantTool[]
+        _tools = tools ?? new AssistantToolRouter(new IAssistantTool[]
         {
             new RememberMemoryTool(Memory),
             new ForgetMemoryTool(Memory),
@@ -88,7 +88,7 @@ public sealed class AssistantController
                 IntentRouter.DesktopWindows,
                 new WindowsDesktopUiAutomationReader())
         });
-        ContextSources = contextSources ?? new AssistantContextSourceRouter(new IAssistantContextSource[]
+        _contextSources = contextSources ?? new AssistantContextSourceRouter(new IAssistantContextSource[]
         {
             new LocalTextFileContextSource(() => _chat.Options.UseFileContext),
             new ClipboardTextContextSource(() => _chat.Options.UseClipboardContext),
@@ -217,7 +217,7 @@ public sealed class AssistantController
             if (intent.Kind == AssistantIntentKind.Context)
             {
                 ContextInvocation invocation = intent.Context ?? throw new InvalidOperationException("Context intent tidak memiliki invocation.");
-                ContextCaptureResult captured = await ContextSources.CaptureAsync(invocation, cancellationToken);
+                ContextCaptureResult captured = await _contextSources.CaptureAsync(invocation, cancellationToken);
                 if (!captured.Success || captured.Reference is null)
                 {
                     Conversation.AddUser(request, includeInContext: false);
@@ -1251,7 +1251,7 @@ public sealed class AssistantController
         Conversation.AddUser(request, invocation.IncludeInContext);
         try
         {
-            ToolExecutionResult result = await Tools.ExecuteAsync(invocation, cancellationToken);
+            ToolExecutionResult result = await _tools.ExecuteAsync(invocation, cancellationToken);
             Conversation.AddAssistant(result.Message, invocation.IncludeInContext);
             AssistantEmotion emotion = Emotions.EvaluateTool(invocation, result);
             return new AssistantReply(result.Message, AssistantBackend.Local, DateTimeOffset.UtcNow, emotion);

@@ -41,6 +41,70 @@ internal static partial class Program
     private static void
         CheckSecretDiagnostics()
     {
+        ChatSettings defaults =
+            new();
+
+
+        Require(
+            !defaults.UseApplicationContext,
+            "Fresh install enabled ambient application awareness.");
+
+
+        Require(
+            !defaults.UseFileContext &&
+            !defaults.UseClipboardContext &&
+            !defaults.UseSystemContext &&
+            !defaults.UseScreenContext,
+            "Fresh install enabled private context capture.");
+
+
+        Require(
+            !defaults.UseVoiceInput,
+            "Fresh install enabled microphone input.");
+
+
+        Require(
+            !defaults.UseDesktopActions,
+            "Fresh install enabled desktop mutation.");
+
+
+        Require(
+            !new CompanionSettings()
+                .Enabled,
+            "Fresh install enabled proactive companion.");
+
+        Require(
+            typeof(AppServices)
+                .GetProperties()
+                .All(
+                    property =>
+                        property.PropertyType !=
+                            typeof(
+                                AssistantToolRouter) &&
+                        property.PropertyType !=
+                            typeof(
+                                AssistantContextSourceRouter)),
+            "AppServices exposes privacy-sensitive routing infrastructure.");
+
+        Require(
+            typeof(AssistantController)
+                .GetProperties()
+                .All(
+                    property =>
+                        property.PropertyType !=
+                            typeof(
+                                AssistantToolRouter) &&
+                        property.PropertyType !=
+                            typeof(
+                                AssistantContextSourceRouter)),
+            "AssistantController exposes privacy-sensitive routing infrastructure.");
+
+        AppSettings optedIn = JsonSerializer.Deserialize<AppSettings>(
+            "{\"chat\":{\"useApplicationContext\":true}}", SettingsService.JsonOptions)!;
+        Require(optedIn.Chat.UseApplicationContext, "Persisted application awareness opt-in was lost.");
+        AppSettings omitted = JsonSerializer.Deserialize<AppSettings>("{\"chat\":{}}", SettingsService.JsonOptions)!;
+        Require(!omitted.Chat.UseApplicationContext, "Settings without opt-in enabled ambient awareness.");
+
         var chat =
             new ChatCoordinator(
                 new SecretCredential(),

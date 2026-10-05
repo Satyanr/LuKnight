@@ -29,7 +29,7 @@ public sealed record ChatSettings
     public ResponseStyle Style { get; init; } = ResponseStyle.Friendly;
     public bool RememberConversation { get; init; } = true;
     public bool UseLongTermMemory { get; init; } = true;
-    public bool UseApplicationContext { get; init; } = true;
+    public bool UseApplicationContext { get; init; } = false;
     public bool UseFileContext { get; init; } = false;
     public bool UseClipboardContext { get; init; } = false;
     public bool UseSystemContext { get; init; } = false;
