@@ -652,17 +652,18 @@ internal static partial class Program
         }
     }
 
-    private static void CheckForensicRetentionIsolation(string directory)
+    private static void CheckForensicRetentionIsolation(string directory, int snapshotYear = 2025)
     {
         string path = Path.Combine(directory, "retention-order.json");
         File.WriteAllText(path, "{ broken primary");
+        File.SetLastWriteTimeUtc(path, new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         File.WriteAllText(path + ".bak", "{ broken committed backup");
         var old = new List<string>();
         for (int i = 0; i < 5; i++)
         {
             string snapshot = path + $".invalid-seeded-{i}.bak";
             File.WriteAllText(snapshot, $"old-{i}");
-            File.SetLastWriteTimeUtc(snapshot, new DateTime(2020, 1, 1, 0, 0, i, DateTimeKind.Utc));
+            File.SetLastWriteTimeUtc(snapshot, new DateTime(snapshotYear, 1, 1, 0, 0, i, DateTimeKind.Utc));
             old.Add(snapshot);
         }
         string other = Path.Combine(directory, "other.json.invalid-probe.bak");

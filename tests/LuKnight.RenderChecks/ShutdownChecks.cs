@@ -132,7 +132,12 @@ internal static partial class Program
                     typeof(MainWindow).GetField(field.Item1, Private)!.SetValue(window, field.Item2);
                 try
                 {
+                    tts.IsSpeaking = false;
+                    Require(window.CanInstallUpdate, "Idle update fixture was not ready before shutdown.");
+                    tts.IsSpeaking = true;
                     window.BeginShutdown();
+                    tts.IsSpeaking = false; // Audio finishing must not reopen the update gate.
+                    Require(!window.CanInstallUpdate, "Shutdown still allowed an update installer handoff.");
                     Require(window.IsShuttingDown && services.Assistant.IsShuttingDown,
                         "Window shutdown did not propagate to Assistant.");
                     Require(request.IsCancellationRequested && transcription.IsCancellationRequested &&
@@ -179,7 +184,7 @@ internal static partial class Program
         public int StopCalls { get; private set; }
         public int DisposeCalls { get; private set; }
         public bool ThrowOnStop;
-        public bool IsSpeaking => true;
+        public bool IsSpeaking { get; set; } = true;
         public IReadOnlyList<string> GetInstalledVoices() => [];
         public Task SpeakAsync(string text, TextToSpeechOptions options, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public void Stop()

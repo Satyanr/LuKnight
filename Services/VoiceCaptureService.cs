@@ -24,6 +24,7 @@ public sealed class VoiceCaptureService : IVoiceCaptureService
     private MemoryStream? _stream;
     private TaskCompletionSource<VoiceCaptureResult>? _completion;
     private Stopwatch? _timer;
+    private bool _disposed;
 
     public bool IsRecording
     {
@@ -40,6 +41,7 @@ public sealed class VoiceCaptureService : IVoiceCaptureService
     {
         lock (_sync)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (_input is not null)
                 throw new InvalidOperationException("Voice recording sudah aktif.");
 
@@ -59,10 +61,11 @@ public sealed class VoiceCaptureService : IVoiceCaptureService
             {
                 lock (_sync)
                 {
-                    _writer?.Write(e.Buffer, 0, e.BytesRecorded);
+                    if (ReferenceEquals(_input, input))
+                        _writer?.Write(e.Buffer, 0, e.BytesRecorded);
                 }
             };
-            input.RecordingStopped += (_, e) => CompleteRecording(e.Exception);
+            input.RecordingStopped += (_, e) => CompleteRecording(input, e.Exception);
 
             _stream = stream;
             _writer = writer;
@@ -100,13 +103,15 @@ public sealed class VoiceCaptureService : IVoiceCaptureService
         return await task.WaitAsync(cancellationToken);
     }
 
-    private void CompleteRecording(Exception? error)
+    private void CompleteRecording(WaveIn input, Exception? error)
     {
         TaskCompletionSource<VoiceCaptureResult>? completion;
         VoiceCaptureResult? result = null;
 
         lock (_sync)
         {
+            // WinMM may deliver a queued event after disposal or a new Start.
+            if (!ReferenceEquals(_input, input)) return;
             completion = _completion;
             if (completion is null)
             {
@@ -117,19 +122,26 @@ public sealed class VoiceCaptureService : IVoiceCaptureService
             TimeSpan duration = _timer?.Elapsed ?? TimeSpan.Zero;
             try
             {
-                _writer?.Dispose();
-                _writer = null;
-                if (error is null && _stream is not null && _input is not null)
+                try
                 {
-                    result = new VoiceCaptureResult(
-                        _stream.ToArray(),
-                        duration,
-                        _input.WaveFormat);
+                    _writer?.Dispose();
+                    _writer = null;
+                    if (error is null && _stream is not null && _input is not null)
+                    {
+                        result = new VoiceCaptureResult(
+                            _stream.ToArray(),
+                            duration,
+                            _input.WaveFormat);
+                    }
+                }
+                finally
+                {
+                    CleanupUnsafe(disposeWriter: false);
                 }
             }
-            finally
+            catch (Exception ex)
             {
-                CleanupUnsafe(disposeWriter: false);
+                error ??= ex;
             }
         }
 
@@ -151,22 +163,31 @@ public sealed class VoiceCaptureService : IVoiceCaptureService
 
     private void CleanupUnsafe(bool disposeWriter = true)
     {
-        if (disposeWriter)
-            _writer?.Dispose();
-
+        WaveFileWriter? writer = _writer;
+        WaveIn? input = _input;
+        MemoryStream? stream = _stream;
         _writer = null;
-        _input?.Dispose();
         _input = null;
-        _stream?.Dispose();
         _stream = null;
         _timer = null;
         _completion = null;
+        // Clear session ownership before disposing native resources, since
+        // disposal can cause reentrant or queued RecordingStopped callbacks.
+        try { if (disposeWriter) writer?.Dispose(); }
+        finally
+        {
+            try { input?.Dispose(); }
+            finally { stream?.Dispose(); }
+        }
     }
 
     public void Dispose()
     {
         lock (_sync)
         {
+            if (_disposed) return;
+            _disposed = true;
+            _completion?.TrySetCanceled();
             try
             {
                 _input?.StopRecording();

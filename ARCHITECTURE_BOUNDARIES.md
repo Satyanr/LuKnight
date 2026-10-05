@@ -313,3 +313,17 @@ execution, stale temporary files, or unbounded local artifacts.
 
 Stress acceptance validates bounded state and lifecycle behavior; it is not a
 performance benchmark.
+
+Settings commands stop accepting work when their model is disposed, and the
+application shutdown barrier cancels Settings-owned operations before closing
+windows. Settings cleanup is idempotent even when cancellation callbacks fail.
+Settings diagnostics use the same exception-type-only privacy formatter as the
+assistant and application lifecycle.
+
+The visible chat history retains at most 100 message bubbles. Pending reminder
+cards remain available when message history is trimmed or cleared. Forensic
+snapshot retention orders snapshots by capture time, independently of the
+primary file's original modification timestamp. The current capture is protected
+even when older snapshot timestamps are in the future. Voice completion settles
+on disposal or WAV finalization failure, and stale native callbacks cannot
+complete a later recording session.

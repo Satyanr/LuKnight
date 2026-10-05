@@ -20,20 +20,21 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
     private readonly CancellationTokenSource _lifetime = new();
     private string? _message;
     private bool _deferred;
+    private bool _disposed;
     public event PropertyChangedEventHandler? PropertyChanged;
     public ProductSettingsViewModel(AppServices services, Action clear, Func<bool> safeToInstall, Func<bool> save, Action shutdown)
     {
         _services = services; _clear = clear; _safeToInstall = safeToInstall; _save = save; _shutdown = shutdown;
         TestCommand = new(async () => { _message = null; await services.Chat.TestConnection(_lifetime.Token); }, () => CanEditChat);
-        CheckCommand = new(async () => { _deferred = false; await services.Updates.CheckForUpdate(false, _lifetime.Token); }, () => !services.Updates.IsBusy);
+        CheckCommand = new(async () => { _deferred = false; await services.Updates.CheckForUpdate(false, _lifetime.Token); }, () => !_disposed && !services.Updates.IsBusy);
         DownloadCommand = new(async () => { _deferred = false; await services.Updates.DownloadUpdate(_lifetime.Token); }, () => CanDownload);
         InstallCommand = new(async () => { await services.Updates.InstallUpdate(_safeToInstall, _save, _shutdown, _lifetime.Token); }, () => CanInstall);
-        PreviewVoiceCommand = new(PreviewVoiceAsync, () => !_services.Assistant.IsBusy && !_services.TextToSpeech.IsSpeaking);
+        PreviewVoiceCommand = new(PreviewVoiceAsync, () => !_disposed && !_services.Assistant.IsBusy && !_services.TextToSpeech.IsSpeaking);
         foreach (var command in Commands) command.Completed += Refresh;
         RemoveKeyCommand = new(() => Run(services.Chat.RemoveKey), () => CanEditChat);
         ClearCommand = new(() => Run(_clear), () => CanEditChat);
-        SaveCommand = new(() => { services.Settings.Save(); Refresh(); }, () => true);
-        LaterCommand = new(() => { _deferred = true; Refresh(); }, () => !services.Updates.IsBusy);
+        SaveCommand = new(() => { services.Settings.Save(); Refresh(); }, () => !_disposed);
+        LaterCommand = new(() => { _deferred = true; Refresh(); }, () => !_disposed && !services.Updates.IsBusy);
         DeleteVoiceModelCommand = new(DeleteSelectedVoiceModel, () => CanDeleteVoiceModel);
     }
     public AsyncSettingsCommand TestCommand { get; }
@@ -133,14 +134,14 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
                 "Permission desktop tidak valid."
         };
 
-    public bool CanEditChat => !_services.Assistant.IsBusy;
+    public bool CanEditChat => !_disposed && !_services.Assistant.IsShuttingDown && !_services.Assistant.IsBusy;
     public string CredentialStatus => _services.Chat.CredentialStatus;
     public string ChatStatus => _message ?? _services.Chat.Status;
     public string SaveStatus => _services.Settings.Status;
     public string UpdateStatus => _deferred ? "Update ditunda. Lanjutkan melalui About kapan saja." : _services.Updates.Status;
-    public bool CanCheck => !_services.Updates.IsBusy;
-    public bool CanDownload => !_services.Updates.IsBusy && _services.Updates.Available is not null && _services.Updates.VerifiedInstaller is null;
-    public bool CanInstall => !_services.Updates.IsBusy && _services.Updates.VerifiedInstaller is not null && _safeToInstall();
+    public bool CanCheck => !_disposed && !_services.Updates.IsBusy;
+    public bool CanDownload => !_disposed && !_services.Updates.IsBusy && _services.Updates.Available is not null && _services.Updates.VerifiedInstaller is null;
+    public bool CanInstall => !_disposed && !_services.Updates.IsBusy && _services.Updates.VerifiedInstaller is not null && _safeToInstall();
     public ChatProvider Provider
     {
         get => _services.Chat.Options.Provider;
@@ -336,7 +337,7 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
         ? $"{VoiceModel} siap digunakan secara lokal."
         : $"{VoiceModel} belum diunduh. Model akan diunduh saat voice pertama digunakan.";
     public bool CanDeleteVoiceModel =>
-        !_services.Assistant.IsBusy && _services.SpeechToText.IsModelReady(VoiceModel);
+        !_disposed && !_services.Assistant.IsBusy && _services.SpeechToText.IsModelReady(VoiceModel);
     public bool UseDesktopActions
     {
         get => _services.Chat.Options.UseDesktopActions;
@@ -366,6 +367,7 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
     }
     private void Run(Action action)
     {
+        if (_disposed) return;
         try
         {
             action();
@@ -373,7 +375,7 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
         }
         catch (Exception ex)
         {
-            Debug.WriteLine("[Lu-Knight][Settings] " + ex);
+            Debug.WriteLine(DiagnosticPrivacy.TraceFailure("Settings change", ex));
             _message = "Perubahan pengaturan gagal. Nilai sebelumnya tetap digunakan.";
         }
         Refresh();
@@ -659,12 +661,24 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
 
     public void Refresh()
     {
+        if (_disposed) return;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
         foreach (var command in Commands) command.Refresh();
         RemoveKeyCommand.Refresh(); ClearCommand.Refresh(); LaterCommand.Refresh();
         DeleteVoiceModelCommand.Refresh();
     }
-    public void Dispose() { _lifetime.Cancel(); foreach (var command in Commands) command.Completed -= Refresh; _lifetime.Dispose(); }
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        foreach (var command in Commands) command.Completed -= Refresh;
+        try { _lifetime.Cancel(); }
+        catch (AggregateException ex)
+        {
+            Debug.WriteLine(DiagnosticPrivacy.TraceFailure("Settings shutdown", ex));
+        }
+        finally { _lifetime.Dispose(); }
+    }
 }
 
 public sealed class AsyncSettingsCommand(Func<Task> execute, Func<bool> enabled) : ICommand
@@ -681,7 +695,7 @@ public sealed class AsyncSettingsCommand(Func<Task> execute, Func<bool> enabled)
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            Debug.WriteLine("[Lu-Knight][SettingsCommand] " + ex);
+            Debug.WriteLine(DiagnosticPrivacy.TraceFailure("Settings command", ex));
         }
         finally
         {

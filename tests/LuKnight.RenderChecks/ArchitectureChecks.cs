@@ -606,6 +606,8 @@ internal static partial class Program
                  {
                      ("App.xaml.cs", appSource),
                      ("MainWindow.xaml.cs", mainWindowSource),
+                     ("ProductSettingsViewModel.cs", Read("ViewModels/ProductSettingsViewModel.cs")),
+                     ("SettingsViewModel.cs", Read("ViewModels/SettingsViewModel.cs")),
                      ("LocalScheduleStore.cs", scheduleStoreSource),
                      ("UserSkillStore.cs", skillStoreSource)
                  })
@@ -616,6 +618,10 @@ internal static partial class Program
                     StringComparison.Ordinal),
                 $"{name} exposes raw exception messages.");
         }
+
+        foreach (string viewModel in new[] { "ViewModels/ProductSettingsViewModel.cs", "ViewModels/SettingsViewModel.cs" })
+            Require(!Read(viewModel).Contains("\" + ex", StringComparison.Ordinal),
+                "Settings diagnostics expose full exception data.");
 
         Require(
             !appSource.Contains(

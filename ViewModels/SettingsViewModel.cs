@@ -54,7 +54,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             when (ex is ArgumentException or InvalidOperationException)
         {
             System.Diagnostics.Debug.WriteLine(
-                "[Lu-Knight][BehaviorSettings] " + ex);
+                DiagnosticPrivacy.TraceFailure("Behavior settings change", ex));
         }
     }
 
@@ -210,7 +210,10 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         if (_startup is null) return;
         try { change(); _startupError = null; }
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or System.IO.IOException or InvalidOperationException)
-        { _startupError = "Perubahan startup gagal: " + ex.Message; }
+        {
+            System.Diagnostics.Debug.WriteLine(DiagnosticPrivacy.TraceFailure("Startup preference change", ex));
+            _startupError = "Perubahan startup gagal. Periksa izin akun Windows atau lokasi aplikasi.";
+        }
         _startupStatus = _startup.ReadStatus();
         Changed(string.Empty); // Read back actual state, including after a failed write.
     }

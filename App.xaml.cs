@@ -352,6 +352,7 @@ public partial class App : Application
         _assistantNotificationTimer?.Stop();
         _instanceTimer?.Stop();
         _character?.BeginShutdown();
+        _settingsWindow?.Model.Product?.Dispose();
         _tray?.Dispose();
         _tray = null;
         return true;

@@ -39,7 +39,7 @@ public partial class MainWindow : Window
 
     public AppServices Services { get; }
     private bool _usesGemini => Services.Chat.UsesGemini;
-    public bool CanInstallUpdate => !_leftMouseDown && !_dragStarted && !_isSending && !_isTranscribing && !_isSpeaking && !Services.TextToSpeech.IsSpeaking && !Services.Assistant.IsBusy && !(_physicsController?.IsActive ?? false);
+    public bool CanInstallUpdate => !_shutdownStarted && !_leftMouseDown && !_dragStarted && !_isSending && !_isTranscribing && !_isSpeaking && !Services.TextToSpeech.IsSpeaking && !Services.Assistant.IsBusy && !(_physicsController?.IsActive ?? false);
     public void SetAlwaysOnTop(bool value)
     {
         Topmost = value;

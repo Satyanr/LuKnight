@@ -27,6 +27,8 @@ public enum ChatStatus
 
 public partial class ChatPanel : UserControl
 {
+    private const int MaxMessageBubbles = 100;
+    private readonly Queue<Border> _messageBubbles = new();
     public event Action<string>? MessageSubmitted;
     public event Action? VoiceToggleRequested;
     public event Action<Guid>?
@@ -103,6 +105,7 @@ public partial class ChatPanel : UserControl
 
 
         MessagesPanel.Children.Clear();
+        _messageBubbles.Clear();
         _companionSuggestionCards.Clear();
 
 
@@ -237,6 +240,9 @@ public partial class ChatPanel : UserControl
         };
 
         MessagesPanel.Children.Add(bubble);
+        _messageBubbles.Enqueue(bubble);
+        while (_messageBubbles.Count > MaxMessageBubbles)
+            MessagesPanel.Children.Remove(_messageBubbles.Dequeue());
         MessagesScrollViewer.ScrollToEnd();
     }
 

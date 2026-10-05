@@ -77,7 +77,10 @@ internal static class CommittedStateRecovery
                 overwrite:
                     false);
 
-            PruneInvalidSnapshots(path);
+            // File.Copy retains the primary's old timestamp. Retention tracks
+            // when a forensic snapshot was taken, not when its source was edited.
+            File.SetLastWriteTimeUtc(invalid, DateTime.UtcNow);
+            PruneInvalidSnapshots(path, invalid);
             return true;
         }
         catch (Exception ex)
@@ -192,7 +195,8 @@ internal static class CommittedStateRecovery
 
     private static void
         PruneInvalidSnapshots(
-            string path)
+            string path,
+            string preservedSnapshot)
     {
         try
         {
@@ -216,6 +220,8 @@ internal static class CommittedStateRecovery
             }
 
 
+            string preserved = Path.GetFullPath(preservedSnapshot);
+
             string[] invalid =
                 Directory
                     .GetFiles(
@@ -223,7 +229,10 @@ internal static class CommittedStateRecovery
                         name +
                         ".invalid-*.bak",
                         SearchOption.TopDirectoryOnly)
-                    .OrderByDescending(
+                    // Protect this capture even if legacy snapshots have future
+                    // timestamps or the system clock has moved backwards.
+                    .OrderByDescending(file => string.Equals(file, preserved, StringComparison.OrdinalIgnoreCase))
+                    .ThenByDescending(
                         file =>
                             File.GetLastWriteTimeUtc(
                                 file))

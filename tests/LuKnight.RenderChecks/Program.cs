@@ -50,6 +50,19 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} startup isolation checks.");
             return;
         }
+        if (args.Contains("--audit"))
+        {
+            var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            var operation = dispatcher.InvokeAsync(() =>
+            {
+                try { CheckAuditRegressions(); }
+                finally { dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Background); }
+            });
+            System.Windows.Threading.Dispatcher.Run();
+            operation.Task.GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} audit regression checks.");
+            return;
+        }
         if (args.Contains("--long-run"))
         {
             var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
