@@ -195,7 +195,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         get => _selectedSection;
         set
         {
-            if (value is not ("General" or "Behavior" or "AI & Chat" or "About") || value == _selectedSection) return;
+            if (value is not ("Welcome" or "General" or "Behavior" or "AI & Chat" or "About") || value == _selectedSection) return;
             _selectedSection = value; Changed();
         }
     }

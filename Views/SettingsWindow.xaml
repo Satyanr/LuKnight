@@ -99,6 +99,7 @@
                 </StackPanel>
                 <ListBox x:Name="Navigation" Grid.Row="2" Background="Transparent" BorderThickness="0" ItemContainerStyle="{StaticResource NavItem}"
                          SelectedValuePath="Tag" SelectedValue="{Binding SelectedSection, Mode=TwoWay}" VerticalAlignment="Top" ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Settings sections">
+                    <ListBoxItem Tag="Welcome" Content="Getting started"/>
                     <ListBoxItem Tag="General" Content="General"/>
                     <ListBoxItem Tag="Behavior" Content="Behavior"/>
                     <ListBoxItem Tag="AI &amp; Chat" Content="AI &amp; Chat"/>
@@ -114,6 +115,137 @@
             <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,0">
                 <Grid>
+                    <StackPanel x:Name="WelcomePanel">
+
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter
+                                    Property="Visibility"
+                                    Value="Collapsed"/>
+
+                                <Style.Triggers>
+                                    <DataTrigger
+                                        Binding="{Binding SelectedSection}"
+                                        Value="Welcome">
+
+                                        <Setter
+                                            Property="Visibility"
+                                            Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+
+
+                        <TextBlock
+                            Text="Welcome to Lu-Knight"
+                            Style="{StaticResource Title}"/>
+
+                        <TextBlock
+                            Text="Lu-Knight adalah desktop companion local-first. Anda dapat mulai tanpa memberikan akses tambahan apa pun."
+                            Style="{StaticResource Muted}"
+                            TextWrapping="Wrap"
+                            Margin="0,0,0,22"/>
+
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+
+                                <TextBlock
+                                    Text="Safe by default"
+                                    Style="{StaticResource CardTitle}"/>
+
+                                <TextBlock
+                                    Text="Pada instalasi baru, capability sensitif berikut tidak diaktifkan otomatis:"
+                                    TextWrapping="Wrap"
+                                    Margin="0,0,0,10"/>
+
+                                <TextBlock
+                                    Text="• Application awareness"
+                                    Margin="8,3"/>
+
+                                <TextBlock
+                                    Text="• File context"
+                                    Margin="8,3"/>
+
+                                <TextBlock
+                                    Text="• Clipboard context"
+                                    Margin="8,3"/>
+
+                                <TextBlock
+                                    Text="• System context"
+                                    Margin="8,3"/>
+
+                                <TextBlock
+                                    Text="• Screen context"
+                                    Margin="8,3"/>
+
+                                <TextBlock
+                                    Text="• Voice input"
+                                    Margin="8,3"/>
+
+                                <TextBlock
+                                    Text="• Desktop actions"
+                                    Margin="8,3"/>
+
+                                <TextBlock
+                                    Text="• Proactive companion"
+                                    Margin="8,3"/>
+
+                                <TextBlock
+                                    Text="Menutup panduan ini atau menyelesaikan setup tidak mengaktifkan capability tersebut."
+                                    Style="{StaticResource Muted}"
+                                    Margin="0,12,0,0"
+                                    TextWrapping="Wrap"/>
+
+                            </StackPanel>
+                        </Border>
+
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+
+                                <TextBlock
+                                    Text="Start simple"
+                                    Style="{StaticResource CardTitle}"/>
+
+                                <TextBlock
+                                    Text="Lu-Knight tetap dapat digunakan sebagai desktop companion dan menjalankan fungsi lokal yang tersedia. Gemini dapat dikonfigurasi terpisah melalui AI &amp; Chat."
+                                    TextWrapping="Wrap"/>
+
+                                <Button
+                                    Content="Open AI &amp; Chat settings"
+                                    Click="FirstRunAiSettings_Click"
+                                    HorizontalAlignment="Left"
+                                    Margin="0,16,0,0"/>
+
+                            </StackPanel>
+                        </Border>
+
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+
+                                <TextBlock
+                                    Text="You stay in control"
+                                    Style="{StaticResource CardTitle}"/>
+
+                                <TextBlock
+                                    Text="Desktop actions menggunakan permission dan confirmation sendiri. Protected/password fields, shell/script execution, dan target yang tidak tervalidasi tetap diblokir."
+                                    TextWrapping="Wrap"/>
+
+                            </StackPanel>
+                        </Border>
+
+
+                        <Button
+                            Content="Finish setup — keep current permissions"
+                            Click="CompleteFirstRun_Click"
+                            HorizontalAlignment="Left"
+                            Padding="16,8"
+                            Margin="0,4,0,16"/>
+
+                    </StackPanel>
                     <StackPanel x:Name="GeneralPanel">
                         <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding SelectedSection}" Value="General"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>
                         <TextBlock Text="General" Style="{StaticResource Title}"/>

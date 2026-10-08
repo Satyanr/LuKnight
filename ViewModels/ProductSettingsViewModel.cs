@@ -659,6 +659,75 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
         }
     }
 
+    public bool FirstRunCompleted =>
+        _services.Settings
+            .Current
+            .Onboarding
+            .Completed;
+
+    public bool CompleteFirstRun()
+    {
+        if (_disposed)
+        {
+            return false;
+        }
+
+
+        try
+        {
+            AppSettings updated =
+                SettingsService.Validate(
+                    FirstRunPolicy.Complete(
+                        _services.Settings
+                            .Current));
+
+
+            bool saved =
+                _services.Settings.Update(
+                    updated);
+
+
+            if (!saved)
+            {
+                _message =
+                    "First-run belum dapat disimpan. " +
+                    "Lu-Knight akan menampilkan panduan lagi saat startup berikutnya.";
+
+                Refresh();
+
+                return false;
+            }
+
+
+            _message =
+                null;
+
+            Refresh();
+
+            return true;
+        }
+        catch (Exception ex)
+            when (ex is
+                ArgumentException or
+                InvalidOperationException or
+                IOException or
+                UnauthorizedAccessException)
+        {
+            Debug.WriteLine(
+                DiagnosticPrivacy.TraceFailure(
+                    "First-run completion",
+                    ex));
+
+
+            _message =
+                "First-run belum dapat disimpan. Pengaturan akses tidak diubah.";
+
+            Refresh();
+
+            return false;
+        }
+    }
+
     public void Refresh()
     {
         if (_disposed) return;

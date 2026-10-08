@@ -104,6 +104,7 @@ $coreCases = @(
     '--mouse-input',
 
     '--behavior-settings',
+    '--first-run',
     '--product',
     '--startup',
     '--settings',

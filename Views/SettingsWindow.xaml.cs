@@ -97,6 +97,55 @@ public partial class SettingsWindow : Window
         if (result == MessageBoxResult.Yes)
             product.ClearLongTermMemory();
     }
+    public void ShowFirstRun()
+    {
+        Model.SelectedSection =
+            "Welcome";
+
+
+        PageScroll.ScrollToTop();
+    }
+
+    private void FirstRunAiSettings_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        Model.SelectedSection =
+            "AI & Chat";
+    }
+
+    private void CompleteFirstRun_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        ProductSettingsViewModel? product =
+            Model.Product;
+
+
+        if (product is null)
+        {
+            return;
+        }
+
+
+        if (!product.CompleteFirstRun())
+        {
+            MessageBox.Show(
+                this,
+                "Status first-run belum dapat disimpan. " +
+                "Tidak ada izin atau capability yang diubah.",
+                "Lu-Knight",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+
+            return;
+        }
+
+
+        Model.SelectedSection =
+            "General";
+    }
+
     public void SavePlacement()
     {
         if (_settings is null || !IsLoaded) return;

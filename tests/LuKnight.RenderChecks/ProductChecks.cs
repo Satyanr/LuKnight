@@ -83,7 +83,7 @@ internal static partial class Program
             File.WriteAllText(file, "{\"schemaVersion\":999,\"future\":true}"); var future = new SettingsService(file); future.Load();
             Require(!future.Save() && File.ReadAllText(file).Contains("999"), "Older app overwrites newer configuration");
             File.WriteAllText(file, "{\"general\":{\"alwaysOnTop\":false}}"); var old = new SettingsService(file); old.Load();
-            Require(old.Current.SchemaVersion == 2 && !old.Current.General.AlwaysOnTop, "Schema zero migration loses settings");
+            Require(old.Current.SchemaVersion == SettingsService.CurrentSchemaVersion && !old.Current.General.AlwaysOnTop, "Schema zero migration loses settings");
             File.WriteAllText(
                 file,
                 """
@@ -105,10 +105,13 @@ internal static partial class Program
 
             Require(
                 schemaOne.Current.SchemaVersion ==
-                    2 &&
+                    SettingsService.CurrentSchemaVersion &&
                 !schemaOne.Current
                     .Companion.Enabled,
                 "Schema-1 settings did not migrate to opt-in proactive companion defaults.");
+
+            Require(old.Current.Onboarding.Completed, "Existing schema-zero install unexpectedly re-entered first-run.");
+            Require(schemaOne.Current.Onboarding.Completed, "Existing schema-one install unexpectedly re-entered first-run.");
 
             AppSettings proactive =
                 schemaOne.Current with

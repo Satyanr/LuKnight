@@ -38,6 +38,17 @@ internal static partial class Program
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
         string output = Path.Combine(root, "artifacts", "renderchecks", "sprites");
         Directory.CreateDirectory(output);
+        if (args.Contains(
+                "--first-run"))
+        {
+            CheckFirstRun();
+
+
+            Console.WriteLine(
+                $"PASS: {_checks} first-run experience checks.");
+
+            return;
+        }
         if (args.Contains("--desktop-commands"))
         {
             Task.Run(CheckLocalDesktopCommandsAsync).GetAwaiter().GetResult();

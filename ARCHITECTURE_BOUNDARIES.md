@@ -431,3 +431,29 @@ primary file's original modification timestamp. The current capture is protected
 even when older snapshot timestamps are in the future. Voice completion settles
 on disposal or WAV finalization failure, and stale native callbacks cannot
 complete a later recording session.
+
+## First-run safety
+
+A fresh Lu-Knight installation starts with sensitive ambient capabilities
+disabled.
+
+The first-run experience is explanatory only. Completing onboarding must not
+enable:
+
+- application awareness
+- file context
+- clipboard context
+- system context
+- screen context
+- voice input
+- desktop actions
+- proactive companion
+
+Existing settings schemas are migrated with onboarding already completed so an
+application upgrade does not unexpectedly reopen first-run.
+
+Closing first-run without completing it leaves onboarding incomplete and causes
+it to be offered again on a later startup.
+
+First-run completion is persistent configuration only; it is not permission for
+any desktop action.

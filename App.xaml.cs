@@ -39,6 +39,45 @@ public partial class App : Application
         settings.Activate();
     }
 
+    private void OpenFirstRunWindow()
+    {
+        if (_isExiting ||
+            _character is null ||
+            _services is null ||
+            !FirstRunPolicy.ShouldShow(
+                _services.Settings.Current))
+        {
+            return;
+        }
+
+
+        SettingsWindow settings =
+            GetOrCreateSettingsWindow();
+
+
+        settings.ShowFirstRun();
+
+        settings.Topmost =
+            true;
+
+
+        if (settings.WindowState ==
+            WindowState.Minimized)
+        {
+            settings.WindowState =
+                WindowState.Normal;
+        }
+
+
+        if (!settings.IsVisible)
+        {
+            settings.Show();
+        }
+
+
+        settings.Activate();
+    }
+
     private SettingsWindow GetOrCreateSettingsWindow()
     {
         if (_settingsWindow is null)
@@ -81,6 +120,7 @@ public partial class App : Application
         if (!firstInstance) { _showRequest.Set(); Shutdown(); return; }
         string configPath = Path.Combine(SettingsService.UserDirectory, "settings.json");
         var config = new SettingsService(configPath); config.Load();
+        bool showFirstRun = FirstRunPolicy.ShouldShow(config.Current);
         if (!File.Exists(configPath))
         {
             try { config.Update(config.Current with { General = config.Current.General with { StartHidden = new RegistryStartupStore().ReadStartHidden() } }); }
@@ -169,6 +209,12 @@ public partial class App : Application
         _instanceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _instanceTimer.Tick += InstanceTimer_Tick;
         _instanceTimer.Start();
+        if (showFirstRun)
+        {
+            Dispatcher.BeginInvoke(
+                OpenFirstRunWindow,
+                DispatcherPriority.ApplicationIdle);
+        }
         _ = CheckUpdatesAtStartup();
     }
     private void AssistantNotificationTimer_Tick(

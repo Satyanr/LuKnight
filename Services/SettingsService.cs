@@ -8,6 +8,8 @@ namespace LuKnight.Services;
 
 public sealed class SettingsService
 {
+    public const int CurrentSchemaVersion = 3;
+
     public static string UserDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LuKnight");
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -229,7 +231,7 @@ public sealed class SettingsService
                 if (property.Name.Equals("schemaVersion", StringComparison.OrdinalIgnoreCase))
                     schema = property.Value.GetInt32();
 
-            if (schema > 2)
+            if (schema > CurrentSchemaVersion)
             {
                 return
                     CommittedStateCandidateStatus
@@ -284,25 +286,48 @@ public sealed class SettingsService
         AppSettings settings,
         int schema)
     {
-        if (schema is < 0 or > 2)
+        if (schema is < 0 or >
+            CurrentSchemaVersion)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(schema));
         }
 
+
+        OnboardingSettings onboarding =
+            schema < 3
+                ? new OnboardingSettings
+                {
+                    //
+                    // Existing installation.
+                    //
+                    // Never show the new first-run wizard
+                    // merely because Lu-Knight was updated.
+                    //
+
+                    Completed =
+                        true
+                }
+                : settings.Onboarding ??
+                  new OnboardingSettings();
+
+
         return settings with
         {
             SchemaVersion =
-                2,
+                CurrentSchemaVersion,
 
             Companion =
                 settings.Companion ??
-                new CompanionSettings()
+                new CompanionSettings(),
+
+            Onboarding =
+                onboarding
         };
     }
     public static AppSettings Validate(AppSettings value)
     {
-        if (value.General is null || value.Behavior is null || value.Chat is null || value.Companion is null) throw new ArgumentException("Missing settings section.");
+        if (value.General is null || value.Behavior is null || value.Chat is null || value.Companion is null || value.Onboarding is null) throw new ArgumentException("Missing settings section.");
         var b = value.Behavior; var c = value.Chat;
         if (!Enum.IsDefined(b.Activity) || !Enum.IsDefined(b.Speed) || !Enum.IsDefined(b.SleepAfter) || !Enum.IsDefined(b.Nap) ||
             !Enum.IsDefined(c.DesktopPermission) || !Enum.IsDefined(c.Provider) || !Enum.IsDefined(c.Language) || !Enum.IsDefined(c.ResponseLength) || !Enum.IsDefined(c.Style) ||
@@ -317,7 +342,7 @@ public sealed class SettingsService
         if (m is not null && !Finite(m.Left, m.MonitorLeft, m.MonitorTop)) m = null;
         var last = value.LastUpdateCheck;
         if (last > DateTimeOffset.UtcNow.AddMinutes(5)) last = null;
-        return value with { SchemaVersion = 2, SettingsWindow = w, Mascot = m, LastUpdateCheck = last };
+        return value with { SchemaVersion = CurrentSchemaVersion, SettingsWindow = w, Mascot = m, LastUpdateCheck = last };
     }
 
     public bool Update(AppSettings settings)

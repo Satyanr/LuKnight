@@ -93,13 +93,23 @@ public sealed record CompanionSettings
     } = true;
 }
 
+public sealed record OnboardingSettings
+{
+    public bool Completed
+    {
+        get;
+        init;
+    } = false;
+}
+
 public sealed record AppSettings
 {
-    public int SchemaVersion { get; init; } = 2;
+    public int SchemaVersion { get; init; } = 3;
     public GeneralSettings General { get; init; } = new();
     public BehaviorOptions Behavior { get; init; } = new();
     public ChatSettings Chat { get; init; } = new();
     public CompanionSettings Companion { get; init; } = new();
+    public OnboardingSettings Onboarding { get; init; } = new();
     public WindowPlacement? SettingsWindow { get; init; }
     public MascotPlacement? Mascot { get; init; }
     public DateTimeOffset? LastUpdateCheck { get; init; }
