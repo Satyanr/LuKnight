@@ -698,6 +698,36 @@ Final development focuses on:
 
 Lu-Knight includes automated checks for multiple subsystems.
 
+Run the core release gate (builds Release and writes sanitized summaries):
+
+Use an interactive Windows desktop session for the core WPF capture/cursor checks.
+
+```powershell
+./tools/Run-Regression.ps1
+```
+
+Dedicated native fixture tests are a separate opt-in:
+
+```powershell
+./tools/Run-Regression.ps1 -IncludeNativeFixtures
+```
+
+Ambient inspection, real application opening, and external AI remain separate
+explicit choices. To select all tiers:
+
+```powershell
+./tools/Run-Regression.ps1 `
+    -IncludeNativeFixtures `
+    -IncludeAmbientDesktop `
+    -IncludeInteractiveDesktop `
+    -IncludeExternalAi
+```
+
+See [REGRESSION_MATRIX.md](REGRESSION_MATRIX.md) for tier boundaries. The runner
+writes only `artifacts/regression/regression-summary.json` and
+`artifacts/regression/regression-summary.md`; raw child output is not persisted.
+Use `-NoBuild` only when the Release test project is already built.
+
 Typical development checks:
 
 ```powershell

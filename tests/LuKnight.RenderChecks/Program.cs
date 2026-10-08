@@ -50,6 +50,12 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} startup isolation checks.");
             return;
         }
+        if (args.Contains("--regression-matrix"))
+        {
+            CheckRegressionMatrix();
+            Console.WriteLine($"PASS: {_checks} release regression matrix checks.");
+            return;
+        }
         if (args.Contains("--performance"))
         {
             var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;

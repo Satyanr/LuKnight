@@ -1,5 +1,28 @@
 # Lu-Knight Architecture Boundaries
 
+## Release regression evidence
+
+Release regression evidence is privacy-minimized.
+
+Persisted regression summaries may contain:
+
+- commit hash
+- runner identifier
+- execution tier
+- exit code / pass-fail state
+- duration
+- runtime/tool version
+
+They must not persist raw test stdout/stderr, desktop window titles, process
+names, file paths, application paths, UI Automation trees, screenshots,
+clipboard content or provider payloads.
+
+Tests that inspect ambient user desktop state, open real applications or use an
+external AI provider require separate explicit opt-in switches.
+
+A missing external CI/check status is never treated as a successful regression
+run.
+
 ## Idle performance
 
 High-frequency desktop loops must exist only while they have active work.
