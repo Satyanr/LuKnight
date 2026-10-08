@@ -50,6 +50,12 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} startup isolation checks.");
             return;
         }
+        if (args.Contains("--native-fixture-audit"))
+        {
+            CheckNativeFixtureIsolation();
+            Console.WriteLine($"PASS: {_checks} native fixture isolation checks.");
+            return;
+        }
         if (args.Contains("--regression-matrix"))
         {
             CheckRegressionMatrix();

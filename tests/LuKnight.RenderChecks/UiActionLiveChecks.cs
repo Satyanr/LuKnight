@@ -605,7 +605,8 @@ internal static partial class Program
                     UnauthorizedAccessException)
             {
                 Console.WriteLine(
-                    $"Warning: temporary workflow folder cleanup failed: {ex.Message}");
+                    "Warning: temporary workflow folder cleanup failed " +
+                    $"({DiagnosticPrivacy.ExceptionTag(ex)}).");
             }
         }
     }
@@ -748,7 +749,8 @@ internal static partial class Program
             await StopUiFixtureAsync(fixture);
             try { Directory.Delete(skillDirectory, recursive: true); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            { Console.WriteLine($"Warning: temporary skill folder cleanup failed: {ex.Message}"); }
+            { Console.WriteLine("Warning: temporary skill folder cleanup failed " +
+                $"({DiagnosticPrivacy.ExceptionTag(ex)})."); }
         }
     }
 
@@ -2099,9 +2101,15 @@ internal static partial class Program
                         0)
             };
 
+        mouseOnly.MouseLeftButtonDown += (_, e) =>
+        {
+            mouseOnly.CaptureMouse();
+            e.Handled = true;
+        };
         mouseOnly.MouseLeftButtonUp +=
             (_, e) =>
             {
+                mouseOnly.ReleaseMouseCapture();
                 e.Handled =
                     true;
 
@@ -2286,7 +2294,19 @@ internal static partial class Program
         mouseTarget.Click += (_, _) => window.Title = $"{initialTitle} — MOUSE CLICKED";
         panel.Children.Add(description);
         panel.Children.Add(refresh);
-        panel.Children.Add(save);
+        // Keep setup and prohibited controls on the same row so the keyboard
+        // fixture remains visible without changing its desktop geometry.
+        var prohibited = new Button { Content = "OK", Width = 90, Height = 40 };
+        AutomationProperties.SetName(prohibited, "OK");
+        prohibited.Click += (_, _) => window.Title = $"{initialTitle} — PROHIBITED INVOKED";
+        var focusTarget = new Button { Content = "Focus Target", Width = 110, Height = 40 };
+        AutomationProperties.SetName(focusTarget, "Focus Target");
+        var saveRow = new StackPanel { Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Center };
+        saveRow.Children.Add(save);
+        saveRow.Children.Add(prohibited);
+        saveRow.Children.Add(focusTarget);
+        panel.Children.Add(saveRow);
         panel.Children.Add(mouseTarget);
         panel.Children.Add(mouseOnly);
         panel.Children.Add(assistGrid);
@@ -2470,21 +2490,23 @@ internal static partial class Program
             Require(
                 afterClickSnapshot.Success,
                 afterClickSnapshot.Error ?? "Mouse fixture recapture failed.");
-            DesktopUiControlResolution save = DesktopUiControlResolver.Resolve(
+            DesktopUiControlResolution prohibited = DesktopUiControlResolver.Resolve(
                 afterClickSnapshot,
-                "Save",
+                "OK",
                 "Button");
-            Require(save.Match is not null, "Save button disappeared from mouse fixture.");
-            DesktopActionResult blockedSave = await mouse.ClickAsync(
+            Require(prohibited.Match is not null, "Prohibited button disappeared from mouse fixture.");
+            Require(DesktopUiActionRiskClassifier.ClassifyButton(prohibited.Match!, clickedWindow).Risk ==
+                AssistantActionRisk.Prohibited, "Mouse fixture negative control is not prohibited.");
+            DesktopActionResult blocked = await mouse.ClickAsync(
                 clickedWindow,
-                save.Match!.Path,
-                DesktopUiNodeIdentity.Fingerprint(save.Match));
-            Require(!blockedSave.Success, "Safe mouse bypassed sensitive-button policy.");
+                prohibited.Match!.Path,
+                DesktopUiNodeIdentity.Fingerprint(prohibited.Match));
+            Require(!blocked.Success, "Safe mouse bypassed prohibited-button policy.");
             await Task.Delay(250);
             Require(
                 windows.Capture().Any(x =>
                     x.ProcessId == fixture.Id && x.Title == clickedTitle),
-                "Blocked Save button was clicked by mouse fallback.");
+                "Prohibited button was clicked by mouse fallback.");
 
             Console.WriteLine();
             Console.WriteLine("Native bounded mouse click activated Mouse Target.");
@@ -3170,6 +3192,21 @@ internal static partial class Program
                 snapshot.Error ??
                 "Keyboard fallback fixture capture failed.");
 
+            // A real click on a harmless fixture button establishes foreground
+            // ownership under Windows focus rules before testing text fallback.
+            ValidateFixtureTarget(window, fixture, initialTitle);
+            DesktopUiControlResolution focus = DesktopUiControlResolver.Resolve(
+                snapshot, "Focus Target", "Button");
+            Require(focus.Match is not null, "Keyboard fixture focus button is missing.");
+            var setupMouse = new WindowsDesktopMouseActionExecutor();
+            DesktopActionResult focused = await setupMouse.ClickAsync(
+                window, focus.Match!.Path, DesktopUiNodeIdentity.Fingerprint(focus.Match));
+            Require(focused.Success, focused.Message);
+            await Task.Delay(250);
+            window = await WaitForFixtureWindowAsync(windows, fixture, initialTitle);
+            snapshot = await ui.CaptureAsync(window);
+            Require(snapshot.Success, snapshot.Error ?? "Focused keyboard fixture capture failed.");
+
             DesktopUiControlResolution resolved =
                 DesktopUiControlResolver.Resolve(
                     snapshot,
@@ -3787,6 +3824,20 @@ internal static partial class Program
         }
     }
 
+    private static void ValidateFixtureTarget(
+        DesktopWindowTarget target,
+        Process fixture,
+        string expectedTitle)
+    {
+        if (target.Handle == nint.Zero ||
+            target.ProcessId != fixture.Id ||
+            !string.Equals(target.Title, expectedTitle, StringComparison.Ordinal) ||
+            !target.Title.StartsWith(UiFixturePrefix + " ", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Native fixture ownership validation failed.");
+        }
+    }
+
     private static async Task<DesktopWindowTarget> WaitForFixtureWindowAsync(
         DesktopWindowTargetService windows,
         Process fixture,
@@ -3805,7 +3856,10 @@ internal static partial class Program
                 x.ProcessId == fixture.Id &&
                 string.Equals(x.Title, expectedTitle, StringComparison.Ordinal));
             if (target is not null)
+            {
+                ValidateFixtureTarget(target, fixture, expectedTitle);
                 return target;
+            }
             await Task.Delay(100);
         }
 

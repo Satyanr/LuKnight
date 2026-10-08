@@ -23,6 +23,29 @@ external AI provider require separate explicit opt-in switches.
 A missing external CI/check status is never treated as a successful regression
 run.
 
+### Native fixture isolation
+
+Native regression that invokes UI Automation, mouse, keyboard, planner,
+workflow, or scheduler desktop actions must target a dedicated Lu-Knight test
+fixture.
+
+Fixture targeting requires both:
+
+- the exact spawned fixture process ID
+- the exact randomized fixture window title
+
+Fixture processes are launched directly with shell execution disabled.
+
+Native fixture tests must not use "current window", foreground-window discovery,
+or arbitrary ambient application selection as an execution target.
+
+Ambient read-only diagnostics, real installed-application tests and external AI
+tests remain separate opt-in regression tiers.
+
+A native fixture regression may move the mouse, focus its own test window, type
+into its own test field, or invoke its own UIA controls. Therefore it still
+requires an interactive Windows desktop session.
+
 ## Idle performance
 
 High-frequency desktop loops must exist only while they have active work.

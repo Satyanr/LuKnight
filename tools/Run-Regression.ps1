@@ -40,6 +40,7 @@ New-Item `
 
 $coreCases = @(
     '--regression-matrix',
+    '--native-fixture-audit',
 
     '--architecture',
     '--security',

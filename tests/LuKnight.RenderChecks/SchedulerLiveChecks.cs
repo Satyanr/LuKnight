@@ -792,7 +792,8 @@ internal static partial class Program
                     UnauthorizedAccessException)
             {
                 Console.WriteLine(
-                    $"Warning: scheduler live cleanup failed: {ex.Message}");
+                    "Warning: scheduler live cleanup failed " +
+                    $"({DiagnosticPrivacy.ExceptionTag(ex)}).");
             }
         }
     }

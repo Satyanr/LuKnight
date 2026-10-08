@@ -930,7 +930,8 @@ internal static partial class Program
                     UnauthorizedAccessException)
             {
                 Console.WriteLine(
-                    $"Warning: companion live cleanup failed: {ex.Message}");
+                    "Warning: companion live cleanup failed " +
+                    $"({DiagnosticPrivacy.ExceptionTag(ex)}).");
             }
         }
     }

@@ -26,3 +26,13 @@ passed.
 
 Native fixture success does not replace physical microphone, speaker,
 multi-monitor, tray-shell or installer testing.
+
+Native Fixture tests may temporarily move the mouse, change keyboard focus,
+open a dedicated Lu-Knight fixture window, and exercise Windows tray/UIA APIs.
+
+They are isolated by randomized fixture title plus spawned-process PID and must
+not target unrelated user applications. The source-only `--native-fixture-audit`
+runs in the core tier to check these boundaries.
+
+Avoid using the mouse/keyboard while this tier is running because those tests
+intentionally verify native input fallback against the fixture.
