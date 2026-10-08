@@ -56,6 +56,12 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} native fixture isolation checks.");
             return;
         }
+        if (args.Contains("--regression-signoff"))
+        {
+            CheckRegressionSignoff();
+            Console.WriteLine($"PASS: {_checks} regression sign-off checks.");
+            return;
+        }
         if (args.Contains("--regression-matrix"))
         {
             CheckRegressionMatrix();

@@ -27,6 +27,10 @@ passed.
 Native fixture success does not replace physical microphone, speaker,
 multi-monitor, tray-shell or installer testing.
 
+Generate commit-bound acceptance statuses with `tools/New-RegressionSignoff.ps1`.
+See [REGRESSION_SIGNOFF.md](REGRESSION_SIGNOFF.md) for evidence rules and the
+physical checklist; untested physical areas default to `NotRun`.
+
 Native Fixture tests may temporarily move the mouse, change keyboard focus,
 open a dedicated Lu-Knight fixture window, and exercise Windows tray/UIA APIs.
 

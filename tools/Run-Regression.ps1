@@ -41,6 +41,7 @@ New-Item `
 $coreCases = @(
     '--regression-matrix',
     '--native-fixture-audit',
+    '--regression-signoff',
 
     '--architecture',
     '--security',

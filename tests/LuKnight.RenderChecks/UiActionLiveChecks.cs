@@ -1796,7 +1796,7 @@ internal static partial class Program
     }
 
     private sealed class MouseOnlyButton
-        : Border
+        : Button
     {
         public MouseOnlyButton()
         {
@@ -1808,9 +1808,6 @@ internal static partial class Program
 
             BorderThickness =
                 new Thickness(1);
-
-            CornerRadius =
-                new CornerRadius(3);
 
             Padding =
                 new Thickness(
@@ -1825,7 +1822,7 @@ internal static partial class Program
             Cursor =
                 Cursors.Hand;
 
-            Child =
+            Content =
                 new TextBlock
                 {
                     Text =
@@ -2101,18 +2098,11 @@ internal static partial class Program
                         0)
             };
 
-        mouseOnly.MouseLeftButtonDown += (_, e) =>
-        {
-            mouseOnly.CaptureMouse();
-            e.Handled = true;
-        };
-        mouseOnly.MouseLeftButtonUp +=
-            (_, e) =>
+        // Use WPF's real Button input lifecycle for capture and activation,
+        // while the custom automation peer still exposes no InvokePattern.
+        mouseOnly.Click +=
+            (_, _) =>
             {
-                mouseOnly.ReleaseMouseCapture();
-                e.Handled =
-                    true;
-
                 window.Title =
                     $"{initialTitle} — MOUSE FALLBACK CLICKED";
             };
