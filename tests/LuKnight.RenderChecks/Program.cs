@@ -59,6 +59,8 @@ internal static partial class Program
                 {
                     CheckIdlePerformanceBoundaries();
                     CheckBehaviorIdleTimers();
+                    CheckSnapshotAllocationStructure();
+                    CheckWindowResolverPerformanceSemantics();
                 }
                 finally { dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Background); }
             });

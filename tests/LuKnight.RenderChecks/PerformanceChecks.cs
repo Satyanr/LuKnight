@@ -3,10 +3,92 @@ using System.Windows;
 using System.Windows.Threading;
 using LuKnight.Behaviors;
 using LuKnight.Physics;
+using LuKnight.Services;
 using LuKnight.Views;
 
 internal static partial class Program
 {
+    private static void CheckSnapshotAllocationStructure()
+    {
+        string root = AppContext.BaseDirectory;
+        while (!File.Exists(Path.Combine(root, "LuKnight.csproj")))
+            root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found.");
+        string awareness = File.ReadAllText(Path.Combine(root, "Services", "DesktopApplicationAwarenessService.cs"));
+        Require(!awareness.Contains(".OrderBy(", StringComparison.Ordinal),
+            "Application awareness redundantly sorts native Z-order snapshot.");
+        Require(awareness.Contains("FormatApplications(", StringComparison.Ordinal),
+            "Application awareness still requires LINQ formatting allocation.");
+        string targetService = File.ReadAllText(Path.Combine(root, "Services", "DesktopWindowTargetService.cs"));
+        Require(!targetService.Contains("new { Window", StringComparison.Ordinal) &&
+                !targetService.Contains(".OrderByDescending(", StringComparison.Ordinal),
+            "Window resolver still builds LINQ scoring snapshots.");
+        Require(targetService.Contains("ResolveCurrentWindow(", StringComparison.Ordinal),
+            "Current-window resolver was not converted to single-pass scan.");
+    }
+
+    private static void CheckWindowResolverPerformanceSemantics()
+    {
+        DesktopWindowTarget[] unsorted =
+        [
+            new((nint)3, 3, "code", "Project", 8, false, false),
+            new((nint)1, 1, "chrome", "Gmail", 2, false, false),
+            new((nint)2, 2, "edge", "Docs", 5, true, false)
+        ];
+        DesktopWindowResolution active = DesktopWindowTargetService.ResolveSnapshot(unsorted, "window aktif");
+        Require(active.Match?.Title == "Gmail", "Current-window resolver lost Z-order semantics.");
+        var foreground = unsorted.Select(x => x.Handle == (nint)3 ? x with { IsForeground = true } : x).ToArray();
+        Require(DesktopWindowTargetService.ResolveSnapshot(foreground, "window aktif").Match?.Title == "Project",
+            "Foreground window no longer overrides Z-order fallback.");
+        var minimized = unsorted.Select(x => x with { IsMinimized = true }).ToArray();
+        Require(DesktopWindowTargetService.ResolveSnapshot(minimized, "active").Match?.Title == "Gmail",
+            "All-minimized fallback lost Z-order semantics.");
+        Require(!DesktopWindowTargetService.ResolveSnapshot(Array.Empty<DesktopWindowTarget>(), "active").Found,
+            "Empty current-window snapshot resolved a target.");
+        DesktopWindowTarget[] ambiguity =
+        [
+            new((nint)10, 10, "chrome", "Work", 9, false, false),
+            new((nint)11, 11, "chrome", "Personal", 3, false, false)
+        ];
+        var ambiguous = DesktopWindowTargetService.ResolveSnapshot(ambiguity, "chrome");
+        Require(ambiguous.Ambiguous && ambiguous.Alternatives.Count == 2 && ambiguous.Alternatives[0].ZOrder == 3,
+            "Allocation-tuned resolver changed ambiguity ordering.");
+
+        // A later, higher-scoring window must discard earlier partial matches.
+        DesktopWindowTarget[] ranking =
+        [
+            new((nint)20, 20, "chrome", "Other", 0, false, false),
+            new((nint)21, 21, "editor", "Chrome settings", 1, false, false),
+            new((nint)22, 22, "browser", "Chrome", 2, false, false)
+        ];
+        Require(DesktopWindowTargetService.ResolveSnapshot(ranking, "chrome").Match?.Handle == (nint)22,
+            "Title exact match lost precedence over title substring and process match.");
+        Require(DesktopWindowTargetService.ResolveSnapshot(unsorted, "CODE   Project").Match?.Handle == (nint)3,
+            "Combined exact match or normalization changed.");
+        Require(DesktopWindowTargetService.ResolveSnapshot(unsorted, "code proj").Match?.Handle == (nint)3,
+            "Tokens split across process and title failed to match.");
+        Require(!DesktopWindowTargetService.ResolveSnapshot(unsorted, "code missing").Found,
+            "Resolver accepted a missing query token.");
+        Require(!DesktopWindowTargetService.ResolveSnapshot(unsorted, "x").Found &&
+                !DesktopWindowTargetService.ResolveSnapshot(unsorted, new string('x', 201)).Found,
+            "Resolver query length boundary changed.");
+        Require(unsorted[0].Fingerprint != (unsorted[0] with { Title = "Changed" }).Fingerprint,
+            "Fingerprint was cached across record copies.");
+
+        DesktopApplicationContext[] applications =
+        [
+            new((nint)1, 1, "chrome", DesktopApplicationKind.Browser),
+            new((nint)3, 3, "code", DesktopApplicationKind.CodeEditor)
+        ];
+        Require(DesktopApplicationAwarenessService.FormatApplications(applications)
+                .SequenceEqual(applications.Select(DesktopApplicationAwarenessService.Format)),
+            "Application formatting changed order or privacy semantics.");
+        Require(DesktopApplicationAwarenessService.FormatApplications(Array.Empty<DesktopApplicationContext>()).Length == 0,
+            "Empty application formatting returned entries.");
+        Require(!DesktopApplicationAwarenessService.Capture(0).HasApplications &&
+                !DesktopApplicationAwarenessService.Capture(-1).HasApplications,
+            "Non-positive capture limits returned applications.");
+    }
+
     private static void CheckIdlePerformanceBoundaries()
     {
         using var physics = new CharacterPhysicsController(new Window(), new CharacterView(),

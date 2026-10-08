@@ -665,10 +665,7 @@ public partial class MainWindow : Window
                     : null,
 
             VisibleApplications =
-                snapshot.Applications
-                    .Select(
-                        DesktopApplicationAwarenessService.Format)
-                    .ToArray()
+                DesktopApplicationAwarenessService.FormatApplications(snapshot.Applications)
         };
     }
 

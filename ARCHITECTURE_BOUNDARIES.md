@@ -21,6 +21,20 @@ Performance optimizations must not reduce permission, confirmation, target
 revalidation, or other safety checks. Callback counts inferred from timer
 intervals are not a physical CPU benchmark.
 
+### Snapshot allocation
+
+Window/action target freshness is a safety requirement.
+
+Performance tuning must not cache a `DesktopWindowTarget` across preparation
+and execution or bypass native target revalidation. Fingerprints are computed
+from the current record fields, including after a record copy changes its title.
+
+Native window enumeration already carries Z-order; consumers should not create
+additional sorted snapshots when the same ordering is available.
+
+Resolver scoring should avoid full intermediate LINQ projections when a
+single-pass scan produces identical ambiguity and ranking semantics.
+
 ## Trust model
 
 Gemini may interpret or generate responses.

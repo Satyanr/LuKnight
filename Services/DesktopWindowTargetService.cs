@@ -63,9 +63,10 @@ public sealed class DesktopWindowTargetService : IDesktopWindowTargetCatalog
     public IReadOnlyList<DesktopWindowTarget> Capture()
     {
         nint foreground = GetForegroundWindow();
-        var targets = new List<DesktopWindowTarget>();
+        IReadOnlyList<DesktopWindowInfo> windows = DesktopWindowService.GetApplicationWindows();
+        var targets = new List<DesktopWindowTarget>(windows.Count);
 
-        foreach (DesktopWindowInfo window in DesktopWindowService.GetApplicationWindows().OrderBy(x => x.ZOrder))
+        foreach (DesktopWindowInfo window in windows)
         {
             if (!DesktopApplicationService.TryGetApplication(window.Handle, out DesktopApplicationContext app))
                 continue;
@@ -105,28 +106,60 @@ public sealed class DesktopWindowTargetService : IDesktopWindowTargetCatalog
             return new(null, Array.Empty<DesktopWindowTarget>());
 
         if (normalized is "aktif" or "active" or "current" or "foreground" or "window aktif" or "current window")
-        {
-            DesktopWindowTarget? foreground = windows.FirstOrDefault(x => x.IsForeground);
-            if (foreground is not null)
-                return new(foreground, new[] { foreground });
-
-            DesktopWindowTarget? externalTop = windows.Where(x => !x.IsMinimized).OrderBy(x => x.ZOrder).FirstOrDefault();
-            externalTop ??= windows.OrderBy(x => x.ZOrder).FirstOrDefault();
-            return externalTop is null ? new(null, Array.Empty<DesktopWindowTarget>()) : new(externalTop, new[] { externalTop });
-        }
+            return ResolveCurrentWindow(windows);
 
         string[] tokens = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var scored = windows.Select(window => new { Window = window, Score = Score(window, normalized, tokens) })
-            .Where(x => x.Score > 0)
-            .OrderByDescending(x => x.Score)
-            .ThenBy(x => x.Window.ZOrder)
-            .ToArray();
-        if (scored.Length == 0)
+        int bestScore = 0;
+        List<DesktopWindowTarget>? best = null;
+        for (int i = 0; i < windows.Count; i++)
+        {
+            DesktopWindowTarget window = windows[i];
+            int score = Score(window, normalized, tokens);
+            if (score <= 0) continue;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best ??= new List<DesktopWindowTarget>(2);
+                best.Clear();
+                best.Add(window);
+            }
+            else if (score == bestScore)
+            {
+                best!.Add(window);
+            }
+        }
+        if (best is null || best.Count == 0)
             return new(null, Array.Empty<DesktopWindowTarget>());
+        if (best.Count == 1)
+            return new(best[0], new[] { best[0] });
 
-        int bestScore = scored[0].Score;
-        DesktopWindowTarget[] best = scored.Where(x => x.Score == bestScore).Select(x => x.Window).ToArray();
-        return best.Length == 1 ? new(best[0], best) : new(null, best);
+        best.Sort(static (left, right) => left.ZOrder.CompareTo(right.ZOrder));
+        return new(null, best.ToArray());
+    }
+
+    private static DesktopWindowResolution ResolveCurrentWindow(IReadOnlyList<DesktopWindowTarget> windows)
+    {
+        DesktopWindowTarget? foreground = null;
+        DesktopWindowTarget? highestVisible = null;
+        DesktopWindowTarget? highestAny = null;
+        for (int i = 0; i < windows.Count; i++)
+        {
+            DesktopWindowTarget candidate = windows[i];
+            if (candidate.IsForeground)
+            {
+                foreground = candidate;
+                break;
+            }
+            if (highestAny is null || candidate.ZOrder < highestAny.ZOrder)
+                highestAny = candidate;
+            if (!candidate.IsMinimized &&
+                (highestVisible is null || candidate.ZOrder < highestVisible.ZOrder))
+                highestVisible = candidate;
+        }
+        DesktopWindowTarget? selected = foreground ?? highestVisible ?? highestAny;
+        return selected is null
+            ? new(null, Array.Empty<DesktopWindowTarget>())
+            : new(selected, new[] { selected });
     }
 
     public bool TryResolveById(string id, out DesktopWindowTarget target)
@@ -135,24 +168,42 @@ public sealed class DesktopWindowTargetService : IDesktopWindowTargetCatalog
         if (string.IsNullOrWhiteSpace(id))
             return false;
 
-        DesktopWindowTarget? match = Capture().FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.Ordinal));
-        if (match is null)
-            return false;
-
-        target = match;
-        return true;
+        IReadOnlyList<DesktopWindowTarget> windows = Capture();
+        for (int i = 0; i < windows.Count; i++)
+        {
+            DesktopWindowTarget candidate = windows[i];
+            if (!string.Equals(candidate.Id, id, StringComparison.Ordinal)) continue;
+            target = candidate;
+            return true;
+        }
+        return false;
     }
 
     private static int Score(DesktopWindowTarget window, string query, IReadOnlyList<string> tokens)
     {
         string title = Normalize(window.Title);
         string process = Normalize(window.ProcessName);
-        string combined = process + " " + title;
         if (title == query) return 100;
-        if (combined == query) return 95;
+        if (IsCombinedExact(process, title, query)) return 95;
         if (title.Contains(query, StringComparison.Ordinal)) return 85;
         if (process == query) return 70;
-        return tokens.All(token => combined.Contains(token, StringComparison.Ordinal)) ? 60 : 0;
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            string token = tokens[i];
+            if (!process.Contains(token, StringComparison.Ordinal) &&
+                !title.Contains(token, StringComparison.Ordinal))
+                return 0;
+        }
+        return tokens.Count > 0 ? 60 : 0;
+    }
+
+    private static bool IsCombinedExact(string process, string title, string query)
+    {
+        int expectedLength = process.Length + 1 + title.Length;
+        return query.Length == expectedLength &&
+            query.StartsWith(process, StringComparison.Ordinal) &&
+            query[process.Length] == ' ' &&
+            query.AsSpan(process.Length + 1).SequenceEqual(title.AsSpan());
     }
 
     private static string ReadTitle(nint hwnd)

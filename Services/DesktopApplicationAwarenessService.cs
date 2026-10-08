@@ -19,12 +19,13 @@ public static class DesktopApplicationAwarenessService
                 Array.Empty<DesktopApplicationContext>());
         }
 
-        var applications = new List<DesktopApplicationContext>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        IReadOnlyList<DesktopWindowInfo> windows = DesktopWindowService.GetVisibleWindows();
+        int capacity = Math.Min(maxApplications, windows.Count);
+        var applications = new List<DesktopApplicationContext>(capacity);
+        var seen = new HashSet<string>(capacity, StringComparer.OrdinalIgnoreCase);
 
-        foreach (DesktopWindowInfo window in DesktopWindowService
-            .GetVisibleWindows()
-            .OrderBy(window => window.ZOrder))
+        // Native enumeration already supplies Z-order.
+        foreach (DesktopWindowInfo window in windows)
         {
             if (!DesktopApplicationService.TryGetApplication(
                 window.Handle,
@@ -46,13 +47,21 @@ public static class DesktopApplicationAwarenessService
             }
         }
 
-        DesktopApplicationContext? primary = applications.Count > 0
-            ? applications[0]
-            : null;
+        if (applications.Count == 0)
+            return new(null, Array.Empty<DesktopApplicationContext>());
 
-        return new DesktopApplicationSnapshot(
-            primary,
-            applications.ToArray());
+        DesktopApplicationContext[] snapshot = applications.ToArray();
+        return new(snapshot[0], snapshot);
+    }
+
+    public static string[] FormatApplications(IReadOnlyList<DesktopApplicationContext> applications)
+    {
+        ArgumentNullException.ThrowIfNull(applications);
+        if (applications.Count == 0) return Array.Empty<string>();
+        var formatted = new string[applications.Count];
+        for (int i = 0; i < applications.Count; i++)
+            formatted[i] = Format(applications[i]);
+        return formatted;
     }
 
     public static string Format(DesktopApplicationContext application)
