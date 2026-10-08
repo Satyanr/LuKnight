@@ -13,12 +13,44 @@ public sealed class CharacterPhysicsController : IDisposable
 
     private TimeSpan? _lastRenderTime;
     private bool _suspended;
+    private bool _renderingSubscribed;
+    private bool _disposed;
+
+    private bool NeedsRendering =>
+        !_suspended && (_trackingPointer || _isGrabbed || _isFalling);
+
+    private void UpdateRenderingSubscription()
+    {
+        if (!_disposed && NeedsRendering)
+            EnsureRenderingSubscription();
+        else
+            ReleaseRenderingSubscription();
+    }
+
+    private void EnsureRenderingSubscription()
+    {
+        if (_renderingSubscribed) return;
+        CompositionTarget.Rendering += OnRendering;
+        _renderingSubscribed = true;
+        _lastRenderTime = null;
+        _lastTickAt = DateTime.UtcNow;
+    }
+
+    private void ReleaseRenderingSubscription()
+    {
+        if (!_renderingSubscribed) return;
+        CompositionTarget.Rendering -= OnRendering;
+        _renderingSubscribed = false;
+        _lastRenderTime = null;
+    }
 
     public void SetSuspended(bool suspended)
     {
+        if (_suspended == suspended) return;
         _suspended = suspended;
         _lastRenderTime = null;
         _lastTickAt = DateTime.UtcNow;
+        UpdateRenderingSubscription();
     }
 
     private bool _isGrabbed;
@@ -33,25 +65,30 @@ public sealed class CharacterPhysicsController : IDisposable
 
     public void PrepareGrab(Point position, double time)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         _trackingPointer = true;
         _pointerVelocity.Reset(position, time);
+        UpdateRenderingSubscription();
     }
 
     public void CancelPreparedGrab()
     {
         _trackingPointer = false;
         _lastTickAt = DateTime.UtcNow;
+        UpdateRenderingSubscription();
     }
 
     public void ResetMotion()
     {
-        CancelPreparedGrab();
+        _trackingPointer = false;
         _isGrabbed = _isFalling = _suspended = false;
         _velocityX = _velocityY = _maximumImpactSpeed = 0;
         _targetWindowHandle = nint.Zero;
         _bounceCount = _shakeReversalCount = _lastShakeDirection = 0;
         _wasShakenDuringGrab = false;
         _lastRenderTime = null;
+        _lastTickAt = DateTime.UtcNow;
+        UpdateRenderingSubscription();
     }
 
     public void SamplePointer(Point position)
@@ -220,14 +257,13 @@ DateTime now)
         _cursorSource = cursorSource;
         _pointerClock = pointerClock ?? (() => System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency);
 
-        CompositionTarget.Rendering += OnRendering;
-
         _lastTickAt =
             DateTime.UtcNow;
     }
 
     public bool BeginGrab(Point? anchor = null, double? anchorTime = null)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (!TryGetCursor(out Point cursor))
             return false;
 
@@ -278,6 +314,7 @@ DateTime now)
         _character.SetMood(
             CharacterMood.Surprised);
 
+        UpdateRenderingSubscription();
         return true;
     }
 
@@ -364,7 +401,7 @@ DateTime now)
 
     private void OnRendering(object? sender, EventArgs e)
     {
-        if (_suspended) return;
+        if (_disposed || _suspended) return;
         if (_trackingPointer && !_isGrabbed)
         {
             if (TryGetCursor(out Point cursor)) SamplePointer(cursor);
@@ -778,6 +815,7 @@ DateTime now)
         double velocityY,
         nint targetWindowHandle)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (_isGrabbed ||
             _isFalling)
         {
@@ -819,6 +857,7 @@ DateTime now)
 
         _lastTickAt =
             DateTime.UtcNow;
+        UpdateRenderingSubscription();
     }
     private void Settle(
     double impactSpeed,
@@ -839,14 +878,15 @@ DateTime now)
         bool wasShaken =
         _wasShakenDuringGrab;
 
+        _wasShakenDuringGrab = false;
+
+        _maximumImpactSpeed = 0;
+        UpdateRenderingSubscription();
+
         Landed?.Invoke(
         impactSpeed,
         wasShaken,
         supportWindow);
-
-        _wasShakenDuringGrab = false;
-
-        _maximumImpactSpeed = 0;
     }
 
     private bool TryGetCursor(
@@ -879,6 +919,9 @@ DateTime now)
 
     public void Dispose()
     {
-        CompositionTarget.Rendering -= OnRendering;
+        if (_disposed) return;
+        _disposed = true;
+        _trackingPointer = _isGrabbed = _isFalling = false;
+        ReleaseRenderingSubscription();
     }
 }

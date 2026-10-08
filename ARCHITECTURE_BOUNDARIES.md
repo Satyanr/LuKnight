@@ -1,5 +1,26 @@
 # Lu-Knight Architecture Boundaries
 
+## Idle performance
+
+High-frequency desktop loops must exist only while they have active work.
+
+When the mascot is hidden:
+
+- autonomous behavior timers stop
+- movement timer stops
+- physics render subscription is suspended
+
+Character physics is not subscribed to `CompositionTarget.Rendering` while idle.
+Rendering is enabled only while pointer velocity is being sampled for a possible
+grab, the character is grabbed, or the character is falling.
+
+Resuming from hidden state resets timing baselines so hidden duration never
+becomes movement delta. Non-hidden behavior pauses retain attention/blink work.
+
+Performance optimizations must not reduce permission, confirmation, target
+revalidation, or other safety checks. Callback counts inferred from timer
+intervals are not a physical CPU benchmark.
+
 ## Trust model
 
 Gemini may interpret or generate responses.

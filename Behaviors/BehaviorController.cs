@@ -28,6 +28,8 @@ public sealed class BehaviorController : IDisposable
     private readonly Random _random =
         new();
     private long _lastMovementTimestamp;
+    private bool _started;
+    private bool _disposed;
     private bool _canAdvanceWalk;
     private double _walkPixelRemainder;
 
@@ -1137,6 +1139,10 @@ public sealed class BehaviorController : IDisposable
 
     public void Start()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_started) return;
+        _started = true;
+
         PlaceOnDesktopBottom();
 
         _character.SetState(
@@ -1158,9 +1164,23 @@ public sealed class BehaviorController : IDisposable
 
         ScheduleNextBlink();
 
+        StartLoopTimers();
+    }
+
+    private void StartLoopTimers()
+    {
+        if (_disposed || !_started || (_pauseReasons & BehaviorPauseReason.Hidden) != 0)
+            return;
+
         _lastMovementTimestamp = Stopwatch.GetTimestamp();
-        _timer.Start();
-        _movementTimer.Start();
+        if (!_timer.IsEnabled) _timer.Start();
+        if (!_movementTimer.IsEnabled) _movementTimer.Start();
+    }
+
+    private void StopLoopTimers()
+    {
+        _timer.Stop();
+        _movementTimer.Stop();
     }
 
     public void Pause(
@@ -1175,6 +1195,9 @@ public sealed class BehaviorController : IDisposable
 
         _pauseReasons |=
             reason;
+
+        if ((reason & BehaviorPauseReason.Hidden) != 0)
+            StopLoopTimers();
 
 
         _walking = false;
@@ -1210,6 +1233,9 @@ public sealed class BehaviorController : IDisposable
 
         _pauseReasons &=
             ~reason;
+
+        if ((reason & BehaviorPauseReason.Hidden) != 0)
+            StartLoopTimers();
 
 
         Debug.WriteLine(
@@ -1904,6 +1930,10 @@ public sealed class BehaviorController : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+        _started = false;
+
         CancelPendingApplicationArrival();
         _surfaceController.SupportLost -=
             SurfaceController_SupportLost;
@@ -1917,10 +1947,9 @@ public sealed class BehaviorController : IDisposable
         _surfaceController.DecisionDelayRequested -=
             SurfaceController_DecisionDelayRequested;
 
-        _movementTimer.Stop();
+        StopLoopTimers();
         _movementTimer.Tick -= OnMovementTick;
 
-        _timer.Stop();
         _timer.Tick -= OnTick;
     }
 

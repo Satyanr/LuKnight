@@ -47,6 +47,15 @@ internal static partial class Program
         }
 
 
+        string physicsPerformance = Read("Physics/CharacterPhysicsController.cs");
+        Require(physicsPerformance.Contains("UpdateRenderingSubscription", StringComparison.Ordinal) &&
+                physicsPerformance.Contains("_renderingSubscribed", StringComparison.Ordinal),
+            "Physics has no demand-driven render subscription.");
+        string behaviorPerformance = Read("Behaviors/BehaviorController.cs");
+        Require(behaviorPerformance.Contains("StopLoopTimers", StringComparison.Ordinal) &&
+                behaviorPerformance.Contains("StartLoopTimers", StringComparison.Ordinal),
+            "Behavior timers remain permanently active.");
+
         void Reject(
             string relative,
             params string[] forbidden)
