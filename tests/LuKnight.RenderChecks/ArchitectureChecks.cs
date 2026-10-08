@@ -56,6 +56,14 @@ internal static partial class Program
                 behaviorPerformance.Contains("StartLoopTimers", StringComparison.Ordinal),
             "Behavior timers remain permanently active.");
 
+        string performanceAcceptance = Read("tests/LuKnight.RenderChecks/PerformanceAcceptanceChecks.cs");
+        Require(performanceAcceptance.Contains("GC.GetAllocatedBytesForCurrentThread", StringComparison.Ordinal) &&
+                performanceAcceptance.Contains("Native diagnostic timing is not a PASS/FAIL threshold.", StringComparison.Ordinal),
+            "Performance acceptance no longer distinguishes deterministic regression gates from native timing diagnostics.");
+        Require(performanceAcceptance.Contains("DesktopWindowTargetService" + Environment.NewLine, StringComparison.Ordinal) ||
+                performanceAcceptance.Contains("DesktopWindowTargetService.", StringComparison.Ordinal),
+            "Performance acceptance stopped exercising fresh window resolver semantics.");
+
         void Reject(
             string relative,
             params string[] forbidden)

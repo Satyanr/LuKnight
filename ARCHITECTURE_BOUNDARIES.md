@@ -35,6 +35,29 @@ additional sorted snapshots when the same ordering is available.
 Resolver scoring should avoid full intermediate LINQ projections when a
 single-pass scan produces identical ambiguity and ranking semantics.
 
+### Performance acceptance
+
+Performance acceptance protects against structural regressions, not hardware
+benchmark variance. Pure/local workloads may use deliberately generous liveness
+and allocation limits to catch runaway behavior.
+
+Native operations such as installed application discovery, Win32 window
+enumeration, and application-awareness capture are measured and reported for
+diagnostics. Their elapsed time is not a release PASS/FAIL requirement because
+it depends on the Windows installation, disk, registry, shell extensions and
+running applications.
+
+Performance measurement must never print window titles, process names, file
+paths, application paths or other private desktop metadata.
+
+Safety checks remain mandatory even when they add work:
+
+- fresh target capture
+- fingerprint revalidation
+- permission recheck
+- confirmation lifecycle
+- UIA identity revalidation
+
 ## Trust model
 
 Gemini may interpret or generate responses.

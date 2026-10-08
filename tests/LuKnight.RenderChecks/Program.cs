@@ -69,6 +69,26 @@ internal static partial class Program
             Console.WriteLine($"PASS: {_checks} idle performance checks.");
             return;
         }
+        if (args.Contains("--performance-acceptance"))
+        {
+            var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            var operation = dispatcher.InvokeAsync(() =>
+            {
+                try
+                {
+                    CheckIdlePerformanceBoundaries();
+                    CheckBehaviorIdleTimers();
+                    CheckSnapshotAllocationStructure();
+                    CheckWindowResolverPerformanceSemantics();
+                    CheckPerformanceAcceptance();
+                }
+                finally { dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Background); }
+            });
+            System.Windows.Threading.Dispatcher.Run();
+            operation.Task.GetAwaiter().GetResult();
+            Console.WriteLine($"PASS: {_checks} performance acceptance checks.");
+            return;
+        }
         if (args.Contains("--audit"))
         {
             var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
