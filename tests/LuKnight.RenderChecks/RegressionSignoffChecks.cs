@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 
 internal static partial class Program
@@ -94,6 +95,20 @@ internal static partial class Program
             "Installer/updater evidence was incorrectly claimed during Phase 12E.");
 
 
+        Require(source.Contains("status", StringComparison.Ordinal) &&
+            source.Contains("--porcelain", StringComparison.Ordinal) &&
+            source.Contains("--untracked-files=all", StringComparison.Ordinal) &&
+            source.Contains("clean Git working tree", StringComparison.OrdinalIgnoreCase),
+            "Regression sign-off accepts evidence from a dirty working tree.");
+
+        string regressionRunner = File.ReadAllText(
+            Path.Combine(root, "tools", "Run-Regression.ps1"));
+        int cleanGate = regressionRunner.IndexOf("\nAssert-CleanWorkingTree", StringComparison.Ordinal);
+        int buildGate = regressionRunner.IndexOf("if (-not $NoBuild)", StringComparison.Ordinal);
+        Require(cleanGate >= 0 && buildGate > cleanGate &&
+            regressionRunner.Contains("--untracked-files=all", StringComparison.Ordinal),
+            "Release regression can run against an uncommitted source tree.");
+
         foreach (string forbidden
                  in new[]
                  {
@@ -110,5 +125,25 @@ internal static partial class Program
                     StringComparison.OrdinalIgnoreCase),
                 $"Regression sign-off may persist raw output via {forbidden}.");
         }
+
+        string behavioralTest = Path.Combine(root, "tools", "Test-RegressionSignoff.ps1");
+        Require(File.Exists(behavioralTest),
+            "Synthetic regression sign-off behavior test is missing.");
+        var start = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        start.ArgumentList.Add("-NoProfile");
+        start.ArgumentList.Add("-NonInteractive");
+        start.ArgumentList.Add("-ExecutionPolicy");
+        start.ArgumentList.Add("Bypass");
+        start.ArgumentList.Add("-File");
+        start.ArgumentList.Add(behavioralTest);
+        using Process process = Process.Start(start) ??
+            throw new InvalidOperationException("Unable to start synthetic regression sign-off test.");
+        process.WaitForExit();
+        Require(process.ExitCode == 0, "Synthetic regression sign-off behavior checks failed.");
     }
 }

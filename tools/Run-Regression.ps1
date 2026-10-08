@@ -12,6 +12,25 @@ $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot '..'))
 
+function Assert-CleanWorkingTree
+{
+    $dirty = & git -C $repo status --porcelain --untracked-files=all
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Unable to inspect Git working tree.'
+    }
+    if ($dirty) {
+        throw ('Regression evidence requires a clean Git working tree. ' +
+            'Commit or revert source changes before running the release gate.')
+    }
+}
+
+Assert-CleanWorkingTree
+$initialCommit = & git -C $repo rev-parse HEAD
+if ($LASTEXITCODE -ne 0 -or -not $initialCommit) {
+    throw 'Unable to resolve regression Git commit.'
+}
+$initialCommit = ([string]$initialCommit).Trim()
+
 $testProject = Join-Path `
     $repo `
     'tests\LuKnight.RenderChecks\LuKnight.RenderChecks.csproj'
@@ -388,27 +407,14 @@ if ($IncludeExternalAi)
 # ------------------------------------------------------------
 #
 
-$commit =
-    'unknown'
-
-
-try
-{
-    $commitResult =
-        & git `
-            -C $repo `
-            rev-parse HEAD `
-            2>$null
-
-
-    if ($LASTEXITCODE -eq 0 -and
-        $commitResult)
-    {
-        $commit = ([string]$commitResult).Trim()
-    }
+Assert-CleanWorkingTree
+$commitResult = & git -C $repo rev-parse HEAD
+if ($LASTEXITCODE -ne 0 -or -not $commitResult) {
+    throw 'Unable to resolve regression Git commit.'
 }
-catch
-{
+$commit = ([string]$commitResult).Trim()
+if ($commit -ne $initialCommit) {
+    throw 'Git HEAD changed during regression. Rerun the suite for current HEAD.'
 }
 
 

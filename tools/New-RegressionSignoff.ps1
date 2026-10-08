@@ -25,6 +25,13 @@ if ($LASTEXITCODE -ne 0 -or -not $commitResult) {
     throw 'Unable to resolve current Git commit.'
 }
 $currentCommit = ([string]$commitResult).Trim()
+$dirty = & git -C $repo status --porcelain --untracked-files=all
+if ($LASTEXITCODE -ne 0) {
+    throw 'Unable to inspect Git working tree.'
+}
+if ($dirty) {
+    throw 'Regression sign-off requires a clean Git working tree.'
+}
 if ([string]::IsNullOrWhiteSpace([string]$summary.commit) -or $summary.commit -eq 'unknown') {
     throw 'Regression evidence has no Git commit identity.'
 }

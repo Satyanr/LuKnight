@@ -36,7 +36,7 @@ internal static partial class Program
         string root = AppContext.BaseDirectory;
         while (!File.Exists(Path.Combine(root, "LuKnight.csproj")))
             root = Directory.GetParent(root)?.FullName ?? throw new InvalidOperationException("Repository not found");
-        string output = Path.Combine(root, "output", "sprites");
+        string output = Path.Combine(root, "artifacts", "renderchecks", "sprites");
         Directory.CreateDirectory(output);
         if (args.Contains("--desktop-commands"))
         {

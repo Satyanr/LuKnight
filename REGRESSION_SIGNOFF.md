@@ -24,6 +24,25 @@ The sign-off generator exits zero for automated acceptance even when physical
 checks remain NotRun. `phase12EComplete` requires both automated acceptance and
 all four physical checks to Pass.
 
+## Source identity
+
+Release evidence is valid only for a committed, clean source tree.
+The regression runner and sign-off generator both reject a dirty Git working
+tree, including untracked files. The runner also verifies that the tree stays
+clean and HEAD stays unchanged before writing its summary.
+Generated files under `artifacts/` are ignored; render-check screenshots are
+written to `artifacts/renderchecks/sprites` and do not affect this check.
+
+After any source change:
+
+1. Commit the change.
+2. Rerun regression for the new HEAD.
+3. Regenerate sign-off.
+
+Evidence from an earlier commit or an uncommitted source state is invalid.
+The core `--regression-signoff` runner executes both source contract checks and
+the synthetic behavior tests. Child output remains console-only.
+
 ## Physical evidence
 
 The following require explicit physical Windows validation. Their default state

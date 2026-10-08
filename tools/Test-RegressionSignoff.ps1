@@ -48,9 +48,12 @@ try {
     New-Item -ItemType Directory -Path $testTools, $reportDirectory -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $repo 'tools\New-RegressionSignoff.ps1') -Destination $testTools
     Copy-Item -LiteralPath (Join-Path $repo 'tools\Run-Regression.ps1') -Destination $testTools
+    [IO.File]::WriteAllText((Join-Path $testRoot '.gitignore'), "artifacts/`n")
     & git -C $testRoot init --quiet
     if ($LASTEXITCODE -ne 0) { throw 'Unable to initialize synthetic evidence repo.' }
-    & git -C $testRoot -c user.name=SignoffChecks -c user.email=signoff@example.invalid commit --allow-empty --quiet -m 'Synthetic evidence fixture'
+    & git -C $testRoot add -- .gitignore tools
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to stage synthetic evidence repo.' }
+    & git -C $testRoot -c user.name=SignoffChecks -c user.email=signoff@example.invalid commit --quiet -m 'Synthetic evidence fixture'
     if ($LASTEXITCODE -ne 0) { throw 'Unable to commit synthetic evidence repo.' }
     $commit = (& git -C $testRoot rev-parse HEAD).Trim()
     $runner = Get-Content -LiteralPath (Join-Path $testTools 'Run-Regression.ps1') -Raw
@@ -77,6 +80,25 @@ try {
     function New-Evidence { $baseline | ConvertTo-Json -Depth 8 | ConvertFrom-Json }
 
     Assert-Case 'complete automated evidence' (New-Evidence) 0 'Pass'
+    $dirtyProbe = Join-Path $testRoot 'dirty-probe.txt'
+    [IO.File]::WriteAllText($dirtyProbe, 'dirty')
+    Assert-Case 'untracked dirty working tree' (New-Evidence) 1 'Rejected'
+    $previousErrorPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & powershell -NoProfile -NonInteractive -File (Join-Path $testTools 'Run-Regression.ps1') -NoBuild *> $null
+        $runnerExit = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $previousErrorPreference }
+    if ($runnerExit -ne 1 -or (Test-Path -LiteralPath (Join-Path $reportDirectory 'regression-summary.md'))) {
+        throw 'Dirty release gate did not reject before producing evidence.'
+    }
+    $checks++
+    Remove-Item -LiteralPath $dirtyProbe -Force
+    $trackedProbe = Join-Path $testRoot '.gitignore'
+    [IO.File]::AppendAllText($trackedProbe, "# dirty tracked file`n")
+    Assert-Case 'tracked dirty working tree' (New-Evidence) 1 'Rejected'
+    & git -C $testRoot restore -- .gitignore
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to reset synthetic tracked probe.' }
     Assert-Case 'explicit physical attestations' (New-Evidence) 0 'Pass' -PhysicalArguments @(
         '-Microphone', 'Pass', '-Speaker', 'Pass', '-MultiMonitor', 'Pass', '-TrayShell', 'Pass')
     $evidence = New-Evidence; $evidence.commit = '0000000000000000000000000000000000000000'
