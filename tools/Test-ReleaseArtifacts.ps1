@@ -302,27 +302,65 @@ if ($provenance.updateManifest.name -cne 'update.json' -or
     throw 'Release provenance update manifest hash mismatch.'
 }
 
-$signature =
+$applicationSignature =
+    Get-AuthenticodeSignature `
+        -FilePath $application
+
+
+$installerSignature =
     Get-AuthenticodeSignature `
         -FilePath $installer
 
 
-if ($RequireSigned -and
-    $signature.Status -ne
-        'Valid')
+if ($RequireSigned)
 {
-    throw (
-        'Release requires a valid Authenticode signature.'
-    )
+    if ($applicationSignature.Status -ne 'Valid')
+    {
+        throw 'Release requires a valid Authenticode signature for LuKnight.exe.'
+    }
+
+    if ($null -eq $applicationSignature.TimeStamperCertificate)
+    {
+        throw 'Release requires an Authenticode timestamp for LuKnight.exe.'
+    }
+
+    if ($installerSignature.Status -ne 'Valid')
+    {
+        throw 'Release requires a valid Authenticode signature for LuKnightSetup.exe.'
+    }
+
+    if ($null -eq $installerSignature.TimeStamperCertificate)
+    {
+        throw 'Release requires an Authenticode timestamp for LuKnightSetup.exe.'
+    }
+}
+
+
+if ([string]$provenance.application.authenticodeStatus -ne
+    [string]$applicationSignature.Status)
+{
+    throw 'Release provenance application Authenticode status mismatch.'
+}
+
+
+if ([bool]$provenance.application.timestamped -ne
+    ($null -ne $applicationSignature.TimeStamperCertificate))
+{
+    throw 'Release provenance application timestamp status mismatch.'
 }
 
 
 if ([string]$provenance.installer.authenticodeStatus -ne
-    [string]$signature.Status)
+    [string]$installerSignature.Status)
 {
-    throw (
-        'Release provenance Authenticode status mismatch.'
-    )
+    throw 'Release provenance installer Authenticode status mismatch.'
+}
+
+
+if ([bool]$provenance.installer.timestamped -ne
+    ($null -ne $installerSignature.TimeStamperCertificate))
+{
+    throw 'Release provenance installer timestamp status mismatch.'
 }
 
 Write-Host (

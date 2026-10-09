@@ -175,6 +175,19 @@ $appHash =
     ).Hash.ToLowerInvariant()
 
 
+$appSignature =
+    Get-AuthenticodeSignature `
+        -FilePath $app
+
+
+$appSignatureStatus =
+    [string]$appSignature.Status
+
+
+$appTimestamped =
+    $null -ne $appSignature.TimeStamperCertificate
+
+
 $manifestPath =
     Join-Path `
         $release `
@@ -188,13 +201,17 @@ $manifestHash =
             -Algorithm SHA256
     ).Hash.ToLowerInvariant()
 
-$signature =
+$installerSignature =
     Get-AuthenticodeSignature `
         -FilePath $installer
 
 
-$signatureStatus =
-    [string]$signature.Status
+$installerSignatureStatus =
+    [string]$installerSignature.Status
+
+
+$installerTimestamped =
+    $null -ne $installerSignature.TimeStamperCertificate
 
 Assert-CleanWorkingTree
 
@@ -246,6 +263,12 @@ $provenance =
 
                 sha256 =
                     $appHash
+
+                authenticodeStatus =
+                    $appSignatureStatus
+
+                timestamped =
+                    $appTimestamped
             }
 
         installer =
@@ -263,7 +286,10 @@ $provenance =
                     $hash
 
                 authenticodeStatus =
-                    $signatureStatus
+                    $installerSignatureStatus
+
+                timestamped =
+                    $installerTimestamped
             }
 
         updateManifest =

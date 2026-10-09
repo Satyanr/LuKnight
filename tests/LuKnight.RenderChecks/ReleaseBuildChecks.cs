@@ -145,6 +145,36 @@ internal static partial class Program
                 StringComparison.Ordinal),
             "Release packaging does not bind application version metadata.");
 
+        Require(
+            verify.Contains(
+                "Release requires a valid Authenticode signature for LuKnight.exe.",
+                StringComparison.Ordinal) &&
+            verify.Contains(
+                "Release requires a valid Authenticode signature for LuKnightSetup.exe.",
+                StringComparison.Ordinal) &&
+            verify.Contains(
+                "Release requires an Authenticode timestamp for LuKnight.exe.",
+                StringComparison.Ordinal) &&
+            verify.Contains(
+                "Release requires an Authenticode timestamp for LuKnightSetup.exe.",
+                StringComparison.Ordinal) &&
+            verify.Contains(
+                "TimeStamperCertificate",
+                StringComparison.Ordinal),
+            "Signed release gate does not require application, installer and timestamp verification.");
+
+        Require(
+            build.Contains(
+                "appSignatureStatus",
+                StringComparison.Ordinal) &&
+            build.Contains(
+                "installerSignatureStatus",
+                StringComparison.Ordinal) &&
+            build.Contains(
+                "timestamped",
+                StringComparison.Ordinal),
+            "Release provenance does not capture signed application and installer state.");
+
         var start = new ProcessStartInfo
         {
             FileName = "powershell.exe",

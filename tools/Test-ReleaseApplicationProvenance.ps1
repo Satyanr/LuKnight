@@ -24,6 +24,8 @@ function Write-FixtureMetadata {
     param([string]$FixtureVersion = $version)
     $installer = Join-Path $release 'LuKnightSetup.exe'
     $app = Join-Path $publish 'LuKnight.exe'
+    $appSignature = Get-AuthenticodeSignature -FilePath $app
+    $installerSignature = Get-AuthenticodeSignature -FilePath $installer
     $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
     $manifest = [ordered]@{ version=$FixtureVersion; url="https://github.com/Satyanr/LuKnight/releases/download/v$FixtureVersion/LuKnightSetup.exe"; sha256=$hash; size=(Get-Item -LiteralPath $installer).Length }
     $manifestPath = Join-Path $release 'update.json'
@@ -32,8 +34,17 @@ function Write-FixtureMetadata {
     $provenance = [ordered]@{
         schemaVersion=1; repository='Satyanr/LuKnight'; version=$FixtureVersion; sourceCommit=$commit
         runtime='win-x64'; selfContained=$true
-        application=@{name='LuKnight.exe'; fileVersion="$FixtureVersion.0"; size=(Get-Item -LiteralPath $app).Length; sha256=(Get-FileHash -LiteralPath $app -Algorithm SHA256).Hash.ToLowerInvariant()}
-        installer=@{name='LuKnightSetup.exe'; size=(Get-Item -LiteralPath $installer).Length; sha256=$hash; authenticodeStatus=[string](Get-AuthenticodeSignature -FilePath $installer).Status}
+        application=@{
+            name='LuKnight.exe'; fileVersion="$FixtureVersion.0"; size=(Get-Item -LiteralPath $app).Length
+            sha256=(Get-FileHash -LiteralPath $app -Algorithm SHA256).Hash.ToLowerInvariant()
+            authenticodeStatus=[string]$appSignature.Status
+            timestamped=($null -ne $appSignature.TimeStamperCertificate)
+        }
+        installer=@{
+            name='LuKnightSetup.exe'; size=(Get-Item -LiteralPath $installer).Length; sha256=$hash
+            authenticodeStatus=[string]$installerSignature.Status
+            timestamped=($null -ne $installerSignature.TimeStamperCertificate)
+        }
         updateManifest=@{name='update.json'; sha256=(Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()}
     }
     Write-Json (Join-Path $release 'release-provenance.json') $provenance
@@ -54,6 +65,30 @@ try {
     Write-FixtureMetadata
     & $verify -Version $version -Commit $commit -PublishDirectory $publish -ReleaseDirectory $release
     $count++
+    try {
+        & $verify -Version $version -Commit $commit -PublishDirectory $publish -ReleaseDirectory $release -RequireSigned
+        throw 'Unsigned release was accepted by RequireSigned.'
+    } catch {
+        if ($_.Exception.Message -ne 'Release requires a valid Authenticode signature for LuKnight.exe.') { throw }
+    }
+    $count++
+    foreach ($case in @(
+        @{section='application';field='authenticodeStatus';error='Release provenance application Authenticode status mismatch.'},
+        @{section='application';field='timestamped';error='Release provenance application timestamp status mismatch.'},
+        @{section='installer';field='authenticodeStatus';error='Release provenance installer Authenticode status mismatch.'},
+        @{section='installer';field='timestamped';error='Release provenance installer timestamp status mismatch.'}
+    )) {
+        Write-FixtureMetadata
+        $path = Join-Path $release 'release-provenance.json'
+        $provenance = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $section = $provenance.($case.section)
+        if ($case.field -eq 'timestamped') { $section.timestamped = -not $section.timestamped }
+        else { $section.authenticodeStatus = 'FixtureMismatch' }
+        Write-Json $path $provenance
+        Assert-Rejected $case.error
+        $count++
+    }
+    Write-FixtureMetadata
     Assert-Rejected 'Publish directory is missing.' -FixturePublish (Join-Path $fixture 'missing')
     $count++
     foreach ($case in @(
