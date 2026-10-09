@@ -39,6 +39,17 @@ internal static partial class Program
         string output = Path.Combine(root, "artifacts", "renderchecks", "sprites");
         Directory.CreateDirectory(output);
         if (args.Contains(
+                "--settings-ux"))
+        {
+            CheckSettingsUx();
+
+
+            Console.WriteLine(
+                $"PASS: {_checks} settings UX checks.");
+
+            return;
+        }
+        if (args.Contains(
                 "--first-run"))
         {
             CheckFirstRun();

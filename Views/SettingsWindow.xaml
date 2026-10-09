@@ -99,7 +99,35 @@
                 </StackPanel>
                 <ListBox x:Name="Navigation" Grid.Row="2" Background="Transparent" BorderThickness="0" ItemContainerStyle="{StaticResource NavItem}"
                          SelectedValuePath="Tag" SelectedValue="{Binding SelectedSection, Mode=TwoWay}" VerticalAlignment="Top" ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Settings sections">
-                    <ListBoxItem Tag="Welcome" Content="Getting started"/>
+                    <ListBoxItem
+                        Tag="Welcome"
+                        Content="Panduan awal">
+
+                        <ListBoxItem.Style>
+                            <Style
+                                TargetType="ListBoxItem"
+                                BasedOn="{StaticResource NavItem}">
+
+                                <Setter
+                                    Property="Visibility"
+                                    Value="Visible"/>
+
+                                <Style.Triggers>
+                                    <DataTrigger
+                                        Binding="{Binding Product.FirstRunCompleted}"
+                                        Value="True">
+
+                                        <Setter
+                                            Property="Visibility"
+                                            Value="Collapsed"/>
+
+                                    </DataTrigger>
+                                </Style.Triggers>
+
+                            </Style>
+                        </ListBoxItem.Style>
+
+                    </ListBoxItem>
                     <ListBoxItem Tag="General" Content="General"/>
                     <ListBoxItem Tag="Behavior" Content="Behavior"/>
                     <ListBoxItem Tag="AI &amp; Chat" Content="AI &amp; Chat"/>
@@ -138,7 +166,7 @@
 
 
                         <TextBlock
-                            Text="Welcome to Lu-Knight"
+                            Text="Selamat datang di Lu-Knight"
                             Style="{StaticResource Title}"/>
 
                         <TextBlock
@@ -152,7 +180,7 @@
                             <StackPanel>
 
                                 <TextBlock
-                                    Text="Safe by default"
+                                    Text="Aman secara default"
                                     Style="{StaticResource CardTitle}"/>
 
                                 <TextBlock
@@ -206,7 +234,7 @@
                             <StackPanel>
 
                                 <TextBlock
-                                    Text="Start simple"
+                                    Text="Mulai sederhana"
                                     Style="{StaticResource CardTitle}"/>
 
                                 <TextBlock
@@ -214,7 +242,7 @@
                                     TextWrapping="Wrap"/>
 
                                 <Button
-                                    Content="Open AI &amp; Chat settings"
+                                    Content="Buka pengaturan AI &amp; Chat"
                                     Click="FirstRunAiSettings_Click"
                                     HorizontalAlignment="Left"
                                     Margin="0,16,0,0"/>
@@ -227,7 +255,7 @@
                             <StackPanel>
 
                                 <TextBlock
-                                    Text="You stay in control"
+                                    Text="Kendali tetap di tangan Anda"
                                     Style="{StaticResource CardTitle}"/>
 
                                 <TextBlock
@@ -239,7 +267,7 @@
 
 
                         <Button
-                            Content="Finish setup — keep current permissions"
+                            Content="Selesai — pertahankan izin saat ini"
                             Click="CompleteFirstRun_Click"
                             HorizontalAlignment="Left"
                             Padding="16,8"
@@ -310,6 +338,27 @@
                         <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding SelectedSection}" Value="AI &amp; Chat"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>
                         <TextBlock Text="AI &amp; Chat" Style="{StaticResource Title}"/>
                         <TextBlock Text="Status layanan yang sedang digunakan oleh Lu-Knight." Style="{StaticResource Muted}" Margin="0,0,0,22"/>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+
+                                <TextBlock
+                                    Text="Access summary"
+                                    Style="{StaticResource CardTitle}"/>
+
+                                <TextBlock
+                                    Text="{Binding Product.AccessSummary}"
+                                    FontFamily="Consolas"
+                                    TextWrapping="Wrap"/>
+
+                                <TextBlock
+                                    Text="{Binding Product.ContextProviderNotice}"
+                                    Style="{StaticResource Muted}"
+                                    FontSize="12"
+                                    Margin="0,12,0,0"
+                                    TextWrapping="Wrap"/>
+
+                            </StackPanel>
+                        </Border>
                         <Border Style="{StaticResource Card}"><StackPanel>
                             <TextBlock Text="AI status" Style="{StaticResource CardTitle}"/>
                             <TextBlock x:Name="AiStatusText" Text="{Binding Product.ChatStatus}" Foreground="#67E8F9" TextWrapping="Wrap"/>
@@ -362,10 +411,17 @@
                                     IsChecked="{Binding Product.ProactiveSuggestions, Mode=TwoWay}"/>
 
                                 <TextBlock
-                                    Text="Requires Application awareness. Suggestions use only broad application categories, are rate-limited, and never read screen contents, window titles, files, clipboard, microphone, or location."
+                                    Text="Membutuhkan Application awareness. Jika Application awareness dimatikan, Proactive companion ikut dimatikan dan tidak aktif kembali otomatis."
                                     Style="{StaticResource Muted}"
                                     FontSize="12"
-                                    Margin="0,8,0,12"
+                                    Margin="0,8,0,6"
+                                    TextWrapping="Wrap"/>
+
+                                <TextBlock
+                                    Text="Suggestion hanya menggunakan kategori aplikasi umum, memiliki rate limit, dan tidak membaca isi layar, judul window, file, clipboard, microphone, atau lokasi."
+                                    Style="{StaticResource Muted}"
+                                    FontSize="12"
+                                    Margin="0,0,0,12"
                                     TextWrapping="Wrap"/>
 
                                 <StackPanel
@@ -455,7 +511,7 @@
                                     </StackPanel>
                                 </Grid>
                                 <TextBlock Text="After transcription" Margin="0,14,0,6"/>
-                                <ComboBox ItemsSource="{Binding Product.VoiceSubmissionModes}" SelectedItem="{Binding Product.VoiceSubmissionMode, Mode=TwoWay}"/>
+                                <ComboBox ItemsSource="{Binding Product.VoiceSubmissionModes}" SelectedItem="{Binding Product.VoiceSubmissionMode, Mode=TwoWay}" IsEnabled="{Binding Product.UseVoiceInput}"/>
                                 <TextBlock Text="{Binding Product.VoiceModelDescription}" Style="{StaticResource Muted}" Margin="0,12,0,0"/>
                                 <TextBlock Text="{Binding Product.VoiceModelStatus}" Foreground="#67E8F9" FontSize="12" Margin="0,6,0,0"/>
                                 <Button Content="Delete selected local model" Command="{Binding Product.DeleteVoiceModelCommand}" HorizontalAlignment="Left" Margin="0,12,0,0"/>
@@ -494,6 +550,13 @@
                                     Content="Allow Lu-Knight to perform approved desktop actions"
                                     IsEnabled="{Binding Product.CanEditChat}"
                                     IsChecked="{Binding Product.UseDesktopActions, Mode=TwoWay}"/>
+
+                                <TextBlock
+                                    Text="Mengaktifkan opsi ini tidak menjalankan tindakan apa pun dengan sendirinya. Setiap action yang didukung tetap membutuhkan konfirmasi; tindakan Sensitive menggunakan konfirmasi dua tahap."
+                                    Style="{StaticResource Muted}"
+                                    FontSize="12"
+                                    Margin="0,8,0,0"
+                                    TextWrapping="Wrap"/>
 
                                 <TextBlock
                                     Text="Permission level"
@@ -545,7 +608,23 @@
                     </StackPanel>
                 </Grid>
             </ScrollViewer>
-            <DockPanel Grid.Row="1" Margin="0,12,0,0"><Button Content="Save" Command="{Binding Product.SaveCommand}" DockPanel.Dock="Right" Padding="12,5"/><TextBlock Text="{Binding Product.SaveStatus, FallbackValue='Pengaturan sesi'}" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0"/></DockPanel>
+            <DockPanel Grid.Row="1"
+                       Margin="0,12,0,0">
+
+                <TextBlock
+                    Text="Perubahan disimpan otomatis"
+                    Foreground="#67E8F9"
+                    FontSize="11"
+                    VerticalAlignment="Center"
+                    Margin="0,0,12,0"/>
+
+                <TextBlock
+                    Text="{Binding Product.SaveStatus, FallbackValue='Pengaturan sesi'}"
+                    Style="{StaticResource Muted}"
+                    FontSize="11"
+                    VerticalAlignment="Center"/>
+
+            </DockPanel>
         </Grid>
     </Grid>
 </Window>

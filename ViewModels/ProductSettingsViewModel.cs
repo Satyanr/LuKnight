@@ -218,13 +218,92 @@ public sealed class ProductSettingsViewModel : INotifyPropertyChanged, IDisposab
     }
     public bool UseApplicationContext
     {
-        get => _services.Chat.Options.UseApplicationContext;
+        get =>
+            _services.Chat.Options
+                .UseApplicationContext;
+
         set
         {
-            if (value == _services.Chat.Options.UseApplicationContext) return;
-            Change(_services.Chat.Options with { UseApplicationContext = value });
+            if (value ==
+                _services.Chat.Options
+                    .UseApplicationContext)
+            {
+                return;
+            }
+
+
+            Run(
+                () =>
+                {
+                    AppSettings updated =
+                        SettingsCapabilityPolicy
+                            .SetApplicationAwareness(
+                                _services.Settings
+                                    .Current,
+                                value);
+
+
+                    AppSettings validated =
+                        SettingsService.Validate(
+                            updated);
+
+
+                    //
+                    // Keep runtime chat configuration and
+                    // persisted settings synchronized.
+                    //
+
+                    _services.Chat.Configure(
+                        validated.Chat);
+
+
+                    _services.Settings.Update(
+                        validated);
+                });
         }
     }
+    private static string
+        AccessState(
+            bool enabled) =>
+                enabled
+                    ? "ON"
+                    : "OFF";
+
+
+    public string AccessSummary
+    {
+        get
+        {
+            ChatSettings chat =
+                _services.Chat.Options;
+
+
+            CompanionSettings companion =
+                _services.Settings
+                    .Current
+                    .Companion;
+
+
+            return
+                $"Application awareness: {AccessState(chat.UseApplicationContext)}\n" +
+                $"File context: {AccessState(chat.UseFileContext)}\n" +
+                $"Clipboard context: {AccessState(chat.UseClipboardContext)}\n" +
+                $"System context: {AccessState(chat.UseSystemContext)}\n" +
+                $"Screen context: {AccessState(chat.UseScreenContext)}\n" +
+                $"Voice input: {AccessState(chat.UseVoiceInput)}\n" +
+                $"Desktop actions: {AccessState(chat.UseDesktopActions)}\n" +
+                $"Proactive companion: {AccessState(companion.Enabled)}";
+        }
+    }
+
+
+    public string ContextProviderNotice =>
+        _services.Chat.UsesGemini
+            ? "Gemini aktif. Context yang Anda izinkan dan digunakan pada request " +
+              "dapat dikirim ke provider Gemini. Eksekusi desktop action tetap " +
+              "dilakukan oleh engine lokal setelah validasi dan konfirmasi."
+            : "Mode lokal aktif. Chat tidak menggunakan provider Gemini. " +
+              "Desktop action tetap melalui engine lokal, permission, dan confirmation.";
     public bool UseFileContext
     {
         get => _services.Chat.Options.UseFileContext;

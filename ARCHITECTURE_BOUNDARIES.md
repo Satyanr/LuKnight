@@ -457,3 +457,20 @@ it to be offered again on a later startup.
 
 First-run completion is persistent configuration only; it is not permission for
 any desktop action.
+
+## Settings UX safety
+
+Settings must reflect effective capability state rather than only persisted
+intent.
+
+Disabling Application awareness also disables Proactive companion. Re-enabling
+Application awareness must not automatically restore Proactive companion.
+
+Settings changes are auto-saved; the UI must not imply that a separate Save
+action is required.
+
+Where Gemini is active, the UI must disclose that explicitly enabled context
+used for a request may be sent to the configured AI provider.
+
+Enabling Desktop actions does not authorize a specific action. Permission,
+target revalidation and confirmation remain required independently.
