@@ -75,6 +75,18 @@ function Invoke-ProcessChecked {
         if ($process.ExitCode -ne 0) { throw ('Process exited with code ' + $process.ExitCode + '.') }
     } finally { $process.Dispose() }
 }
+
+# Inno Setup launchers can exit before their temporary child uninstaller.
+# Wait for descendants as well before probing or starting another installer.
+function Invoke-InstallerChecked {
+    param([string]$FilePath, [string[]]$Arguments)
+    $nativeArguments = ($Arguments | ForEach-Object { ConvertTo-NativeArgument $_ }) -join ' '
+    $process = Start-Process -FilePath $FilePath -ArgumentList $nativeArguments -WindowStyle Hidden -Wait -PassThru
+    if ($null -eq $process) { throw 'Installer process could not be started.' }
+    try {
+        if ($process.ExitCode -ne 0) { throw ('Installer exited with code ' + $process.ExitCode + '.') }
+    } finally { $process.Dispose() }
+}
 function Invoke-Probe {
     param([string]$Executable, [string]$Mode)
     Invoke-ProcessChecked $Executable @("--installer-e2e-probe=$Mode") @{ LUKNIGHT_E2E_TOKEN = $token }
@@ -122,7 +134,7 @@ try {
     Assert-CleanSource
     if ((Get-SourceCommit) -ne $commit) { throw 'Git HEAD changed during installer E2E.' }
     Write-Host 'Running isolated install, update, and uninstall scenarios.'
-    Invoke-ProcessChecked $installerBase $installArguments
+    Invoke-InstallerChecked $installerBase $installArguments
     Assert-InstalledVersion $BaseVersion
     $cases.Add('fresh-install')
     $installedExe = Join-Path $installDir 'LuKnight.exe'
@@ -135,7 +147,7 @@ try {
         Start-Sleep -Milliseconds 250
         if ($hold.HasExited) { throw 'E2E hold process exited before update handoff.' }
         $upgradeArguments = $installArguments + @('/UPDATE', "/TARGETPID=$($hold.Id)", '/NORUNAPP')
-        Invoke-ProcessChecked $installerUpgrade $upgradeArguments
+        Invoke-InstallerChecked $installerUpgrade $upgradeArguments
         if (-not $hold.WaitForExit(10000) -or $hold.ExitCode -ne 0) { throw 'E2E hold process failed.' }
     } finally {
         if (-not $hold.HasExited -and -not $hold.WaitForExit(10000)) { $hold.Kill() }
@@ -146,23 +158,23 @@ try {
     Invoke-Probe $installedExe 'verify-installed'
     $cases.Add('upgrade-preserves-data')
     $uninstaller = Join-Path $installDir 'unins000.exe'
-    Invoke-ProcessChecked $uninstaller $uninstallArguments
+    Invoke-InstallerChecked $uninstaller $uninstallArguments
     if (Test-Path -LiteralPath $installedExe) { throw 'Keep-data uninstall left application binary installed.' }
     $probeExe = Join-Path $publishUpgrade 'LuKnight.exe'
     Invoke-Probe $probeExe 'verify-preserved'
     $cases.Add('uninstall-keep-data')
-    Invoke-ProcessChecked $installerUpgrade $installArguments
+    Invoke-InstallerChecked $installerUpgrade $installArguments
     Assert-InstalledVersion $UpgradeVersion
     Invoke-Probe $installedExe 'verify-preserved'
     $cases.Add('reinstall-preserves-data')
-    Invoke-ProcessChecked $uninstaller ($uninstallArguments + @('/REMOVEPREFERENCES'))
+    Invoke-InstallerChecked $uninstaller ($uninstallArguments + @('/REMOVEPREFERENCES'))
     Invoke-Probe $probeExe 'verify-clean'
     $cases.Add('uninstall-remove-data')
-    Invoke-ProcessChecked $installerUpgrade $installArguments
+    Invoke-InstallerChecked $installerUpgrade $installArguments
     Assert-InstalledVersion $UpgradeVersion
     Invoke-Probe $installedExe 'verify-clean'
     $cases.Add('clean-reinstall')
-    Invoke-ProcessChecked $uninstaller ($uninstallArguments + @('/REMOVEPREFERENCES'))
+    Invoke-InstallerChecked $uninstaller ($uninstallArguments + @('/REMOVEPREFERENCES'))
     Invoke-Probe $probeExe 'cleanup'
 } catch {
     $failure = $true
@@ -171,7 +183,7 @@ try {
     Assert-IsolatedPaths
     $uninstaller = Join-Path $installDir 'unins000.exe'
     if (Test-Path -LiteralPath $uninstaller -PathType Leaf) {
-        try { Invoke-ProcessChecked $uninstaller ($uninstallArguments + @('/REMOVEPREFERENCES')) }
+        try { Invoke-InstallerChecked $uninstaller ($uninstallArguments + @('/REMOVEPREFERENCES')) }
         catch { $cleanupFailed = $true }
     }
     $probe = Join-Path $publishUpgrade 'LuKnight.exe'
