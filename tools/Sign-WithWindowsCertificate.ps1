@@ -59,9 +59,9 @@ if (-not [Uri]::TryCreate(
 }
 
 
-if ($timestampUri.Scheme -ne 'https')
+if ($timestampUri.Scheme -notin @('http', 'https'))
 {
-    throw 'Timestamp URL must use HTTPS.'
+    throw 'Timestamp URL must use HTTP or HTTPS.'
 }
 
 

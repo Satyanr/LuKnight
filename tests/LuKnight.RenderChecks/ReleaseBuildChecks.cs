@@ -216,6 +216,13 @@ internal static partial class Program
             "Local public signing provider is not SHA-256/timestamp fail-closed.");
 
         Require(
+            localSigner.Contains("'http'", StringComparison.Ordinal) &&
+            localSigner.Contains("'https'", StringComparison.Ordinal) &&
+            localSigner.Contains("Timestamp URL must use HTTP or HTTPS.", StringComparison.Ordinal),
+            "Signing provider does not support standard HTTP/HTTPS RFC3161 timestamp endpoints.");
+
+
+        Require(
             !localSigner.Contains(".pfx", StringComparison.OrdinalIgnoreCase) &&
             !localSigner.Contains("/p ", StringComparison.OrdinalIgnoreCase),
             "Signing provider must not embed PFX/password-based credentials.");
