@@ -2,7 +2,9 @@ param(
     [string]$Version = '1.0.0',
     [string]$Iscc = 'ISCC.exe',
     [switch]$NoRestore,
-    [string]$ExpectedCommit = ''
+    [string]$ExpectedCommit = '',
+    [string]$SignerScript = '',
+    [switch]$RequireSigned
 )
 
 Set-StrictMode -Version Latest
@@ -12,6 +14,58 @@ $ErrorActionPreference = 'Stop'
 $repo =
     [IO.Path]::GetFullPath(
         (Join-Path $PSScriptRoot '..'))
+
+
+$resolvedSigner = $null
+if ($SignerScript)
+{
+    $resolvedSigner = [IO.Path]::GetFullPath($SignerScript)
+    if (-not (Test-Path -LiteralPath $resolvedSigner -PathType Leaf))
+    {
+        throw 'Signing provider script was not found.'
+    }
+}
+
+if ($RequireSigned -and -not $resolvedSigner)
+{
+    throw 'RequireSigned requires a signing provider script.'
+}
+
+function Invoke-ReleaseSigner
+{
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    if (-not $resolvedSigner)
+    {
+        return
+    }
+
+    # Reset native exit status so a provider cannot hide a failed native signer
+    # behind a successful final PowerShell logging command.
+    $global:LASTEXITCODE = 0
+    & $resolvedSigner -Path $Path
+    if (-not $? -or $LASTEXITCODE -ne 0)
+    {
+        throw "Signing provider failed for $Name."
+    }
+
+    $signature = Get-AuthenticodeSignature -FilePath $Path
+    if ($signature.Status -ne 'Valid')
+    {
+        throw "Signing provider did not produce a valid Authenticode signature for $Name."
+    }
+
+    if ($null -eq $signature.TimeStamperCertificate)
+    {
+        throw "Signing provider did not timestamp $Name."
+    }
+}
 
 
 if ($Version -notmatch
@@ -127,13 +181,6 @@ if ((Get-SourceCommit) -ne
 }
 
 if (-not (Test-Path (Join-Path $publish 'coreclr.dll'))) { throw 'Release is not self-contained.' }
-& $Iscc '/Q' "/DAppVersion=$Version" "/DPublishDir=$publish" (Join-Path $repo 'installer\LuKnight.iss')
-if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
-$installer = Join-Path $release 'LuKnightSetup.exe'
-$hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
-$manifest = [ordered]@{ version = $Version; url = "https://github.com/Satyanr/LuKnight/releases/download/v$Version/LuKnightSetup.exe"; sha256 = $hash; size = (Get-Item -LiteralPath $installer).Length }
-[IO.File]::WriteAllText((Join-Path $release 'update.json'), ($manifest | ConvertTo-Json))
-[IO.File]::WriteAllText((Join-Path $release 'checksum.sha256'), "$hash  LuKnightSetup.exe`n")
 $app =
     Join-Path `
         $publish `
@@ -167,12 +214,20 @@ if ($appFileVersion -ne
     )
 }
 
-$appHash =
-    (
-        Get-FileHash `
-            -LiteralPath $app `
-            -Algorithm SHA256
-    ).Hash.ToLowerInvariant()
+Invoke-ReleaseSigner -Path $app -Name 'LuKnight.exe'
+
+& $Iscc '/Q' "/DAppVersion=$Version" "/DPublishDir=$publish" (Join-Path $repo 'installer\LuKnight.iss')
+if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
+$installer = Join-Path $release 'LuKnightSetup.exe'
+Invoke-ReleaseSigner -Path $installer -Name 'LuKnightSetup.exe'
+
+# Signing changes the binary; refresh metadata and hash only final artifacts.
+$appInfo.Refresh()
+$appHash = (Get-FileHash -LiteralPath $app -Algorithm SHA256).Hash.ToLowerInvariant()
+$hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+$manifest = [ordered]@{ version = $Version; url = "https://github.com/Satyanr/LuKnight/releases/download/v$Version/LuKnightSetup.exe"; sha256 = $hash; size = (Get-Item -LiteralPath $installer).Length }
+[IO.File]::WriteAllText((Join-Path $release 'update.json'), ($manifest | ConvertTo-Json))
+[IO.File]::WriteAllText((Join-Path $release 'checksum.sha256'), "$hash  LuKnightSetup.exe`n")
 
 
 $appSignature =
@@ -329,19 +384,25 @@ if ((Get-SourceCommit) -ne
 }
 
 
-& powershell `
-    -NoProfile `
-    -NonInteractive `
-    -ExecutionPolicy Bypass `
-    -File (
-        Join-Path `
-            $repo `
-            'tools\Test-ReleaseArtifacts.ps1'
-    ) `
-    -Version $Version `
-    -Commit $sourceCommit `
-    -PublishDirectory $publish `
-    -ReleaseDirectory $release
+$verifyArguments = @(
+    '-NoProfile',
+    '-NonInteractive',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    (Join-Path $repo 'tools\Test-ReleaseArtifacts.ps1'),
+    '-Version', $Version,
+    '-Commit', $sourceCommit,
+    '-PublishDirectory', $publish,
+    '-ReleaseDirectory', $release
+)
+
+if ($RequireSigned)
+{
+    $verifyArguments += '-RequireSigned'
+}
+
+& powershell @verifyArguments
 
 
 if ($LASTEXITCODE -ne 0)

@@ -175,6 +175,33 @@ internal static partial class Program
                 StringComparison.Ordinal),
             "Release provenance does not capture signed application and installer state.");
 
+        Require(
+            build.Contains("SignerScript", StringComparison.Ordinal) &&
+            build.Contains("Invoke-ReleaseSigner", StringComparison.Ordinal) &&
+            build.Contains("RequireSigned requires a signing provider script.", StringComparison.Ordinal),
+            "Release builder has no isolated signing-provider contract.");
+
+        int signApplication = build.IndexOf("Invoke-ReleaseSigner -Path $app", StringComparison.Ordinal);
+        int compileInstaller = build.IndexOf("& $Iscc", StringComparison.Ordinal);
+        int signInstaller = build.IndexOf("Invoke-ReleaseSigner -Path $installer", StringComparison.Ordinal);
+        int hashApplication = build.IndexOf("Get-FileHash -LiteralPath $app", StringComparison.Ordinal);
+        int hashInstaller = build.IndexOf("Get-FileHash -LiteralPath $installer", StringComparison.Ordinal);
+        int generateManifest = build.IndexOf("$manifest =", StringComparison.Ordinal);
+
+        Require(
+            signApplication >= 0 &&
+            compileInstaller > signApplication &&
+            signInstaller > compileInstaller &&
+            hashApplication > signInstaller &&
+            hashInstaller > hashApplication &&
+            generateManifest > hashInstaller,
+            "Release signing/hash ordering is unsafe.");
+
+        Require(
+            build.Contains("$verifyArguments += '-RequireSigned'", StringComparison.Ordinal) &&
+            build.Contains("& powershell @verifyArguments", StringComparison.Ordinal),
+            "Release builder does not forward the mandatory signing gate to the artifact verifier.");
+
         var start = new ProcessStartInfo
         {
             FileName = "powershell.exe",
