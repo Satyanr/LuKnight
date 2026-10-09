@@ -107,6 +107,7 @@ $coreCases = @(
     '--first-run',
     '--settings-ux',
     '--ux-acceptance',
+    '--release-build',
     '--product',
     '--startup',
     '--settings',

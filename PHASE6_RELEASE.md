@@ -14,24 +14,40 @@ Masukkan key baru di kotak password, lalu pilih **Update Key**. Key disimpan seb
 
 Lokasi: `%LocalAppData%\LuKnight\settings.json`.
 
-`Models/AppSettings.cs` memisahkan General, Behavior, Chat, posisi mascot/monitor terakhir, posisi/ukuran Settings, dan waktu pemeriksaan update terakhir. General/Behavior/Chat otomatis tersimpan saat diubah. Tombol **Save** mencoba menyimpan kembali jika terjadi kegagalan. Startup registration tetap memakai HKCU Run; preferensi StartHidden dari fase 6C dimigrasikan ke JSON ketika file konfigurasi pertama dibuat.
+`Models/AppSettings.cs` memisahkan General, Behavior, Chat, posisi mascot/monitor terakhir, posisi/ukuran Settings, dan waktu pemeriksaan update terakhir. Settings menggunakan autosave; footer menampilkan persistence status. Startup registration tetap memakai HKCU Run; preferensi StartHidden dari fase 6C dimigrasikan ke JSON ketika file konfigurasi pertama dibuat.
 
 `SettingsService` menyediakan Load, Save, Reset, Validate, dan Migrate. Penulisan memakai file `.tmp`, flush ke disk, lalu replace atomik dengan `.bak`. JSON rusak disalin ke `.invalid-<timestamp>.bak` sebelum default digunakan. Jika backup/read gagal atau schema lebih baru dari aplikasi, file lama dipertahankan dan tidak ditimpa. Status penyimpanan ditampilkan di footer Settings; aplikasi tetap dapat dipakai selama sesi saat penyimpanan gagal.
 
-Schema saat ini 1; schema 0 tanpa penanda dimigrasikan dengan default bagian yang belum tersedia. Enum/model dan posisi tidak valid diperiksa saat load. File schema yang lebih baru tidak diturunkan secara paksa. Nilai turunan behavior, key, transcript, state jatuh/tidur, dan lintasan aktif tidak diserialisasi.
+Schema settings saat ini mengikuti `SettingsService.CurrentSchemaVersion`; schema 0 tanpa penanda dimigrasikan dengan default bagian yang belum tersedia. Enum/model dan posisi tidak valid diperiksa saat load. File schema yang lebih baru tidak diturunkan secara paksa. Nilai turunan behavior, key, transcript, state jatuh/tidur, dan lintasan aktif tidak diserialisasi.
 
 Posisi disimpan ketika keluar/restart atau menutup Settings. Mascot kembali ke pijakan desktop pada monitor terakhir, tanpa memulihkan state jatuh atau menggantung. Jika monitor tidak tersedia, posisi dipindah ke monitor yang tersedia. Settings memulihkan posisi/ukuran dan mengembalikan window ke area layar jika posisinya tidak lagi dapat dijangkau.
 
 ## 6G — Installer / Packaging
+
+Phase 12G adds `release-provenance.json`, which binds the release package to the
+exact clean Git commit used to build it.
+
+The release verifier cross-checks:
+
+- stable semantic version
+- source commit
+- installer size
+- installer SHA-256
+- update.json URL/version/hash/size
+- checksum.sha256
+- Authenticode status
+
+Signing is reported but is not required until the Phase 12G signing gate.
 
 Build final menghasilkan:
 
 - `artifacts/publish/LuKnight.exe`: aplikasi Windows x64 self-contained, dengan runtime .NET dan aset sprite.
 - `artifacts/release/LuKnightSetup.exe`: installer per-user tanpa administrator.
 - `artifacts/release/update.json` dan `checksum.sha256`: metadata update dan SHA-256 installer yang sama.
+- `artifacts/release/release-provenance.json`: commit source dan identitas artifact.
 
 ```powershell
-./tools/Build-Release.ps1 -Version 1.0.0 -Iscc 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+./tools/Build-Release.ps1 -Version 1.0.0 -ExpectedCommit (git rev-parse HEAD) -Iscc 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 ```
 
 Compiler lokal yang digunakan saat implementasi: Inno Setup 6.2.2 resmi, signature installer tool valid, diekstrak di `.tools` tanpa instalasi tool global. Script juga dapat dipakai dengan Inno Setup 6 pada CI. NuGet cache proyek ada di `.tools/nuget`.

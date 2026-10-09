@@ -15,19 +15,50 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Test
+      - name: Core release gate
         shell: pwsh
-        run: dotnet run --project tests/LuKnight.RenderChecks/LuKnight.RenderChecks.csproj -c Release
-      - name: Build installer and manifest
+        run: ./tools/Run-Regression.ps1
+      - name: Resolve release version
+        id: release
         shell: pwsh
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
-          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { $env:INPUT_VERSION }
-          ./tools/Build-Release.ps1 -Version $version -Iscc 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          $version =
+            if ($env:GITHUB_REF_TYPE -eq 'tag') {
+              if ($env:GITHUB_REF_NAME -notmatch '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
+                throw 'Release tag must be v<major>.<minor>.<patch>.'
+              }
+
+              $env:GITHUB_REF_NAME.Substring(1)
+            }
+            else {
+              $env:INPUT_VERSION
+            }
+
+          if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
+            throw 'Invalid stable release version.'
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Build installer and manifest
+        shell: pwsh
+        run: |
+          ./tools/Build-Release.ps1 `
+            -Version '${{ steps.release.outputs.version }}' `
+            -ExpectedCommit '${{ github.sha }}' `
+            -Iscc 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+      - name: Verify release artifacts
+        shell: pwsh
+        run: |
+          ./tools/Test-ReleaseArtifacts.ps1 `
+            -Version '${{ steps.release.outputs.version }}' `
+            -Commit '${{ github.sha }}'
       - uses: actions/upload-artifact@v4
         with:
           name: LuKnight-release

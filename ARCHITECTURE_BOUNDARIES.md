@@ -493,3 +493,26 @@ Settings privacy and action controls must expose useful accessibility names.
 Keyboard-only users must be able to enter Settings navigation, move through
 normal controls with standard WPF keyboard navigation, and close Settings
 without requiring a pointer.
+
+## Release artifact integrity
+
+A release artifact must be traceable to one clean Git commit.
+
+Packaging rejects:
+
+- dirty tracked files
+- untracked source files
+- a HEAD that differs from the requested release commit
+- a HEAD that changes during packaging
+
+Release output includes machine-readable provenance binding the installer,
+application binary, update manifest, version and source commit.
+
+`update.json`, `checksum.sha256`, and release provenance must agree on the
+installer SHA-256 and size.
+
+Authenticode status is recorded during packaging. A valid signature is not
+claimed until the explicit Phase 12G signing gate requires and verifies it.
+
+The GitHub release workflow creates a draft release only. Publication remains a
+separate reviewed action until final RC/v1.0 acceptance.

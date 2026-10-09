@@ -39,6 +39,17 @@ internal static partial class Program
         string output = Path.Combine(root, "artifacts", "renderchecks", "sprites");
         Directory.CreateDirectory(output);
         if (args.Contains(
+                "--release-build"))
+        {
+            CheckReleaseBuildIntegrity();
+
+
+            Console.WriteLine(
+                $"PASS: {_checks} release build integrity checks.");
+
+            return;
+        }
+        if (args.Contains(
                 "--ux-acceptance"))
         {
             CheckDocumentationUx();
