@@ -516,3 +516,31 @@ claimed until the explicit Phase 12G signing gate requires and verifies it.
 
 The GitHub release workflow creates a draft release only. Publication remains a
 separate reviewed action until final RC/v1.0 acceptance.
+
+## Installer E2E isolation
+
+Physical installer regression must never use Lu-Knight's production application
+identity or persistent-data namespace.
+
+An installer E2E profile uses a randomized test token and distinct:
+
+- installer AppId
+- installation directory
+- Start Menu group
+- startup Run value
+- startup preference registry key
+- process mutex
+- show-request event
+- settings/memory/schedule/skill/update/model directory
+- Gemini credential target
+
+The E2E profile token is restricted to a fixed 32-hex identifier and cannot
+redirect Lu-Knight to an arbitrary filesystem path.
+
+The installer E2E probe is available only when the process already runs inside
+an E2E runtime profile.
+
+Production installer defaults remain unchanged.
+
+A physical E2E installer may delete only its own test-profile data and
+credential.

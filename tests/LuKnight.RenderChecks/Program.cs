@@ -39,6 +39,17 @@ internal static partial class Program
         string output = Path.Combine(root, "artifacts", "renderchecks", "sprites");
         Directory.CreateDirectory(output);
         if (args.Contains(
+                "--installer-e2e-isolation"))
+        {
+            CheckInstallerE2EIsolation();
+
+
+            Console.WriteLine(
+                $"PASS: {_checks} installer E2E isolation checks.");
+
+            return;
+        }
+        if (args.Contains(
                 "--release-build"))
         {
             CheckReleaseBuildIntegrity();

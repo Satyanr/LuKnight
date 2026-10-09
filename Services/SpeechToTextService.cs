@@ -90,9 +90,7 @@ public sealed class LocalWhisperSpeechToTextService
         _modelsDirectory =
             modelsDirectory ??
             Path.Combine(
-                Environment.GetFolderPath(
-                    Environment.SpecialFolder.LocalApplicationData),
-                "LuKnight",
+                SettingsService.UserDirectory,
                 "Models");
     }
 

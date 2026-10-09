@@ -10,7 +10,10 @@ public sealed class SettingsService
 {
     public const int CurrentSchemaVersion = 3;
 
-    public static string UserDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LuKnight");
+    public static string UserDirectory =>
+        RuntimeProfile
+            .Current
+            .UserDirectory;
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true,

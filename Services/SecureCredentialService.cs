@@ -14,6 +14,24 @@ public interface ICredentialService
 public sealed class SecureCredentialService : ICredentialService
 {
     public const string Target = "LuKnight/GeminiApiKey";
+    private readonly string
+        _target;
+
+
+    public SecureCredentialService(
+        string? target = null)
+    {
+        _target =
+            target ??
+            RuntimeProfile
+                .Current
+                .CredentialTarget;
+    }
+
+
+    public string TargetName =>
+        _target;
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct Credential
     {
@@ -36,7 +54,7 @@ public sealed class SecureCredentialService : ICredentialService
     [DllImport("advapi32.dll")] private static extern void CredFree(nint credential);
     public string? Read()
     {
-        if (!CredRead(Target, 1, 0, out var pointer))
+        if (!CredRead(_target, 1, 0, out var pointer))
         { if (Marshal.GetLastWin32Error() == 1168) return null; throw new Win32Exception(Marshal.GetLastWin32Error()); }
         try
         {
@@ -52,12 +70,12 @@ public sealed class SecureCredentialService : ICredentialService
         nint blob = Marshal.StringToCoTaskMemUni(key);
         try
         {
-            var value = new Credential { Type = 1, TargetName = Target, UserName = "LuKnight", Persist = 2,
+            var value = new Credential { Type = 1, TargetName = _target, UserName = "LuKnight", Persist = 2,
                 CredentialBlob = blob, CredentialBlobSize = (uint)Encoding.Unicode.GetByteCount(key) };
             if (!CredWrite(ref value, 0)) throw new Win32Exception(Marshal.GetLastWin32Error());
         }
         finally { Marshal.ZeroFreeCoTaskMemUnicode(blob); }
     }
     public void Remove()
-    { if (!CredDelete(Target, 1, 0) && Marshal.GetLastWin32Error() != 1168) throw new Win32Exception(Marshal.GetLastWin32Error()); }
+    { if (!CredDelete(_target, 1, 0) && Marshal.GetLastWin32Error() != 1168) throw new Win32Exception(Marshal.GetLastWin32Error()); }
 }

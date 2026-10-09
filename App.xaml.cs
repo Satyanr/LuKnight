@@ -111,12 +111,35 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (InstallerE2EProbe.TryRun(
+                e.Args,
+                out int e2eExitCode))
+        {
+            Shutdown(
+                e2eExitCode);
+
+            return;
+        }
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         string? wait = e.Args.FirstOrDefault(a => a.StartsWith("--wait-for-pid="));
         if (wait is not null && int.TryParse(wait.Split('=')[1], out int pid))
         { try { using var old = Process.GetProcessById(pid); old.WaitForExit(15000); } catch (ArgumentException) { } }
-        _instance = new Mutex(false, @"Local\LuKnight-App", out bool firstInstance);
-        _showRequest = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\LuKnight-Show");
+        RuntimeProfileDefinition profile =
+            RuntimeProfile.Current;
+
+
+        _instance =
+            new Mutex(
+                false,
+                profile.MutexName,
+                out bool firstInstance);
+
+
+        _showRequest =
+            new EventWaitHandle(
+                false,
+                EventResetMode.AutoReset,
+                profile.ShowEventName);
         if (!firstInstance) { _showRequest.Set(); Shutdown(); return; }
         string configPath = Path.Combine(SettingsService.UserDirectory, "settings.json");
         var config = new SettingsService(configPath); config.Load();

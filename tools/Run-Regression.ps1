@@ -108,6 +108,7 @@ $coreCases = @(
     '--settings-ux',
     '--ux-acceptance',
     '--release-build',
+    '--installer-e2e-isolation',
     '--product',
     '--startup',
     '--settings',

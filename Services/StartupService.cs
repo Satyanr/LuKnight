@@ -12,15 +12,120 @@ public interface IStartupStore
     void WriteStartHidden(bool hidden);
 }
 
-public sealed class RegistryStartupStore : IStartupStore
+public sealed class RegistryStartupStore :
+    IStartupStore
 {
-    public const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string PreferenceKey = @"Software\LuKnight";
-    public string? ReadCommand() { using var key = Registry.CurrentUser.OpenSubKey(RunKey); return key?.GetValue("LuKnight") as string; }
-    public void WriteCommand(string command) { using var key = Registry.CurrentUser.CreateSubKey(RunKey, true); key.SetValue("LuKnight", command, RegistryValueKind.String); }
-    public void DeleteCommand() { using var key = Registry.CurrentUser.OpenSubKey(RunKey, true); key?.DeleteValue("LuKnight", false); }
-    public bool ReadStartHidden() { using var key = Registry.CurrentUser.OpenSubKey(PreferenceKey); return key?.GetValue("StartHidden") is int value && value == 1; }
-    public void WriteStartHidden(bool hidden) { using var key = Registry.CurrentUser.CreateSubKey(PreferenceKey, true); key.SetValue("StartHidden", hidden ? 1 : 0, RegistryValueKind.DWord); }
+    public const string RunKey =
+        @"Software\Microsoft\Windows\CurrentVersion\Run";
+
+
+    private readonly string
+        _runValueName;
+
+    private readonly string
+        _preferenceKey;
+
+
+    public RegistryStartupStore()
+        : this(
+            RuntimeProfile
+                .Current
+                .StartupRunValueName,
+
+            RuntimeProfile
+                .Current
+                .StartupPreferenceKey)
+    {
+    }
+
+
+    internal RegistryStartupStore(
+        string runValueName,
+        string preferenceKey)
+    {
+        _runValueName =
+            runValueName;
+
+        _preferenceKey =
+            preferenceKey;
+    }
+
+
+    public string? ReadCommand()
+    {
+        using var key =
+            Registry.CurrentUser
+                .OpenSubKey(
+                    RunKey);
+
+
+        return key?.GetValue(
+            _runValueName)
+            as string;
+    }
+
+
+    public void WriteCommand(
+        string command)
+    {
+        using var key =
+            Registry.CurrentUser
+                .CreateSubKey(
+                    RunKey,
+                    true);
+
+
+        key.SetValue(
+            _runValueName,
+            command,
+            RegistryValueKind.String);
+    }
+
+
+    public void DeleteCommand()
+    {
+        using var key =
+            Registry.CurrentUser
+                .OpenSubKey(
+                    RunKey,
+                    true);
+
+
+        key?.DeleteValue(
+            _runValueName,
+            false);
+    }
+
+
+    public bool ReadStartHidden()
+    {
+        using var key =
+            Registry.CurrentUser
+                .OpenSubKey(
+                    _preferenceKey);
+
+
+        return key?.GetValue(
+            "StartHidden") is int value &&
+            value == 1;
+    }
+
+
+    public void WriteStartHidden(
+        bool hidden)
+    {
+        using var key =
+            Registry.CurrentUser
+                .CreateSubKey(
+                    _preferenceKey,
+                    true);
+
+
+        key.SetValue(
+            "StartHidden",
+            hidden ? 1 : 0,
+            RegistryValueKind.DWord);
+    }
 }
 
 public sealed record StartupStatus(bool Enabled, bool StartHidden, bool Available, string Message);
