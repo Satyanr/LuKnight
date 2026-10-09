@@ -148,7 +148,8 @@ try {
         if ($hold.HasExited) { throw 'E2E hold process exited before update handoff.' }
         $upgradeArguments = $installArguments + @('/UPDATE', "/TARGETPID=$($hold.Id)", '/NORUNAPP')
         Invoke-InstallerChecked $installerUpgrade $upgradeArguments
-        if (-not $hold.WaitForExit(10000) -or $hold.ExitCode -ne 0) { throw 'E2E hold process failed.' }
+        if (-not $hold.HasExited) { throw 'Update installer returned before TARGETPID exited.' }
+        if ($hold.ExitCode -ne 0) { throw 'E2E hold process failed.' }
     } finally {
         if (-not $hold.HasExited -and -not $hold.WaitForExit(10000)) { $hold.Kill() }
         $hold.Dispose()

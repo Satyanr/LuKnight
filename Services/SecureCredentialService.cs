@@ -13,7 +13,6 @@ public interface ICredentialService
 
 public sealed class SecureCredentialService : ICredentialService
 {
-    public const string Target = "LuKnight/GeminiApiKey";
     private readonly string
         _target;
 
