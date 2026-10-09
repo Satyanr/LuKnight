@@ -31,6 +31,7 @@ The release verifier cross-checks:
 
 - stable semantic version
 - source commit
+- published application name, size, SHA-256, and FileVersion
 - installer size
 - installer SHA-256
 - update.json URL/version/hash/size
@@ -38,6 +39,12 @@ The release verifier cross-checks:
 - Authenticode status
 
 Signing is reported but is not required until the Phase 12G signing gate.
+
+Verification requires both the publish and release directories:
+
+```powershell
+./tools/Test-ReleaseArtifacts.ps1 -Version 1.0.0 -Commit (git rev-parse HEAD) -PublishDirectory artifacts/publish
+```
 
 Build final menghasilkan:
 

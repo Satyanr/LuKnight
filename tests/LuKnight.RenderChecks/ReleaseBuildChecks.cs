@@ -118,6 +118,33 @@ internal static partial class Program
                 "gh release edit",
                 StringComparison.Ordinal),
             "Release workflow unexpectedly auto-publishes a release.");
+        Require(
+            verify.Contains(
+                "Release provenance application identity mismatch.",
+                StringComparison.Ordinal) &&
+            verify.Contains(
+                "Published application file version mismatch.",
+                StringComparison.Ordinal) &&
+            verify.Contains(
+                "PublishDirectory",
+                StringComparison.Ordinal),
+            "Release verifier does not verify the published application binary.");
+
+        Require(
+            workflow.Contains(
+                "-PublishDirectory",
+                StringComparison.Ordinal),
+            "GitHub release workflow does not verify published application provenance.");
+
+        Require(
+            build.Contains(
+                "fileVersion",
+                StringComparison.Ordinal) &&
+            build.Contains(
+                "Published application file version mismatch.",
+                StringComparison.Ordinal),
+            "Release packaging does not bind application version metadata.");
+
         var start = new ProcessStartInfo
         {
             FileName = "powershell.exe",
@@ -132,5 +159,12 @@ internal static partial class Program
             throw new InvalidOperationException("Unable to start release source-gate fixtures.");
         process.WaitForExit();
         Require(process.ExitCode == 0, "Release source-gate behavior checks failed.");
+
+        start.ArgumentList[start.ArgumentList.Count - 1] =
+            Path.Combine(root, "tools", "Test-ReleaseApplicationProvenance.ps1");
+        using Process applicationChecks = Process.Start(start) ??
+            throw new InvalidOperationException("Unable to start application provenance fixtures.");
+        applicationChecks.WaitForExit();
+        Require(applicationChecks.ExitCode == 0, "Application provenance behavior checks failed.");
     }
 }

@@ -5,6 +5,9 @@ param(
     [Parameter(Mandatory)]
     [string]$Commit,
 
+    [Parameter(Mandatory)]
+    [string]$PublishDirectory,
+
     [string]$ReleaseDirectory = '',
 
     [switch]$RequireSigned
@@ -41,6 +44,33 @@ if ($Commit -notmatch
     throw 'Invalid release commit.'
 }
 
+
+$PublishDirectory =
+    [IO.Path]::GetFullPath(
+        $PublishDirectory)
+
+
+if (-not (
+    Test-Path `
+        -LiteralPath $PublishDirectory `
+        -PathType Container))
+{
+    throw 'Publish directory is missing.'
+}
+
+$application =
+    Join-Path `
+        $PublishDirectory `
+        'LuKnight.exe'
+
+
+if (-not (
+    Test-Path `
+        -LiteralPath $application `
+        -PathType Leaf))
+{
+    throw 'Published LuKnight.exe is missing.'
+}
 
 $installer =
     Join-Path `
@@ -194,6 +224,56 @@ if ($provenance.runtime -ne
     $provenance.selfContained -ne $true)
 {
     throw 'Unexpected release runtime configuration.'
+}
+
+
+$applicationInfo =
+    Get-Item `
+        -LiteralPath $application
+
+
+$applicationHash =
+    (
+        Get-FileHash `
+            -LiteralPath $application `
+            -Algorithm SHA256
+    ).Hash.ToLowerInvariant()
+
+
+if ($provenance.application.name -cne
+        'LuKnight.exe' -or
+    [long]$provenance.application.size -ne
+        $applicationInfo.Length -or
+    $provenance.application.sha256 -ne
+        $applicationHash)
+{
+    throw (
+        'Release provenance application identity mismatch.'
+    )
+}
+
+$expectedFileVersion =
+    "$Version.0"
+
+
+$fileVersion =
+    [string]$applicationInfo.VersionInfo.FileVersion
+
+
+if ($fileVersion -ne
+    $expectedFileVersion)
+{
+    throw (
+        'Published application file version mismatch.'
+    )
+}
+
+if ([string]$provenance.application.fileVersion -ne
+    $expectedFileVersion)
+{
+    throw (
+        'Release provenance application version mismatch.'
+    )
 }
 
 

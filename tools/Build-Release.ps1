@@ -151,6 +151,22 @@ $appInfo =
         -LiteralPath $app
 
 
+$expectedFileVersion =
+    "$Version.0"
+
+
+$appFileVersion =
+    [string]$appInfo.VersionInfo.FileVersion
+
+
+if ($appFileVersion -ne
+    $expectedFileVersion)
+{
+    throw (
+        'Published application file version mismatch.'
+    )
+}
+
 $appHash =
     (
         Get-FileHash `
@@ -221,6 +237,9 @@ $provenance =
             [ordered]@{
                 name =
                     'LuKnight.exe'
+
+                fileVersion =
+                    $appFileVersion
 
                 size =
                     $appInfo.Length
@@ -295,6 +314,7 @@ if ((Get-SourceCommit) -ne
     ) `
     -Version $Version `
     -Commit $sourceCommit `
+    -PublishDirectory $publish `
     -ReleaseDirectory $release
 
 
