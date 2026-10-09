@@ -20,6 +20,15 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Reject unsigned public tag release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          throw @'
+          Public tagged releases require the configured Authenticode signing provider.
+          GitHub-hosted signing is not configured.
+          Produce the signed release through the local public-release gate instead.
+          '@
       - name: Core release gate
         shell: pwsh
         run: ./tools/Run-Regression.ps1

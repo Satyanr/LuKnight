@@ -202,6 +202,35 @@ internal static partial class Program
             build.Contains("& powershell @verifyArguments", StringComparison.Ordinal),
             "Release builder does not forward the mandatory signing gate to the artifact verifier.");
 
+        string localSigner = File.ReadAllText(
+            Path.Combine(root, "tools", "Sign-WithWindowsCertificate.ps1"));
+
+        Require(
+            localSigner.Contains("LUKNIGHT_SIGNING_THUMBPRINT", StringComparison.Ordinal) &&
+            localSigner.Contains("LUKNIGHT_TIMESTAMP_URL", StringComparison.Ordinal) &&
+            localSigner.Contains("/fd SHA256", StringComparison.Ordinal) &&
+            localSigner.Contains("/tr $timestampUrl", StringComparison.Ordinal) &&
+            localSigner.Contains("/td SHA256", StringComparison.Ordinal) &&
+            localSigner.Contains("Get-AuthenticodeSignature", StringComparison.Ordinal) &&
+            localSigner.Contains("TimeStamperCertificate", StringComparison.Ordinal),
+            "Local public signing provider is not SHA-256/timestamp fail-closed.");
+
+        Require(
+            !localSigner.Contains(".pfx", StringComparison.OrdinalIgnoreCase) &&
+            !localSigner.Contains("/p ", StringComparison.OrdinalIgnoreCase),
+            "Signing provider must not embed PFX/password-based credentials.");
+
+        int rejectPublicTag = workflow.IndexOf("- name: Reject unsigned public tag release", StringComparison.Ordinal);
+        int coreReleaseGate = workflow.IndexOf("- name: Core release gate", StringComparison.Ordinal);
+        int buildReleaseArtifacts = workflow.IndexOf("- name: Build installer and manifest", StringComparison.Ordinal);
+        Require(
+            rejectPublicTag >= 0 &&
+            coreReleaseGate > rejectPublicTag &&
+            buildReleaseArtifacts > coreReleaseGate &&
+            workflow.Contains("github.ref_type == 'tag'", StringComparison.Ordinal) &&
+            workflow.Contains("Public tagged releases require", StringComparison.Ordinal),
+            "Unsigned tagged GitHub releases are not fail-closed.");
+
         var start = new ProcessStartInfo
         {
             FileName = "powershell.exe",
