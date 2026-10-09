@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Navigation;
 using System.Windows.Threading;
 using LuKnight.ViewModels;
@@ -59,6 +60,36 @@ public partial class SettingsWindow : Window
         _refreshTimer.Tick += RefreshTimer_Tick;
         IsVisibleChanged += Settings_IsVisibleChanged;
         Model.PropertyChanged += Model_PropertyChanged;
+        Loaded +=
+            SettingsWindow_Loaded;
+
+        PreviewKeyDown +=
+            SettingsWindow_PreviewKeyDown;
+    }
+
+    private void SettingsWindow_Loaded(
+        object sender,
+        RoutedEventArgs e)
+    {
+        Navigation.Focus();
+    }
+
+
+    private void SettingsWindow_PreviewKeyDown(
+        object sender,
+        KeyEventArgs e)
+    {
+        if (e.Key !=
+            Key.Escape)
+        {
+            return;
+        }
+
+
+        Close();
+
+        e.Handled =
+            true;
     }
 
     private void Settings_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -160,6 +191,11 @@ public partial class SettingsWindow : Window
         _refreshTimer.Tick -= RefreshTimer_Tick;
         IsVisibleChanged -= Settings_IsVisibleChanged;
         Model.PropertyChanged -= Model_PropertyChanged;
+        Loaded -=
+            SettingsWindow_Loaded;
+
+        PreviewKeyDown -=
+            SettingsWindow_PreviewKeyDown;
         base.OnClosed(e);
     }
     protected override void OnClosing(CancelEventArgs e)

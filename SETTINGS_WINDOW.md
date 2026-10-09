@@ -1,35 +1,143 @@
-# 6B — Settings Window
+# Lu-Knight Settings
 
-Buka **Settings** dari menu klik kanan ikon tray. Window Settings berdiri sendiri: tetap dapat dibuka ketika karakter disembunyikan, membuka Settings lagi memfokuskan instance yang sama, dan menutup Settings tidak menutup Lu-Knight. Window yang diminimalkan dipulihkan ketika dibuka dari tray.
+Settings adalah konfigurasi utama Lu-Knight dan menggunakan autosave.
 
-Implementasi 6E?6H telah menambahkan konfigurasi AI, penyimpanan otomatis, installer, serta update. Lihat [PHASE6_RELEASE.md](PHASE6_RELEASE.md) untuk perilaku dan verifikasi terbaru. Uraian di bawah mencatat fondasi awal 6B.
+Settings dapat dibuka dari tray meskipun mascot sedang tersembunyi. Hanya satu
+instance Settings digunakan; membuka Settings lagi memfokuskan window yang sama.
 
-## Fitur fondasi
+## Panduan awal
 
-- **General**: Always on top, Show Lu-Knight, Reset character position, renderer aktual, dan status aplikasi. Reset membatalkan drag/fall serta target lompatan, melepas pijakan window, lalu menempatkan karakter di tengah pijakan desktop pada monitor karakter. Chat yang sedang berjalan tetap dipertahankan.
-- **Behavior**: kontrol aktivitas, kecepatan berjalan, tidur, eksplorasi window, dan interaksi cursor sudah aktif pada fase 6D; lihat [BEHAVIOR_SETTINGS.md](BEHAVIOR_SETTINGS.md).
-- **AI & Chat**: status layanan, provider, model aktif, dan status API dari runtime. Key yang tersedia tidak dianggap sebagai koneksi terverifikasi. Respons sukses, permintaan berlangsung, dan kegagalan ditampilkan sesuai status chat; API key tidak ditampilkan atau disimpan di sini.
-- **About**: version, build/configuration/architecture, copyright dari metadata assembly, serta tautan repository. Tidak ada pemeriksaan jaringan otomatis saat Settings dibuka.
+Fresh installation membuka halaman Panduan awal.
 
-Always on top dan visibility langsung berlaku serta tetap mengikuti perubahan dari tray. Nilainya hanya berlaku selama sesi aplikasi; persistence belum dibuat. Start with Windows dan Start hidden kini aktif dan tersimpan per akun Windows pada fase 6C; lihat [STARTUP.md](STARTUP.md). Kontrol behavior langsung berlaku selama sesi; konfigurasi AI menunggu 6E, penyimpanan menunggu 6F, dan Check for Updates tetap nonaktif sampai 6H.
+Panduan ini hanya menjelaskan capability dan tidak memberikan permission.
 
-## Struktur
+Sensitive capabilities tetap OFF sampai diaktifkan secara terpisah.
 
-- `ViewModels/SettingsViewModel.cs`: snapshot runtime, binding, navigasi, perintah, dan metadata About.
-- `Views/SettingsWindow.xaml`: empat halaman, sidebar dengan indikator pilihan, gaya kontrol, serta scroll untuk ukuran window kecil.
-- `Views/SettingsWindow.xaml.cs`: koneksi ke mascot, refresh status setiap 500 ms selama terlihat, dan cleanup saat ditutup.
-- `App.xaml.cs`: satu instance Settings, restore/focus, serta lifecycle aplikasi.
+Existing installations yang bermigrasi dari settings schema lama tidak dipaksa
+mengulang onboarding.
 
-Pemanggilan `_tray.Show()` dipertahankan setelah tray dibuat agar menu Settings benar-benar dapat diakses.
+## General
 
-## Verifikasi
+Menyediakan:
+
+- Always on top
+- Show / Hide Lu-Knight
+- Reset character position
+- runtime renderer/status
+- Start with Windows
+- Start hidden in System Tray
+
+Window placement dan mascot placement dipulihkan dengan monitor reachability
+validation.
+
+## Behavior
+
+Mengatur autonomous character behavior:
+
+- activity
+- movement speed
+- sleep
+- window exploration
+- jump/window behavior
+- cursor interaction
+
+Behavior setting tidak memberikan permission kepada Assistant untuk melakukan
+desktop action.
+
+## AI & Chat
+
+Menyediakan:
+
+- provider/model
+- Gemini API key
+- conversation behavior
+- long-term memory
+- Application awareness
+- Proactive companion
+- File context
+- Clipboard context
+- System context
+- Screen context
+- Voice input
+- Text-to-Speech
+- Desktop actions
+- Desktop permission level
+
+Bagian Access summary menampilkan state efektif capability utama.
+
+Jika Application awareness dimatikan, Proactive companion ikut dimatikan dan
+tidak hidup kembali otomatis ketika Application awareness dinyalakan.
+
+## Credentials
+
+Gemini API key disimpan di Windows Credential Manager.
+
+Password field Settings tidak menampilkan kembali credential yang sudah
+tersimpan.
+
+Environment variable GEMINI_API_KEY dapat digunakan sebagai development
+fallback.
+
+## Desktop permission
+
+Available levels:
+
+- Observe only
+- Navigation
+- Interaction
+- Sensitive
+
+Desktop actions tetap membutuhkan proposal, validation, confirmation, dan fresh
+target revalidation.
+
+Sensitive actions menggunakan two-stage confirmation.
+
+## Voice
+
+Voice input adalah Push-to-Talk dan local Speech-to-Text.
+
+Text-to-Speech menggunakan Windows speech voices.
+
+Voice input dan spoken replies adalah pengaturan terpisah.
+
+## About
+
+About menampilkan:
+
+- version
+- build
+- repository
+- update controls
+
+Update tidak dipasang otomatis. Install & Restart harus dipilih secara eksplisit.
+
+## Persistence
+
+Perubahan Settings disimpan otomatis.
+
+Settings persistence menggunakan committed primary/backup recovery.
+
+Corrupt primary dapat dipulihkan dari validated committed backup.
+
+Unsupported future schema dibuka read-only dan tidak ditimpa oleh versi aplikasi
+yang lebih lama.
+
+## Accessibility
+
+Settings mendukung normal keyboard Tab navigation dan focus indication.
+
+Navigation sidebar, credential input, privacy controls, dan Desktop action
+controls memiliki accessibility names sehingga dapat diidentifikasi melalui
+Windows accessibility/UI Automation.
+
+## Verification
 
 ```powershell
-dotnet build LuKnight.csproj -c Release
-dotnet run --project tests/LuKnight.RenderChecks/LuKnight.RenderChecks.csproj -c Release -- --settings
-dotnet run --project tests/LuKnight.RenderChecks/LuKnight.RenderChecks.csproj -c Release
+dotnet run --project tests/LuKnight.RenderChecks/LuKnight.RenderChecks.csproj -c Release -- --first-run
+dotnet run --project tests/LuKnight.RenderChecks/LuKnight.RenderChecks.csproj -c Release -- --settings-ux
+dotnet run --project tests/LuKnight.RenderChecks/LuKnight.RenderChecks.csproj -c Release -- --ux-acceptance
+dotnet run --project tests/LuKnight.RenderChecks/LuKnight.RenderChecks.csproj -c Release -- --product
 ```
 
-439 pemeriksaan lolos, termasuk 30 pemeriksaan Settings: binding dua arah, update runtime tanpa rekursi, navigasi, API status, kontrol yang belum aktif, scroll ukuran minimum, cleanup timer, singleton/reopen, independensi dari mascot, dan reset physics. Empat halaman ditinjau melalui render WPF pada `output/sprites/settings-0.png` sampai `settings-3.png`.
-
-Tes memakai render offscreen dan event sintetis. Fokus window, klik tray langsung, serta perpindahan karakter pada desktop/multi-monitor belum diverifikasi secara interaktif.
+Offscreen/synthetic UI testing does not establish physical tray, monitor,
+microphone, or speaker PASS.

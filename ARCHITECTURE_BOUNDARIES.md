@@ -474,3 +474,22 @@ used for a request may be sent to the configured AI provider.
 
 Enabling Desktop actions does not authorize a specific action. Permission,
 target revalidation and confirmation remain required independently.
+
+## User-facing claims
+
+User-facing documentation must describe implemented behavior rather than roadmap
+intent.
+
+Documentation must not claim:
+
+- an untested physical integration is PASS
+- installer/updater end-to-end is complete before Phase 12G evidence
+- a sensitive capability is enabled by default when fresh-install policy keeps it OFF
+- Gemini directly executes Windows actions
+- onboarding completion grants desktop permission
+
+Settings privacy and action controls must expose useful accessibility names.
+
+Keyboard-only users must be able to enter Settings navigation, move through
+normal controls with standard WPF keyboard navigation, and close Settings
+without requiring a pointer.

@@ -266,7 +266,7 @@
                         </Border>
 
 
-                        <Button
+                        <Button x:Name="CompleteFirstRunButton" AutomationProperties.Name="Selesaikan panduan awal" AutomationProperties.HelpText="Menyelesaikan panduan tanpa mengaktifkan capability tambahan."
                             Content="Selesai — pertahankan izin saat ini"
                             Click="CompleteFirstRun_Click"
                             HorizontalAlignment="Left"
@@ -372,7 +372,7 @@
                         <Border Style="{StaticResource Card}"><StackPanel IsEnabled="{Binding Product.CanEditChat}">
                             <TextBlock Text="API key" Style="{StaticResource CardTitle}"/>
                             <TextBlock Text="{Binding Product.CredentialStatus}" Style="{StaticResource Muted}"/>
-                            <PasswordBox x:Name="ApiKeyInput" Margin="0,12,0,10" Padding="10,7" Foreground="#0F172A" ToolTip="Masukkan key baru. Key yang tersimpan tidak ditampilkan kembali."/>
+                            <PasswordBox AutomationProperties.Name="Gemini API key" AutomationProperties.HelpText="Masukkan Gemini API key baru. Key tersimpan tidak ditampilkan kembali." x:Name="ApiKeyInput" Margin="0,12,0,10" Padding="10,7" Foreground="#0F172A" ToolTip="Masukkan key baru. Key yang tersimpan tidak ditampilkan kembali."/>
                             <WrapPanel><Button Content="Update Key" Click="UpdateKey_Click" Margin="0,0,8,8"/><Button Content="Remove Key" Command="{Binding Product.RemoveKeyCommand}" Margin="0,0,8,8"/><Button Content="Test Connection" Command="{Binding Product.TestCommand}" Margin="0,0,0,8"/></WrapPanel>
                             <TextBlock Text="Key tersimpan di Windows Credential Manager. Jika key tersimpan dihapus, environment GEMINI_API_KEY tetap dapat dipakai sebagai fallback." Style="{StaticResource Muted}" FontSize="12"/>
                         </StackPanel></Border>
@@ -389,13 +389,13 @@
                             <CheckBox Content="Use saved long-term memory as AI context" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseLongTermMemory, Mode=TwoWay}"/>
                             <TextBlock Text="{Binding Product.LongTermMemorySummary}" Style="{StaticResource Muted}" Margin="0,6,0,0"/>
                             <TextBlock Text="{Binding Product.LongTermMemoryStatus}" Foreground="#67E8F9" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                            <Button Content="Clear Long-Term Memory" Click="ClearLongTermMemory_Click" IsEnabled="{Binding Product.CanClearLongTermMemory}" HorizontalAlignment="Left" Margin="0,14,0,0"/>
+                            <Button AutomationProperties.Name="Clear long-term memory" AutomationProperties.HelpText="Menghapus seluruh memory yang disimpan Lu-Knight setelah confirmation." Content="Clear Long-Term Memory" Click="ClearLongTermMemory_Click" IsEnabled="{Binding Product.CanClearLongTermMemory}" HorizontalAlignment="Left" Margin="0,14,0,0"/>
                             <TextBlock Text="Clear Conversation hanya menghapus percakapan sesi. Clear Long-Term Memory menghapus memory.json yang disimpan Lu-Knight." Style="{StaticResource Muted}" FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap"/>
                         </StackPanel></Border>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <TextBlock Text="Application awareness" Style="{StaticResource CardTitle}"/>
-                                <CheckBox Content="Allow Lu-Knight to use visible application context" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseApplicationContext, Mode=TwoWay}"/>
+                                <CheckBox x:Name="ApplicationAwarenessCheck" AutomationProperties.Name="Application awareness" AutomationProperties.HelpText="Mengizinkan context aplikasi terbatas. Tidak membaca isi layar." Content="Allow Lu-Knight to use visible application context" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseApplicationContext, Mode=TwoWay}"/>
                                 <TextBlock Text="Lu-Knight hanya menerima nama process dan kategori aplikasi. Isi layar, judul window, nama dokumen, clipboard, dan isi file belum dibaca." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0"/>
                             </StackPanel>
                         </Border>
@@ -405,7 +405,7 @@
                                     Text="Proactive companion"
                                     Style="{StaticResource CardTitle}"/>
 
-                                <CheckBox
+                                <CheckBox x:Name="ProactiveSuggestionsCheck" AutomationProperties.Name="Proactive companion" AutomationProperties.HelpText="Membutuhkan Application awareness dan tidak menjalankan desktop action secara otomatis."
                                     Content="Allow Lu-Knight to occasionally offer contextual help"
                                     IsEnabled="{Binding Product.ProactiveSuggestionsAvailable}"
                                     IsChecked="{Binding Product.ProactiveSuggestions, Mode=TwoWay}"/>
@@ -487,14 +487,14 @@
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <TextBlock Text="Screen context" Style="{StaticResource CardTitle}"/>
-                                <CheckBox Content="Allow Lu-Knight to capture the primary display when explicitly requested" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseScreenContext, Mode=TwoWay}"/>
+                                <CheckBox x:Name="ScreenContextCheck" AutomationProperties.Name="Screen context" AutomationProperties.HelpText="One-shot primary display capture hanya ketika diminta secara eksplisit." Content="Allow Lu-Knight to capture the primary display when explicitly requested" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseScreenContext, Mode=TwoWay}"/>
                                 <TextBlock Text="Screen capture hanya dilakukan sekali ketika Anda meminta. Screenshot tidak dimonitor di background dan tidak disimpan oleh Lu-Knight. Image dikirim ke Gemini untuk request tersebut." Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <TextBlock Text="Voice input" Style="{StaticResource CardTitle}"/>
-                                <CheckBox Content="Allow Lu-Knight to use the microphone for push-to-talk" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseVoiceInput, Mode=TwoWay}"/>
+                                <CheckBox x:Name="VoiceInputCheck" AutomationProperties.Name="Voice input" AutomationProperties.HelpText="Push-to-Talk local Speech-to-Text." Content="Allow Lu-Knight to use the microphone for push-to-talk" IsEnabled="{Binding Product.CanEditChat}" IsChecked="{Binding Product.UseVoiceInput, Mode=TwoWay}"/>
                                 <Grid Margin="0,14,0,0" IsEnabled="{Binding Product.UseVoiceInput}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition/>
@@ -514,7 +514,7 @@
                                 <ComboBox ItemsSource="{Binding Product.VoiceSubmissionModes}" SelectedItem="{Binding Product.VoiceSubmissionMode, Mode=TwoWay}" IsEnabled="{Binding Product.UseVoiceInput}"/>
                                 <TextBlock Text="{Binding Product.VoiceModelDescription}" Style="{StaticResource Muted}" Margin="0,12,0,0"/>
                                 <TextBlock Text="{Binding Product.VoiceModelStatus}" Foreground="#67E8F9" FontSize="12" Margin="0,6,0,0"/>
-                                <Button Content="Delete selected local model" Command="{Binding Product.DeleteVoiceModelCommand}" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+                                <Button AutomationProperties.Name="Delete selected speech model" AutomationProperties.HelpText="Menghapus model Speech-to-Text lokal yang dipilih." Content="Delete selected local model" Command="{Binding Product.DeleteVoiceModelCommand}" HorizontalAlignment="Left" Margin="0,12,0,0"/>
                                 <TextBlock Text="Push-to-talk only. Microphone hanya aktif ketika status Listening. Audio rekaman tetap lokal dan hanya berada di memory; audio tidak dikirim ke Gemini dan tidak disimpan sebagai file. Setelah transkripsi, hanya teks yang dapat diteruskan ke Assistant." Style="{StaticResource Muted}" FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
@@ -546,7 +546,7 @@
                                     Text="Desktop actions"
                                     Style="{StaticResource CardTitle}"/>
 
-                                <CheckBox
+                                <CheckBox x:Name="DesktopActionsCheck" AutomationProperties.Name="Desktop actions" AutomationProperties.HelpText="Mengizinkan action proposal. Setiap execution tetap melalui permission dan confirmation."
                                     Content="Allow Lu-Knight to perform approved desktop actions"
                                     IsEnabled="{Binding Product.CanEditChat}"
                                     IsChecked="{Binding Product.UseDesktopActions, Mode=TwoWay}"/>
@@ -562,7 +562,7 @@
                                     Text="Permission level"
                                     Margin="0,14,0,6"/>
 
-                                <ComboBox
+                                <ComboBox x:Name="DesktopPermissionCombo" AutomationProperties.Name="Desktop permission level"
                                     ItemsSource="{Binding Product.DesktopPermissionChoices}"
                                     DisplayMemberPath="Label"
                                     SelectedValuePath="Value"

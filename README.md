@@ -358,7 +358,21 @@ Currently unsupported / intentionally restricted:
 * unrestricted file modification
 * application kill / force-close commands
 
-Future destructive actions will require a higher permission level.
+Desktop actions use explicit permission levels:
+
+* **Observe only** — no desktop mutation
+* **Navigation** — supported application/Explorer navigation
+* **Interaction** — supported safe UI interaction and text input
+* **Sensitive** — supported sensitive actions with two-stage confirmation
+
+UI Automation is preferred over mouse/keyboard fallback.
+
+Targets and UI control identities are revalidated before execution. Password and
+protected credential fields, arbitrary shell/script execution, arbitrary EXE
+paths, and invalidated targets remain blocked.
+
+Mouse or keyboard fallback does not reduce an action's risk or confirmation
+requirements.
 
 ---
 
@@ -406,12 +420,18 @@ This includes:
 * Clipboard Context
 * System Context
 * Screen Context
-* Voice
-* Desktop Actions
-* future UI Automation
-* future Proactive Behavior
+* Voice Input
+* Desktop Actions / UI Automation
+* Proactive Companion
 
-The final v1.0 goal is for sensitive capabilities to default to **OFF** until explicitly enabled.
+On a fresh installation these sensitive ambient capabilities default to
+**OFF** and require explicit opt-in.
+
+Request-scoped file, clipboard, screen, and system context is not automatically
+retained as context for later Gemini requests.
+
+Deterministic local desktop commands and their results remain local and do not
+become Gemini conversation history.
 
 ---
 
@@ -449,6 +469,10 @@ When a packaged GitHub Release is available, download:
 ```text
 LuKnightSetup.exe
 ```
+
+> The packaging path exists in the repository, but final installer and updater
+> end-to-end release acceptance is part of Phase 12G. Development source builds
+> should not be treated as a signed public v1.0 installer.
 
 Run the installer normally.
 
@@ -865,6 +889,7 @@ Do not treat the current development build as a fully hardened security boundary
 
 More technical documentation is available inside this repository:
 
+* [`USER_GUIDE.md`](USER_GUIDE.md)
 * [`ARCHITECTURE_BOUNDARIES.md`](ARCHITECTURE_BOUNDARIES.md)
 * [`ASSISTANT_CORE.md`](ASSISTANT_CORE.md)
 * [`PERSONALITY_SYSTEM.md`](PERSONALITY_SYSTEM.md)

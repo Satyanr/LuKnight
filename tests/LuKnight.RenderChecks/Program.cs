@@ -39,6 +39,17 @@ internal static partial class Program
         string output = Path.Combine(root, "artifacts", "renderchecks", "sprites");
         Directory.CreateDirectory(output);
         if (args.Contains(
+                "--ux-acceptance"))
+        {
+            CheckDocumentationUx();
+
+
+            Console.WriteLine(
+                $"PASS: {_checks} documentation and UX acceptance checks.");
+
+            return;
+        }
+        if (args.Contains(
                 "--settings-ux"))
         {
             CheckSettingsUx();

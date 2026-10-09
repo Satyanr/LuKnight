@@ -106,6 +106,7 @@ $coreCases = @(
     '--behavior-settings',
     '--first-run',
     '--settings-ux',
+    '--ux-acceptance',
     '--product',
     '--startup',
     '--settings',
