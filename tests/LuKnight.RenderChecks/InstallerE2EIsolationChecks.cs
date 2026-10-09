@@ -188,5 +188,47 @@ internal static partial class Program
             installer.Contains("#if Int(AllowSilentRemovePreferences) == 1", StringComparison.Ordinal) &&
             installer.Contains("skipifsilent", StringComparison.Ordinal),
             "Production silent removal or fresh-install launch defaults changed.");
+        string e2eRunner =
+            File.ReadAllText(
+                Path.Combine(
+                    root,
+                    "tools",
+                    "Test-InstallerE2E.ps1"));
+
+        Require(
+            e2eRunner.Contains(
+                "LUKNIGHT_E2E_TOKEN",
+                StringComparison.Ordinal) &&
+            e2eRunner.Contains(
+                "LuKnight-E2E",
+                StringComparison.Ordinal) &&
+            e2eRunner.Contains(
+                "/REMOVEPREFERENCES",
+                StringComparison.Ordinal) &&
+            e2eRunner.Contains(
+                "/NORUNAPP",
+                StringComparison.Ordinal) &&
+            e2eRunner.Contains(
+                "/TARGETPID=",
+                StringComparison.Ordinal),
+            "Installer E2E runner does not exercise the isolated production update path.");
+
+        Require(
+            e2eRunner.Contains(
+                "installer-e2e-summary.json",
+                StringComparison.Ordinal) &&
+            e2eRunner.Contains(
+                "failed =",
+                StringComparison.Ordinal),
+            "Installer E2E produces no machine-readable acceptance evidence.");
+
+        Require(
+            e2eRunner.Contains(
+                "Assert-ChildPath",
+                StringComparison.Ordinal) &&
+            e2eRunner.Contains(
+                "Installer E2E requires a clean Git working tree.",
+                StringComparison.Ordinal),
+            "Installer E2E lacks filesystem/source safety guards.");
     }
 }

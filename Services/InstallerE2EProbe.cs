@@ -1,4 +1,6 @@
 using System.IO;
+using System.Reflection;
+using Microsoft.Win32;
 using LuKnight.Models;
 
 namespace LuKnight.Services;
@@ -60,16 +62,22 @@ public static class InstallerE2EProbe
                 mode switch
                 {
                     "seed" =>
-                        Seed(
-                            profile),
+                        Seed(profile),
+
+                    "verify-installed" =>
+                        VerifyInstalled(profile),
 
                     "verify-preserved" =>
-                        VerifyPreserved(
-                            profile),
+                        VerifyPreserved(profile),
 
                     "verify-clean" =>
-                        VerifyClean(
-                            profile),
+                        VerifyClean(profile),
+
+                    "hold" =>
+                        Hold(),
+
+                    "cleanup" =>
+                        Cleanup(profile),
 
                     _ =>
                         91
@@ -174,13 +182,34 @@ public static class InstallerE2EProbe
             "LuKnight installer E2E");
 
 
+        var startup =
+            new RegistryStartupStore();
+
+
+        startup.WriteStartHidden(
+            true);
+
+
+        string executable =
+            Environment.ProcessPath
+            ?? throw new
+                InvalidOperationException();
+
+
+        startup.WriteCommand(
+            StartupService.BuildCommand(
+                executable,
+                Assembly.GetExecutingAssembly()
+                    .Location));
+
+
         return 0;
     }
 
 
-    private static int VerifyPreserved(
-        RuntimeProfileDefinition
-            profile)
+    private static bool
+        HasPreservedData(
+            RuntimeProfileDefinition profile)
     {
         var settings =
             new SettingsService(
@@ -195,7 +224,7 @@ public static class InstallerE2EProbe
             new SecureCredentialService();
 
 
-        bool valid =
+        return
             settings.Current
                 .General
                 .StartHidden &&
@@ -210,34 +239,153 @@ public static class InstallerE2EProbe
                 CredentialValue(
                     profile),
                 StringComparison.Ordinal);
-
-
-        return valid
-            ? 0
-            : 93;
     }
 
+    private static int
+        VerifyInstalled(
+            RuntimeProfileDefinition profile)
+    {
+        if (!HasPreservedData(
+                profile))
+        {
+            return 93;
+        }
 
-    private static int VerifyClean(
-        RuntimeProfileDefinition
-            profile)
+
+        var startup =
+            new RegistryStartupStore();
+
+
+        string executable =
+            Environment.ProcessPath
+            ?? throw new
+                InvalidOperationException();
+
+
+        string expected =
+            StartupService.BuildCommand(
+                executable,
+                Assembly.GetExecutingAssembly()
+                    .Location);
+
+
+        return
+            startup.ReadStartHidden() &&
+            string.Equals(
+                startup.ReadCommand(),
+                expected,
+                StringComparison.Ordinal)
+                ? 0
+                : 95;
+    }
+
+    private static int
+        VerifyPreserved(
+            RuntimeProfileDefinition profile)
+    {
+        if (!HasPreservedData(
+                profile))
+        {
+            return 93;
+        }
+
+
+        var startup =
+            new RegistryStartupStore();
+
+
+        //
+        // Uninstall removes the Run entry,
+        // but keep-data uninstall retains
+        // user preference data.
+        //
+
+        return
+            startup.ReadCommand() is null &&
+            startup.ReadStartHidden()
+                ? 0
+                : 96;
+    }
+
+    private static int
+        VerifyClean(
+            RuntimeProfileDefinition profile)
     {
         var credential =
             new SecureCredentialService();
 
 
+        var startup =
+            new RegistryStartupStore();
+
+
         bool clean =
-            !File.Exists(
-                SettingsPath(
-                    profile)) &&
-            !File.Exists(
-                SentinelPath(
-                    profile)) &&
-            credential.Read() is null;
+            !Directory.Exists(
+                profile.UserDirectory) &&
+            credential.Read() is null &&
+            startup.ReadCommand() is null &&
+            !startup.ReadStartHidden();
 
 
         return clean
             ? 0
             : 94;
+    }
+
+    private static int Hold()
+    {
+        Thread.Sleep(
+            TimeSpan.FromSeconds(
+                5));
+
+
+        return 0;
+    }
+
+    private static int
+        Cleanup(
+            RuntimeProfileDefinition profile)
+    {
+        if (!profile.IsE2E ||
+            string.IsNullOrWhiteSpace(
+                profile.Token))
+        {
+            return 97;
+        }
+
+
+        var credential =
+            new SecureCredentialService();
+
+
+        credential.Remove();
+
+
+        var startup =
+            new RegistryStartupStore();
+
+
+        startup.DeleteCommand();
+
+
+        Registry.CurrentUser
+            .DeleteSubKeyTree(
+                profile.StartupPreferenceKey,
+                throwOnMissingSubKey:
+                    false);
+
+
+        if (Directory.Exists(
+                profile.UserDirectory))
+        {
+            Directory.Delete(
+                profile.UserDirectory,
+                recursive:
+                    true);
+        }
+
+
+        return VerifyClean(
+            profile);
     }
 }
