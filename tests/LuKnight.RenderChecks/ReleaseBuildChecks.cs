@@ -205,6 +205,29 @@ internal static partial class Program
         string localSigner = File.ReadAllText(
             Path.Combine(root, "tools", "Sign-WithWindowsCertificate.ps1"));
 
+        string signingAcceptance = File.ReadAllText(
+            Path.Combine(root, "tools", "Test-SignedReleaseE2E.ps1"));
+
+        Require(
+            signingAcceptance.Contains("New-SelfSignedCertificate", StringComparison.Ordinal) &&
+            signingAcceptance.Contains("KeyExportPolicy NonExportable", StringComparison.Ordinal) &&
+            signingAcceptance.Contains(@"Cert:\CurrentUser\Root", StringComparison.Ordinal) &&
+            signingAcceptance.Contains(@"Cert:\CurrentUser\TrustedPublisher", StringComparison.Ordinal) &&
+            signingAcceptance.Contains("Build-Release.ps1", StringComparison.Ordinal) &&
+            signingAcceptance.Contains("-RequireSigned", StringComparison.Ordinal) &&
+            signingAcceptance.Contains("TimeStamperCertificate", StringComparison.Ordinal),
+            "Signed release E2E acceptance is incomplete.");
+
+        Require(
+            signingAcceptance.Contains("finally", StringComparison.Ordinal) &&
+            signingAcceptance.Contains("Remove-Item", StringComparison.Ordinal) &&
+            signingAcceptance.Contains("-DeleteKey", StringComparison.Ordinal) &&
+            signingAcceptance.Contains("cleanupSucceeded", StringComparison.Ordinal) &&
+            signingAcceptance.Contains("signing-e2e-summary.json", StringComparison.Ordinal) &&
+            !signingAcceptance.Contains(".pfx", StringComparison.OrdinalIgnoreCase) &&
+            !signingAcceptance.Contains(".p12", StringComparison.OrdinalIgnoreCase),
+            "Signing acceptance can leak development signing state.");
+
         Require(
             localSigner.Contains("LUKNIGHT_SIGNING_THUMBPRINT", StringComparison.Ordinal) &&
             localSigner.Contains("LUKNIGHT_TIMESTAMP_URL", StringComparison.Ordinal) &&
