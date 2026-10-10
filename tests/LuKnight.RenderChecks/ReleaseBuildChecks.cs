@@ -208,6 +208,24 @@ internal static partial class Program
         string signingAcceptance = File.ReadAllText(
             Path.Combine(root, "tools", "Test-SignedReleaseE2E.ps1"));
 
+        string rcSignoff = File.ReadAllText(
+            Path.Combine(root, "tools", "New-ReleaseCandidateSignoff.ps1"));
+
+        Require(
+            rcSignoff.Contains("regression-summary.json", StringComparison.Ordinal) &&
+            rcSignoff.Contains("regression-signoff.json", StringComparison.Ordinal) &&
+            rcSignoff.Contains("installer-e2e-summary.json", StringComparison.Ordinal) &&
+            rcSignoff.Contains("signing-e2e-summary.json", StringComparison.Ordinal),
+            "Release Candidate gate does not aggregate all required evidence.");
+
+        Require(
+            rcSignoff.Contains("phase12EComplete", StringComparison.Ordinal) &&
+            rcSignoff.Contains("cleanupSucceeded", StringComparison.Ordinal) &&
+            rcSignoff.Contains("developmentSigningOnly", StringComparison.Ordinal) &&
+            rcSignoff.Contains("publicReleaseReady", StringComparison.Ordinal) &&
+            rcSignoff.Contains("$false", StringComparison.Ordinal),
+            "Release Candidate gate can confuse development signing with public signing.");
+
         Require(
             signingAcceptance.Contains("New-SelfSignedCertificate", StringComparison.Ordinal) &&
             signingAcceptance.Contains("KeyExportPolicy NonExportable", StringComparison.Ordinal) &&
